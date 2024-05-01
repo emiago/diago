@@ -103,7 +103,7 @@ func (d *Dialplan) PlaybackURL(inDialog *diago.DialogServerSession) {
 	inDialog.Ringing()  // Ringing -> 180 Response
 	inDialog.Answer()   // Answqer -> 200 Response
 
-	if err := inDialog.PlaybackURL("http://127.0.0.1:8080/"); err != nil {
+	if err := inDialog.PlaybackURL(inDialog.Context(), "http://127.0.0.1:8080/"); err != nil {
 		log.Error().Err(err).Msg("Playing url failed")
 	}
 }

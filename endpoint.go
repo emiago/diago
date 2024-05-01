@@ -16,13 +16,15 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type ServeDialogFunc func(d *DialogServerSession)
+
 type Endpoint struct {
 	ua        *sipgo.UserAgent
 	client    *sipgo.Client
 	server    *sipgo.Server
 	transport EndpointTransport
 
-	serveHandler func(d *DialogServerSession)
+	serveHandler ServeDialogFunc
 
 	dialogServer *sipgo.DialogServer
 	dialogClient *sipgo.DialogClient
@@ -178,19 +180,18 @@ func NewEndpoint(ua *sipgo.UserAgent, opts ...EndpointOption) *Endpoint {
 }
 
 // Serve main function for passing callback for handling new dialog session for inbound call
-func (tu *Endpoint) Serve(ctx context.Context, f func(d *DialogServerSession)) error {
+func (tu *Endpoint) Serve(ctx context.Context, f ServeDialogFunc) error {
 	server := tu.server
 
 	tu.serveHandler = f
 
-	// TODO handling multiple transports?
 	tran := tu.transport
 	hostport := net.JoinHostPort(tran.BindHost, strconv.Itoa(tran.BindPort))
 	return server.ListenAndServe(ctx, tran.Network, hostport)
 }
 
 // Serve starts serving in background but waits server listener started before returning
-func (tu *Endpoint) ServeBackground(ctx context.Context, f func(d *DialogServerSession)) error {
+func (tu *Endpoint) ServeBackground(ctx context.Context, f ServeDialogFunc) error {
 	ch := make(chan struct{})
 	ctx = context.WithValue(ctx, sipgo.ListenReadyCtxKey, sipgo.ListenReadyCtxValue(ch))
 
