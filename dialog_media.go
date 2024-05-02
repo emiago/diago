@@ -36,25 +36,26 @@ func init() {
 }
 
 type DialogSession interface {
-	// Dialog() sipgo.Dialog
+	Context() context.Context
 	Hangup(ctx context.Context) error
-	MediaSession() *sipgox.MediaSession
+	Media() *DialogMedia
 }
 
 type DialogMedia struct {
 	// DO NOT use IT or mix with reader and writer, unless it is specific case
-	mediaSession *sipgox.MediaSession
+	Session *sipgox.MediaSession
 
 	*sipgox.RTPWriter
 	*sipgox.RTPReader
 }
 
-func (d *DialogMedia) MediaSession() *sipgox.MediaSession {
-	return d.mediaSession
+// Just to satisfy DialogSession interface
+func (d *DialogMedia) Media() *DialogMedia {
+	return d
 }
 
-func (d *DialogServerSession) PlaybackFile(filename string) error {
-	if d.MediaSession() == nil {
+func (d *DialogMedia) PlaybackFile(filename string) error {
+	if d.Session == nil {
 		return fmt.Errorf("call not answered")
 	}
 
@@ -72,7 +73,7 @@ func (d *DialogServerSession) PlaybackFile(filename string) error {
 }
 
 func (d *DialogMedia) PlaybackURL(ctx context.Context, urlStr string) error {
-	if d.MediaSession() == nil {
+	if d.Session == nil {
 		return fmt.Errorf("call not answered")
 	}
 
@@ -274,6 +275,15 @@ outloop:
 	}
 */
 func streamWavRTP(body io.Reader, rtpWriter *sipgox.RTPWriter) (int, error) {
+	pt := rtpWriter.PayloadType
+	enc, err := audio.NewPCMEncoder(pt, rtpWriter)
+	if err != nil {
+		return 0, err
+	}
+	return streamWav(body, enc)
+}
+
+func streamWav(body io.Reader, enc io.Writer) (int, error) {
 	dec := audio.NewWavDecoderStreamer(body)
 	if err := dec.ReadHeaders(); err != nil {
 		return 0, err
@@ -283,12 +293,6 @@ func streamWavRTP(body io.Reader, rtpWriter *sipgox.RTPWriter) (int, error) {
 	}
 	if dec.SampleRate != 8000 {
 		return 0, fmt.Errorf("only 8000 sample rate supported")
-	}
-
-	pt := rtpWriter.PayloadType
-	enc, err := audio.NewPCMEncoder(pt, rtpWriter)
-	if err != nil {
-		return 0, err
 	}
 
 	// We need to read and packetize to 20 ms
@@ -307,8 +311,6 @@ outloop:
 			}
 			return 0, err
 		}
-
-		fmt.Println("Chunk id", string(ch.ID[:]))
 
 		// Why this is never the case
 		if ch.ID != riff.DataFormatID && ch.ID != [4]byte{} {

@@ -3,6 +3,8 @@ package audio
 import (
 	"fmt"
 	"io"
+	"sync"
+	"sync/atomic"
 
 	"github.com/zaf/g711"
 )
@@ -110,4 +112,37 @@ func (d *PCMEncoder) Write(b []byte) (n int, err error) {
 	}
 
 	return len(b), nil
+}
+
+type PlaybackControl struct {
+	mu     sync.Mutex
+	source io.Reader
+
+	muted atomic.Bool
+}
+
+func NewPlaybackControl(source io.Reader) *PlaybackControl {
+	return &PlaybackControl{
+		source: source,
+	}
+}
+
+func (c *PlaybackControl) Read(b []byte) (n int, err error) {
+	n, err = c.source.Read(b)
+	if err != nil {
+		return n, err
+	}
+
+	if !c.muted.Load() {
+		return
+	}
+
+	for i, _ := range b[:n] {
+		b[i] = 0
+	}
+	return n, err
+}
+
+func (c *PlaybackControl) Mute(mute bool) {
+	c.muted.Store(mute)
 }

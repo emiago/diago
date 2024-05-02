@@ -45,8 +45,8 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 	dlg1 := b.dialogs[0]
 	dlg2 := b.dialogs[1]
 
-	m1 := dlg1.MediaSession()
-	m2 := dlg2.MediaSession()
+	m1 := dlg1.Media().Session
+	m2 := dlg2.Media().Session
 
 	if m1 == nil || m2 == nil {
 		return fmt.Errorf("no media setup")

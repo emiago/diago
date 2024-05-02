@@ -65,8 +65,8 @@ func TestIntegrationStreamURLWAV(t *testing.T) {
 	defer sess.Close()
 
 	dialog := DialogMedia{
-		mediaSession: sess,
-		RTPWriter:    sipgox.NewRTPWriter(sess),
+		Session:   sess,
+		RTPWriter: sipgox.NewRTPWriter(sess),
 	}
 	sess.SetRemoteAddr(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999})
 

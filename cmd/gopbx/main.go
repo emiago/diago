@@ -152,7 +152,7 @@ func (d *Dialplan) ExternalMedia(inDialog *diago.DialogServerSession) {
 	lastPrint := time.Now()
 	pktsCount := 0
 	for {
-		pkt, err := inDialog.MediaSession().ReadRTP()
+		pkt, err := inDialog.Media().Session.ReadRTP()
 		if err != nil {
 			return
 		}

@@ -132,6 +132,7 @@ func NewEndpoint(ua *sipgo.UserAgent, opts ...EndpointOption) *Endpoint {
 			tu.log.Error().Err(err).Msg("Handling new INVITE failed")
 			return
 		}
+		defer dialog.Close()
 
 		// TODO authentication
 		// TODO media and SDP
@@ -238,7 +239,7 @@ func (tu *Endpoint) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge,
 	}
 
 	// Set media Session
-	d.mediaSession = sess
+	d.Session = sess
 
 	waitCall := func() error {
 		if err := dialog.WaitAnswer(ctx, opts); err != nil {

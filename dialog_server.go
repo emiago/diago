@@ -17,8 +17,8 @@ type DialogServerSession struct {
 }
 
 func (d *DialogServerSession) Close() {
-	if d.mediaSession != nil {
-		d.mediaSession.Close()
+	if d.Session != nil {
+		d.Session.Close()
 	}
 
 	d.DialogServerSession.Close()
@@ -76,7 +76,7 @@ func (d *DialogServerSession) Answer() error {
 		return err
 	}
 
-	d.mediaSession = sess
+	d.Session = sess
 	d.RTPReader = sipgox.NewRTPReader(sess)
 	d.RTPWriter = sipgox.NewRTPWriter(sess)
 	return d.RespondSDP(sess.LocalSDP())
