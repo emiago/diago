@@ -14,6 +14,8 @@ import (
 type DialogServerSession struct {
 	*sipgo.DialogServerSession
 	DialogMedia
+
+	contactHDR sip.ContactHeader
 }
 
 func (d *DialogServerSession) Close() {
@@ -39,6 +41,11 @@ func (d *DialogServerSession) Progress() error {
 
 func (d *DialogServerSession) Ringing() error {
 	return d.Respond(sip.StatusRinging, "Ringing", nil)
+}
+
+func (d *DialogServerSession) Respond(statusCode sip.StatusCode, reason string, body []byte, headers ...sip.Header) error {
+	headers = append(headers, &d.contactHDR)
+	return d.DialogServerSession.Respond(sip.StatusRinging, "Ringing", body, headers...)
 }
 
 func (d *DialogServerSession) Answer() error {

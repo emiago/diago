@@ -88,9 +88,9 @@ func TestIntegrationBridging(t *testing.T) {
 	)
 	tu := NewEndpoint(ua, WithEndpointTransport(
 		EndpointTransport{
-			Network:  "udp",
-			BindHost: "127.0.0.1",
-			BindPort: 5090,
+			Transport: "udp",
+			BindHost:  "127.0.0.1",
+			BindPort:  5090,
 		},
 	))
 
@@ -198,9 +198,9 @@ func TestIntegrationPlayback(t *testing.T) {
 	)
 	tu := NewEndpoint(ua, WithEndpointTransport(
 		EndpointTransport{
-			Network:  "udp",
-			BindHost: "127.0.0.1",
-			BindPort: 5090,
+			Transport: "udp",
+			BindHost:  "127.0.0.1",
+			BindPort:  5090,
 		},
 	))
 

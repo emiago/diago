@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/emiago/sipgo"
@@ -19,10 +20,10 @@ import (
 type ServeDialogFunc func(d *DialogServerSession)
 
 type Endpoint struct {
-	ua        *sipgo.UserAgent
-	client    *sipgo.Client
-	server    *sipgo.Server
-	transport EndpointTransport
+	ua         *sipgo.UserAgent
+	client     *sipgo.Client
+	server     *sipgo.Server
+	transports []EndpointTransport
 
 	serveHandler ServeDialogFunc
 
@@ -69,9 +70,9 @@ func WithTransactioUserAuth(auth sipgo.DigestAuth) EndpointOption {
 }
 
 type EndpointTransport struct {
-	Network  string
-	BindHost string
-	BindPort int
+	Transport string
+	BindHost  string
+	BindPort  int
 
 	ExternalAddr string // SIP signaling and media external addr
 	// ExternalMediaAddr string // External media addr
@@ -82,7 +83,7 @@ type EndpointTransport struct {
 
 func WithEndpointTransport(t EndpointTransport) EndpointOption {
 	return func(tu *Endpoint) {
-		tu.transport = t
+		tu.transports = append(tu.transports, t)
 	}
 }
 
@@ -99,23 +100,29 @@ func NewEndpoint(ua *sipgo.UserAgent, opts ...EndpointOption) *Endpoint {
 		serveHandler: func(d *DialogServerSession) {
 			fmt.Println("Serve Handler not implemented")
 		},
-		transport: EndpointTransport{
-			Network:  "udp",
-			BindHost: "127.0.0.1",
-			BindPort: 5060,
-		},
+		transports: []EndpointTransport{},
 	}
 
 	for _, o := range opts {
 		o(tu)
 	}
 
+	if len(tu.transports) == 0 {
+		tu.transports = append(tu.transports, EndpointTransport{
+			Transport: "udp",
+			BindHost:  "127.0.0.1",
+			BindPort:  5060,
+		})
+	}
+
+	transport := tu.transports[0]
+	// Create our default contact hdr
 	contactHDR := sip.ContactHeader{
 		DisplayName: "", // TODO
 		Address: sip.Uri{
 			User:      ua.Name(),
-			Host:      tu.transport.BindHost,
-			Port:      tu.transport.BindPort,
+			Host:      transport.BindHost,
+			Port:      transport.BindPort,
 			UriParams: sip.NewParams(),
 		},
 	}
@@ -136,7 +143,30 @@ func NewEndpoint(ua *sipgo.UserAgent, opts ...EndpointOption) *Endpoint {
 
 		// TODO authentication
 		// TODO media and SDP
-		dWrap := &DialogServerSession{DialogServerSession: dialog}
+		dWrap := &DialogServerSession{
+			DialogServerSession: dialog,
+			DialogMedia:         DialogMedia{},
+
+			contactHDR: contactHDR,
+		}
+
+		// Find contact hdr matching transport
+		if len(tu.transports) > 1 {
+			for _, t := range tu.transports {
+				if strings.EqualFold(req.Transport(), t.Transport) {
+					dWrap.contactHDR = sip.ContactHeader{
+						DisplayName: "", // TODO
+						Address: sip.Uri{
+							User:      ua.Name(),
+							Host:      t.BindHost,
+							Port:      t.BindPort,
+							UriParams: sip.NewParams(),
+						},
+					}
+				}
+			}
+		}
+
 		tu.serveHandler(dWrap)
 
 		// Check is dialog closed
@@ -186,9 +216,21 @@ func (tu *Endpoint) Serve(ctx context.Context, f ServeDialogFunc) error {
 
 	tu.serveHandler = f
 
-	tran := tu.transport
+	// For multi transports start multi server
+	if len(tu.transports) > 1 {
+		errCh := make(chan error, len(tu.transports))
+		for _, tran := range tu.transports {
+			hostport := net.JoinHostPort(tran.BindHost, strconv.Itoa(tran.BindPort))
+			go func() {
+				errCh <- server.ListenAndServe(ctx, tran.Transport, hostport)
+			}()
+		}
+		return <-errCh
+	}
+
+	tran := tu.transports[0]
 	hostport := net.JoinHostPort(tran.BindHost, strconv.Itoa(tran.BindPort))
-	return server.ListenAndServe(ctx, tran.Network, hostport)
+	return server.ListenAndServe(ctx, tran.Transport, hostport)
 }
 
 // Serve starts serving in background but waits server listener started before returning

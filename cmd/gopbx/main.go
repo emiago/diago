@@ -34,21 +34,29 @@ func main() {
 	err = func(ctx context.Context) error {
 		// Setup our main transaction user
 		ua, _ := sipgo.NewUA()
-		transport := diago.EndpointTransport{
-			Network:  "udp",
-			BindHost: "127.0.0.1",
-			BindPort: 5060,
+		transportUDP := diago.EndpointTransport{
+			Transport: "udp",
+			BindHost:  "127.0.0.1",
+			BindPort:  5060,
 		}
-		tu := diago.NewEndpoint(ua, diago.WithEndpointTransport(
-			transport,
-		))
+
+		transportTCP := diago.EndpointTransport{
+			Transport: "tcp",
+			BindHost:  "127.0.0.1",
+			BindPort:  5060,
+		}
+
+		tu := diago.NewEndpoint(ua,
+			diago.WithEndpointTransport(transportUDP),
+			diago.WithEndpointTransport(transportTCP),
+		)
 
 		// Setup our dialplan for this user
 		dialplan := Dialplan{
 			tu: tu,
 		}
 
-		log.Info().Interface("transport", transport).Msg("Serving requests")
+		log.Info().Interface("udp", transportUDP).Interface("tcp", transportTCP).Msg("Serving requests")
 		err := tu.Serve(ctx, func(inDialog *diago.DialogServerSession) {
 			log.Info().Str("callid", inDialog.InviteRequest.CallID().Value()).Msg("New dialog request")
 			defer log.Info().Str("callid", inDialog.InviteRequest.CallID().Value()).Msg("Dialog finished")
