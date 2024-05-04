@@ -39,16 +39,19 @@ func TestIntegrationInbound(t *testing.T) {
 	ua, _ := sipgo.NewUA(
 		sipgo.WithUserAgent("inbound"),
 	)
-	tu := NewEndpoint(ua)
+	dg := NewDiago(ua)
 
 	ctx := context.TODO()
 
-	err := tu.ServeBackground(ctx, func(d *DialogServerSession) {
+	err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
 		// Add some routing
 		if d.ToUser() == "alice" {
 			d.Progress()
 			d.Ringing()
 			d.Answer()
+
+			<-d.Done()
+			return
 		}
 
 		d.Respond(sip.StatusForbidden, "Forbidden", nil)
@@ -86,8 +89,8 @@ func TestIntegrationBridging(t *testing.T) {
 	ua, _ := sipgo.NewUA(
 		sipgo.WithUserAgent("inbound"),
 	)
-	tu := NewEndpoint(ua, WithEndpointTransport(
-		EndpointTransport{
+	tu := NewDiago(ua, WithTransport(
+		Transport{
 			Transport: "udp",
 			BindHost:  "127.0.0.1",
 			BindPort:  5090,
@@ -196,8 +199,8 @@ func TestIntegrationPlayback(t *testing.T) {
 	ua, _ := sipgo.NewUA(
 		sipgo.WithUserAgent("inbound"),
 	)
-	tu := NewEndpoint(ua, WithEndpointTransport(
-		EndpointTransport{
+	tu := NewDiago(ua, WithTransport(
+		Transport{
 			Transport: "udp",
 			BindHost:  "127.0.0.1",
 			BindPort:  5090,

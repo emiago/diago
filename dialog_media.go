@@ -141,8 +141,9 @@ func (d *DialogMedia) PlaybackURL(ctx context.Context, urlStr string) error {
 			}
 			res.Body.Close()
 
-			fmt.Println("Writing chunnk ", len(chunk))
-			writer.Write(chunk)
+			if _, err := writer.Write(chunk); err != nil {
+				return err
+			}
 
 			var start int64 = 1024
 			var offset int64 = 64 * 1024 // 512K
@@ -172,9 +173,9 @@ func (d *DialogMedia) PlaybackURL(ctx context.Context, urlStr string) error {
 				}
 				res.Body.Close()
 
-				fmt.Println("Writing chunnk ", len(chunk))
-				writer.Write(chunk)
-
+				if _, err := writer.Write(chunk); err != nil {
+					return err
+				}
 			}
 			return nil
 		}

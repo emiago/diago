@@ -45,7 +45,7 @@ func (d *DialogServerSession) Ringing() error {
 
 func (d *DialogServerSession) Respond(statusCode sip.StatusCode, reason string, body []byte, headers ...sip.Header) error {
 	headers = append(headers, &d.contactHDR)
-	return d.DialogServerSession.Respond(sip.StatusRinging, "Ringing", body, headers...)
+	return d.DialogServerSession.Respond(statusCode, reason, body, headers...)
 }
 
 func (d *DialogServerSession) Answer() error {

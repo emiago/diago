@@ -34,30 +34,30 @@ func main() {
 	err = func(ctx context.Context) error {
 		// Setup our main transaction user
 		ua, _ := sipgo.NewUA()
-		transportUDP := diago.EndpointTransport{
+		transportUDP := diago.Transport{
 			Transport: "udp",
 			BindHost:  "127.0.0.1",
 			BindPort:  5060,
 		}
 
-		transportTCP := diago.EndpointTransport{
+		transportTCP := diago.Transport{
 			Transport: "tcp",
 			BindHost:  "127.0.0.1",
 			BindPort:  5060,
 		}
 
-		tu := diago.NewEndpoint(ua,
-			diago.WithEndpointTransport(transportUDP),
-			diago.WithEndpointTransport(transportTCP),
+		srv := diago.NewDiago(ua,
+			diago.WithTransport(transportUDP),
+			diago.WithTransport(transportTCP),
 		)
 
 		// Setup our dialplan for this user
 		dialplan := Dialplan{
-			tu: tu,
+			srv: srv,
 		}
 
 		log.Info().Interface("udp", transportUDP).Interface("tcp", transportTCP).Msg("Serving requests")
-		err := tu.Serve(ctx, func(inDialog *diago.DialogServerSession) {
+		err := srv.Serve(ctx, func(inDialog *diago.DialogServerSession) {
 			log.Info().Str("callid", inDialog.InviteRequest.CallID().Value()).Msg("New dialog request")
 			defer log.Info().Str("callid", inDialog.InviteRequest.CallID().Value()).Msg("Dialog finished")
 			// Do the routing for incoming request
@@ -83,7 +83,7 @@ func main() {
 }
 
 type Dialplan struct {
-	tu *diago.Endpoint
+	srv *diago.Diago
 }
 
 func (d *Dialplan) Playback(inDialog *diago.DialogServerSession) {
@@ -117,7 +117,7 @@ func (d *Dialplan) PlaybackURL(inDialog *diago.DialogServerSession) {
 }
 
 func (d *Dialplan) BridgeCall(inDialog *diago.DialogServerSession) {
-	tu := d.tu
+	tu := d.srv
 
 	inDialog.Progress() // Progress -> 100 Trying
 	inDialog.Ringing()  // Ringing -> 180 Response

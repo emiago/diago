@@ -19,11 +19,11 @@ import (
 
 type ServeDialogFunc func(d *DialogServerSession)
 
-type Endpoint struct {
+type Diago struct {
 	ua         *sipgo.UserAgent
 	client     *sipgo.Client
 	server     *sipgo.Server
-	transports []EndpointTransport
+	transports []Transport
 
 	serveHandler ServeDialogFunc
 
@@ -37,39 +37,39 @@ type Endpoint struct {
 
 // We can extend this WithClientOptions, WithServerOptions
 
-type EndpointOption func(tu *Endpoint)
+type DiagoOption func(dg *Diago)
 
-func WithTransactioUserClientOptions(opts ...sipgo.ClientOption) EndpointOption {
-	return func(tu *Endpoint) {
+func WithClientOptions(opts ...sipgo.ClientOption) DiagoOption {
+	return func(dg *Diago) {
 		// TODO remove error here
-		cli, err := sipgo.NewClient(tu.ua)
+		cli, err := sipgo.NewClient(dg.ua)
 		if err != nil {
 			panic(err)
 		}
 
-		tu.client = cli
+		dg.client = cli
 	}
 }
 
-func WithTransactioUserServerOptions(opts ...sipgo.ServerOption) EndpointOption {
-	return func(tu *Endpoint) {
+func WithServerOptions(opts ...sipgo.ServerOption) DiagoOption {
+	return func(dg *Diago) {
 		// TODO remove error here
-		srv, err := sipgo.NewServer(tu.ua)
+		srv, err := sipgo.NewServer(dg.ua)
 		if err != nil {
 			panic(err)
 		}
 
-		tu.server = srv
+		dg.server = srv
 	}
 }
 
-func WithTransactioUserAuth(auth sipgo.DigestAuth) EndpointOption {
-	return func(tu *Endpoint) {
-		tu.auth = auth
+func WithAuth(auth sipgo.DigestAuth) DiagoOption {
+	return func(dg *Diago) {
+		dg.auth = auth
 	}
 }
 
-type EndpointTransport struct {
+type Transport struct {
 	Transport string
 	BindHost  string
 	BindPort  int
@@ -81,18 +81,18 @@ type EndpointTransport struct {
 	TLSConf *tls.Config
 }
 
-func WithEndpointTransport(t EndpointTransport) EndpointOption {
-	return func(tu *Endpoint) {
-		tu.transports = append(tu.transports, t)
+func WithTransport(t Transport) DiagoOption {
+	return func(dg *Diago) {
+		dg.transports = append(dg.transports, t)
 	}
 }
 
-// NewEndpoint is SIP user agent that accepts or dials new dialog via SIP.
-func NewEndpoint(ua *sipgo.UserAgent, opts ...EndpointOption) *Endpoint {
+// NewDiago construct b2b user agent that will act as server and client
+func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	client, _ := sipgo.NewClient(ua)
 	server, _ := sipgo.NewServer(ua)
 
-	tu := &Endpoint{
+	dg := &Diago{
 		ua:     ua,
 		client: client,
 		server: server,
@@ -100,22 +100,22 @@ func NewEndpoint(ua *sipgo.UserAgent, opts ...EndpointOption) *Endpoint {
 		serveHandler: func(d *DialogServerSession) {
 			fmt.Println("Serve Handler not implemented")
 		},
-		transports: []EndpointTransport{},
+		transports: []Transport{},
 	}
 
 	for _, o := range opts {
-		o(tu)
+		o(dg)
 	}
 
-	if len(tu.transports) == 0 {
-		tu.transports = append(tu.transports, EndpointTransport{
+	if len(dg.transports) == 0 {
+		dg.transports = append(dg.transports, Transport{
 			Transport: "udp",
 			BindHost:  "127.0.0.1",
 			BindPort:  5060,
 		})
 	}
 
-	transport := tu.transports[0]
+	transport := dg.transports[0]
 	// Create our default contact hdr
 	contactHDR := sip.ContactHeader{
 		DisplayName: "", // TODO
@@ -127,16 +127,16 @@ func NewEndpoint(ua *sipgo.UserAgent, opts ...EndpointOption) *Endpoint {
 		},
 	}
 
-	tu.dialogServer = sipgo.NewDialogServer(tu.client, contactHDR)
-	tu.dialogClient = sipgo.NewDialogClient(tu.client, contactHDR)
+	dg.dialogServer = sipgo.NewDialogServer(dg.client, contactHDR)
+	dg.dialogClient = sipgo.NewDialogClient(dg.client, contactHDR)
 
-	// Setup our dialog
+	// Sedgp our dialog
 	server.OnInvite(func(req *sip.Request, tx sip.ServerTransaction) {
 		// What if multiple server transports?
 
-		dialog, err := tu.dialogServer.ReadInvite(req, tx)
+		dialog, err := dg.dialogServer.ReadInvite(req, tx)
 		if err != nil {
-			tu.log.Error().Err(err).Msg("Handling new INVITE failed")
+			dg.log.Error().Err(err).Msg("Handling new INVITE failed")
 			return
 		}
 		defer dialog.Close()
@@ -151,8 +151,8 @@ func NewEndpoint(ua *sipgo.UserAgent, opts ...EndpointOption) *Endpoint {
 		}
 
 		// Find contact hdr matching transport
-		if len(tu.transports) > 1 {
-			for _, t := range tu.transports {
+		if len(dg.transports) > 1 {
+			for _, t := range dg.transports {
 				if strings.EqualFold(req.Transport(), t.Transport) {
 					dWrap.contactHDR = sip.ContactHeader{
 						DisplayName: "", // TODO
@@ -167,7 +167,7 @@ func NewEndpoint(ua *sipgo.UserAgent, opts ...EndpointOption) *Endpoint {
 			}
 		}
 
-		tu.serveHandler(dWrap)
+		dg.serveHandler(dWrap)
 
 		// Check is dialog closed
 		dialogCtx := dialog.Context()
@@ -187,39 +187,38 @@ func NewEndpoint(ua *sipgo.UserAgent, opts ...EndpointOption) *Endpoint {
 				return
 			}
 
-			tu.log.Error().Err(err).Msg("Hanguping call failed")
+			dg.log.Error().Err(err).Msg("Hanguping call failed")
 			return
 		}
 	})
 
 	server.OnAck(func(req *sip.Request, tx sip.ServerTransaction) {
-		tu.dialogServer.ReadAck(req, tx)
+		dg.dialogServer.ReadAck(req, tx)
 	})
 
 	server.OnBye(func(req *sip.Request, tx sip.ServerTransaction) {
-		err := tu.dialogServer.ReadBye(req, tx)
+		err := dg.dialogServer.ReadBye(req, tx)
 		if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
-			err = tu.dialogClient.ReadBye(req, tx)
+			err = dg.dialogClient.ReadBye(req, tx)
 		}
 
 		if err != nil {
-			tu.log.Error().Err(err).Msg("Bye finished with error")
+			dg.log.Error().Err(err).Msg("Bye finished with error")
 		}
 	})
 
-	return tu
+	return dg
 }
 
-// Serve main function for passing callback for handling new dialog session for inbound call
-func (tu *Endpoint) Serve(ctx context.Context, f ServeDialogFunc) error {
-	server := tu.server
+func (dg *Diago) Serve(ctx context.Context, f ServeDialogFunc) error {
+	server := dg.server
 
-	tu.serveHandler = f
+	dg.serveHandler = f
 
 	// For multi transports start multi server
-	if len(tu.transports) > 1 {
-		errCh := make(chan error, len(tu.transports))
-		for _, tran := range tu.transports {
+	if len(dg.transports) > 1 {
+		errCh := make(chan error, len(dg.transports))
+		for _, tran := range dg.transports {
 			hostport := net.JoinHostPort(tran.BindHost, strconv.Itoa(tran.BindPort))
 			go func() {
 				errCh <- server.ListenAndServe(ctx, tran.Transport, hostport)
@@ -228,17 +227,17 @@ func (tu *Endpoint) Serve(ctx context.Context, f ServeDialogFunc) error {
 		return <-errCh
 	}
 
-	tran := tu.transports[0]
+	tran := dg.transports[0]
 	hostport := net.JoinHostPort(tran.BindHost, strconv.Itoa(tran.BindPort))
 	return server.ListenAndServe(ctx, tran.Transport, hostport)
 }
 
 // Serve starts serving in background but waits server listener started before returning
-func (tu *Endpoint) ServeBackground(ctx context.Context, f ServeDialogFunc) error {
+func (dg *Diago) ServeBackground(ctx context.Context, f ServeDialogFunc) error {
 	ch := make(chan struct{})
 	ctx = context.WithValue(ctx, sipgo.ListenReadyCtxKey, sipgo.ListenReadyCtxValue(ch))
 
-	go tu.Serve(ctx, f)
+	go dg.Serve(ctx, f)
 
 	select {
 	case <-ctx.Done():
@@ -255,10 +254,10 @@ func (tu *Endpoint) ServeBackground(ctx context.Context, f ServeDialogFunc) erro
 // When bridge we need to enforce same codec order
 // This means SDP body can be different, but for now lets assume
 // codec definition is global and codec for inbound and outbound must be same
-func (tu *Endpoint) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
-	dialogCli := tu.dialogClient
+func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
+	dialogCli := dg.dialogClient
 
-	// Now media SETUP
+	// Now media SEdgP
 	// TODO this probably needs take in account Contact header or listen addr
 	ip, port, err := sipgox.FindFreeInterfaceHostPort("udp", "")
 	if err != nil {

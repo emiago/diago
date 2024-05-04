@@ -2,7 +2,6 @@ package audio
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 
 	"github.com/go-audio/riff"
@@ -34,8 +33,6 @@ func (d *Decoder) ReadHeaders() (err error) {
 		if err != nil {
 			break
 		}
-
-		fmt.Println("Chunk id", string(chunk.ID[:]))
 
 		if chunk.ID == riff.FmtID {
 			chunk.DecodeWavHeader(d.Parser)
