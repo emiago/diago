@@ -35,12 +35,6 @@ func init() {
 	}
 }
 
-type DialogSession interface {
-	Context() context.Context
-	Hangup(ctx context.Context) error
-	Media() *DialogMedia
-}
-
 type DialogMedia struct {
 	// DO NOT use IT or mix with reader and writer, unless it is specific case
 	Session *sipgox.MediaSession

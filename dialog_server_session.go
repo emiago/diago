@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
@@ -16,6 +17,10 @@ type DialogServerSession struct {
 	DialogMedia
 
 	contactHDR sip.ContactHeader
+}
+
+func (d *DialogServerSession) Id() string {
+	return d.ID
 }
 
 func (d *DialogServerSession) Close() {
@@ -86,7 +91,22 @@ func (d *DialogServerSession) Answer() error {
 	d.Session = sess
 	d.RTPReader = sipgox.NewRTPReader(sess)
 	d.RTPWriter = sipgox.NewRTPWriter(sess)
-	return d.RespondSDP(sess.LocalSDP())
+	if err := d.RespondSDP(sess.LocalSDP()); err != nil {
+		return err
+	}
+
+	// Wait ACK
+	// If we do not wait ACK, hanguping call will fail as ACK can be delayed when we are doing Hangup
+	for {
+		select {
+		case <-time.After(1 * time.Second):
+			return fmt.Errorf("No ACK received")
+		case state := <-d.State():
+			if state == sip.DialogStateConfirmed {
+				return nil
+			}
+		}
+	}
 }
 
 func (d *DialogServerSession) Hangup(ctx context.Context) error {

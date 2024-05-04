@@ -139,7 +139,8 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			dg.log.Error().Err(err).Msg("Handling new INVITE failed")
 			return
 		}
-		defer dialog.Close()
+		// dialog.Close
+		// We will close dialog with our wrapper below
 
 		// TODO authentication
 		// TODO media and SDP
@@ -149,6 +150,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 
 			contactHDR: contactHDR,
 		}
+		defer dWrap.Close()
 
 		// Find contact hdr matching transport
 		if len(dg.transports) > 1 {
@@ -171,12 +173,6 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 
 		// Check is dialog closed
 		dialogCtx := dialog.Context()
-		select {
-		case <-dialogCtx.Done():
-			return
-		default:
-		}
-
 		// Always try hanguping call
 		ctx, cancel := context.WithTimeout(dialogCtx, 10*time.Second)
 		defer cancel()
@@ -193,7 +189,9 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	})
 
 	server.OnAck(func(req *sip.Request, tx sip.ServerTransaction) {
-		dg.dialogServer.ReadAck(req, tx)
+		if err := dg.dialogServer.ReadAck(req, tx); err != nil {
+			dg.log.Error().Err(err).Msg("ACK finished with error")
+		}
 	})
 
 	server.OnBye(func(req *sip.Request, tx sip.ServerTransaction) {
@@ -203,7 +201,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		}
 
 		if err != nil {
-			dg.log.Error().Err(err).Msg("Bye finished with error")
+			dg.log.Error().Err(err).Msg("BYE finished with error")
 		}
 	})
 

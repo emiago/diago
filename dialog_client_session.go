@@ -12,6 +12,10 @@ type DialogClientSession struct {
 	DialogMedia
 }
 
+func (d *DialogClientSession) Id() string {
+	return d.ID
+}
+
 func (d *DialogClientSession) Hangup(ctx context.Context) error {
 	return d.Bye(ctx)
 }
