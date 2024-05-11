@@ -3,11 +3,19 @@ package audio
 import (
 	"fmt"
 	"io"
-	"sync"
-	"sync/atomic"
 
 	"github.com/zaf/g711"
 )
+
+/*
+	This is PCM Decoder and Encoder (translators from VOIP codecs)
+	They are io.Reader io.Writter which should wrap RTP Reader Writter and pass to upper PCM player
+	It operates on RTP payload and for every ticked sample it does decoding.
+	As decoding can add delay for compressed codecs, it may be usefull that upper Reader buffers,
+	but for ulaw, alaw codecs this should be no delays
+
+	PCM allows translation to any codec or creating wav files
+*/
 
 const (
 	// ITU-T G.711.0 codec supports frame lengths of 40, 80, 160, 240 and 320 samples per frame.
@@ -28,7 +36,7 @@ type PCMDecoder struct {
 
 // PCM decoder is streamer implementing io.Reader. It reads from underhood reader and returns decoded
 // codec data
-func NewPCMDecoder(codec int, reader io.Reader) (*PCMDecoder, error) {
+func NewPCMDecoder(codec uint8, reader io.Reader) (*PCMDecoder, error) {
 	var decoder func(lpcm []byte) []byte
 	switch codec {
 	case FORMAT_TYPE_ULAW:
@@ -112,37 +120,4 @@ func (d *PCMEncoder) Write(b []byte) (n int, err error) {
 	}
 
 	return len(b), nil
-}
-
-type PlaybackControl struct {
-	mu     sync.Mutex
-	source io.Reader
-
-	muted atomic.Bool
-}
-
-func NewPlaybackControl(source io.Reader) *PlaybackControl {
-	return &PlaybackControl{
-		source: source,
-	}
-}
-
-func (c *PlaybackControl) Read(b []byte) (n int, err error) {
-	n, err = c.source.Read(b)
-	if err != nil {
-		return n, err
-	}
-
-	if !c.muted.Load() {
-		return
-	}
-
-	for i, _ := range b[:n] {
-		b[i] = 0
-	}
-	return n, err
-}
-
-func (c *PlaybackControl) Mute(mute bool) {
-	c.muted.Store(mute)
 }

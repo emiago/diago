@@ -35,6 +35,7 @@ func init() {
 	}
 }
 
+// DialogMedia is io.ReaderWriter for RTP. By default it exposes RTP Read and Write.
 type DialogMedia struct {
 	// DO NOT use IT or mix with reader and writer, unless it is specific case
 	Session *sipgox.MediaSession
@@ -46,6 +47,17 @@ type DialogMedia struct {
 // Just to satisfy DialogSession interface
 func (d *DialogMedia) Media() *DialogMedia {
 	return d
+}
+
+// MediaPCMDecoder wraps RTP reader and decodes current codec to PCM
+// You can think it as translator.
+// PCMDecoder is just io.Reader and it returns payload as decoded. Consider that size of PCM payloads will be bigger
+func (d *DialogMedia) PCMDecoder() (*audio.PCMDecoder, error) {
+	return audio.NewPCMDecoder(d.RTPReader.PayloadType, d.RTPReader)
+}
+
+func (d *DialogMedia) PCMEncoder() (*audio.PCMEncoder, error) {
+	return audio.NewPCMEncoder(d.RTPWriter.PayloadType, d.RTPWriter)
 }
 
 func (d *DialogMedia) PlaybackFile(filename string) error {

@@ -100,7 +100,7 @@ func (d *DialogServerSession) Answer() error {
 	for {
 		select {
 		case <-time.After(1 * time.Second):
-			return fmt.Errorf("No ACK received")
+			return fmt.Errorf("no ACK received")
 		case state := <-d.State():
 			if state == sip.DialogStateConfirmed {
 				return nil

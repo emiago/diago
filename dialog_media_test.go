@@ -79,7 +79,7 @@ func TestIntegrationStreamURLWAV(t *testing.T) {
 
 	defer sessReceive.Close()
 	rtpReader := sipgox.NewRTPReader(sessReceive)
-	pcmDecoder, _ := audio.NewPCMDecoder(int(rtpReader.PayloadType), rtpReader)
+	pcmDecoder, _ := audio.NewPCMDecoder(rtpReader.PayloadType, rtpReader)
 
 	go func() {
 		data, _ := io.ReadAll(pcmDecoder)
