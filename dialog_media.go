@@ -8,7 +8,6 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"net/http/httputil"
 	"os"
 	"strconv"
 	"strings"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/emiago/diago/audio"
 	"github.com/emiago/sipgox"
-	"github.com/go-audio/riff"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -60,21 +58,31 @@ func (d *DialogMedia) PCMEncoder() (*audio.PCMEncoder, error) {
 	return audio.NewPCMEncoder(d.RTPWriter.PayloadType, d.RTPWriter)
 }
 
+func (d *DialogMedia) PlaybackCreate() (*Playback, error) {
+	rtpWriter := d.RTPWriter
+	pt := rtpWriter.PayloadType
+	enc, err := audio.NewPCMEncoder(pt, rtpWriter)
+	if err != nil {
+		return nil, err
+	}
+
+	p := Playback{
+		writer: audio.NewPlaybackControlWriter(enc),
+	}
+	return &p, nil
+}
+
 func (d *DialogMedia) PlaybackFile(filename string) error {
 	if d.Session == nil {
 		return fmt.Errorf("call not answered")
 	}
 
-	file, err := os.Open(filename)
+	p, err := d.PlaybackCreate()
 	if err != nil {
 		return err
 	}
-	defer file.Close()
 
-	written, err := streamWavRTP(file, d.RTPWriter)
-	if written == 0 {
-		return fmt.Errorf("nothing written")
-	}
+	_, err = p.PlayFile(filename)
 	return err
 }
 
@@ -223,142 +231,4 @@ func (d *DialogMedia) PlaybackURL(ctx context.Context, urlStr string) error {
 		return fmt.Errorf("nothing written")
 	}
 	return err
-}
-
-/*
-	 func copyWavRTP(body io.ReadSeeker, rtpWriter *sipgox.RTPWriter) (int, error) {
-		dec := aud.NewWavDecoder(body)
-		dec.ReadInfo()
-		if dec.BitDepth != 16 {
-			return 0, fmt.Errorf("received bitdepth=%d, but only 16 bit PCM supported", dec.BitDepth)
-		}
-		if dec.SampleRate != 8000 {
-			return 0, fmt.Errorf("only 8000 sample rate supported")
-		}
-
-		pt := rtpWriter.PayloadType
-		enc, err := aud.NewPCMEncoder(pt, rtpWriter)
-		if err != nil {
-			return 0, err
-		}
-
-		// We need to read and packetize to 20 ms
-		sampleDurMS := 20
-		payloadBuf := make([]byte, int(dec.BitDepth)/8*int(dec.NumChans)*int(dec.SampleRate)/1000*sampleDurMS) // 20 ms
-
-		ticker := time.NewTicker(time.Duration(sampleDurMS) * time.Millisecond)
-		defer ticker.Stop()
-		totalWritten := 0
-
-outloop:
-
-		for {
-			if err := dec.FwdToPCM(); err != nil {
-				if errors.Is(err, io.EOF) {
-					break
-				}
-				return 0, err
-			}
-
-			for {
-				n, err := dec.PCMChunk.Read(payloadBuf)
-				if err != nil {
-					if errors.Is(err, io.EOF) {
-						break outloop
-					}
-					return 0, err
-				}
-
-				// Ticker has already correction for slow operation so this is enough
-				<-ticker.C
-				n, err = enc.Write(payloadBuf[:n])
-				if err != nil {
-					return 0, err
-				}
-				totalWritten += n
-			}
-		}
-		return totalWritten, nil
-	}
-*/
-func streamWavRTP(body io.Reader, rtpWriter *sipgox.RTPWriter) (int, error) {
-	pt := rtpWriter.PayloadType
-	enc, err := audio.NewPCMEncoder(pt, rtpWriter)
-	if err != nil {
-		return 0, err
-	}
-	return streamWav(body, enc)
-}
-
-func streamWav(body io.Reader, enc io.Writer) (int, error) {
-	dec := audio.NewWavDecoderStreamer(body)
-	if err := dec.ReadHeaders(); err != nil {
-		return 0, err
-	}
-	if dec.BitsPerSample != 16 {
-		return 0, fmt.Errorf("received bitdepth=%d, but only 16 bit PCM supported", dec.BitsPerSample)
-	}
-	if dec.SampleRate != 8000 {
-		return 0, fmt.Errorf("only 8000 sample rate supported")
-	}
-
-	// We need to read and packetize to 20 ms
-	sampleDurMS := 20
-	payloadBuf := make([]byte, int(dec.BitsPerSample)/8*int(dec.NumChannels)*int(dec.SampleRate)/1000*sampleDurMS) // 20 ms
-
-	ticker := time.NewTicker(time.Duration(sampleDurMS) * time.Millisecond)
-	defer ticker.Stop()
-	totalWritten := 0
-outloop:
-	for {
-		ch, err := dec.NextChunk()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return 0, err
-		}
-
-		// Why this is never the case
-		if ch.ID != riff.DataFormatID && ch.ID != [4]byte{} {
-			// Until we reach data chunk we will draining
-			ch.Drain()
-			continue
-		}
-
-		for {
-			n, err := ch.Read(payloadBuf)
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					break outloop
-				}
-				return 0, err
-			}
-
-			// Ticker has already correction for slow operation so this is enough
-			<-ticker.C
-			n, err = enc.Write(payloadBuf[:n])
-			if err != nil {
-				return 0, err
-			}
-			totalWritten += n
-		}
-	}
-	return totalWritten, nil
-}
-
-type loggingTransport struct{}
-
-func (s *loggingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	bytes, _ := httputil.DumpRequestOut(r, false)
-
-	resp, err := http.DefaultTransport.RoundTrip(r)
-	// err is returned after dumping the response
-
-	respBytes, _ := httputil.DumpResponse(resp, false)
-	bytes = append(bytes, respBytes...)
-
-	log.Debug().Msgf("HTTP Debug:\n%s\n", bytes)
-
-	return resp, err
 }

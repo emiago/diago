@@ -58,6 +58,36 @@ func TestIntegrationStreamWAV(t *testing.T) {
 	require.Greater(t, written, 10000)
 }
 
+func TestIntegrationDialogMediaPlaybackFile(t *testing.T) {
+	sess, err := sipgox.NewMediaSession(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	require.NoError(t, err)
+	defer sess.Close()
+
+	rtpWriter := sipgox.NewRTPWriter(sess)
+	sess.Raddr = &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
+
+	dialog := DialogMedia{
+		Session:   sess,
+		RTPWriter: rtpWriter,
+	}
+
+	udpDump, err := net.ListenUDP("udp4", sess.Raddr)
+	require.NoError(t, err)
+	defer udpDump.Close()
+
+	go func() {
+		io.ReadAll(udpDump)
+	}()
+
+	playback, err := dialog.PlaybackCreate()
+	require.NoError(t, err)
+
+	written, err := playback.PlayFile("testdata/demo-thanks.wav")
+	require.NoError(t, err)
+	require.Greater(t, written, 10000)
+	t.Log("Written on RTP stream", written)
+}
+
 func TestIntegrationStreamURLWAV(t *testing.T) {
 	url := "https://latest.dev.babelforce.com/storage/c/3f312769-f0a8-45f3-b2d9-8e56998b3b26/prompt/5/c/5cadeacc36409649bcda06780a71ca4380e45d5d715c0b3c01a3563fb77f0df9.wav"
 	sess, err := sipgox.NewMediaSession(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})

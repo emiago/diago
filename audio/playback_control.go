@@ -16,6 +16,7 @@ type PlaybackControl struct {
 	writer io.Writer
 
 	muted atomic.Bool
+	stop  atomic.Bool
 }
 
 func NewPlaybackControl(reader io.Reader, writer io.Writer) *PlaybackControl {
@@ -43,23 +44,28 @@ func (c *PlaybackControl) Read(b []byte) (n int, err error) {
 		return n, err
 	}
 
-	if !c.muted.Load() {
-		return
+	if c.stop.Load() {
+		return 0, io.EOF
 	}
 
-	for i, _ := range b[:n] {
-		b[i] = 0
+	if c.muted.Load() {
+		for i := range b[:n] {
+			b[i] = 0
+		}
 	}
+
 	return n, err
 }
 
 func (c *PlaybackControl) Write(b []byte) (n int, err error) {
-	if !c.muted.Load() {
-		return
+	if c.stop.Load() {
+		return 0, io.EOF
 	}
 
-	for i, _ := range b {
-		b[i] = 0
+	if c.muted.Load() {
+		for i := range b {
+			b[i] = 0
+		}
 	}
 
 	return c.writer.Write(b)
@@ -67,4 +73,9 @@ func (c *PlaybackControl) Write(b []byte) (n int, err error) {
 
 func (c *PlaybackControl) Mute(mute bool) {
 	c.muted.Store(mute)
+}
+
+// Stop will stop reader/writer and return io.Eof
+func (c *PlaybackControl) Stop() {
+	c.stop.Store(true)
 }
