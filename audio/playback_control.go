@@ -17,9 +17,6 @@ type PlaybackControl struct {
 	stop  atomic.Bool
 }
 
-func (p *PlaybackControl) Init() {
-}
-
 func (c *PlaybackControl) Read(b []byte) (n int, err error) {
 	n, err = c.Reader.Read(b)
 	if err != nil {

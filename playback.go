@@ -24,17 +24,9 @@ import (
 type Playback struct {
 	// reader io.Reader
 	// TODO we could avoid mute controller
-	writer *audio.PlaybackControl
+	writer io.Writer
 
 	totalWritten int
-}
-
-func (p *Playback) Mute(mute bool) {
-	p.writer.Mute(mute)
-}
-
-func (p *Playback) Stop() {
-	p.writer.Stop()
 }
 
 // func (p *Playback) StreamWav(reader io.Reader) error {

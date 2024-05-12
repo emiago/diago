@@ -8,7 +8,9 @@ If you know services like Asterisk,FreeSwitch this is all about
 
 - **Endpoint** - is transport layer on which new dialog and media is received or sent out
 - **DialogSession** - provides interface to control a call leg. Call leg can be incoming or outgoing.
+    - **DialogMedia** - provides interface to control dialog media. It is part of dialog Session
 - **Bridge** - connects media path between 2 or more dialogs
+- **Playback** - 
 
 
 

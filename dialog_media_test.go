@@ -36,13 +36,25 @@ func TestIntegrationDialogMediaPlaybackFile(t *testing.T) {
 		io.ReadAll(udpDump)
 	}()
 
-	playback, err := dialog.PlaybackCreate()
-	require.NoError(t, err)
+	t.Run("withControl", func(t *testing.T) {
+		playback, err := dialog.PlaybackControlCreate()
+		require.NoError(t, err)
 
-	err = playback.PlayFile("testdata/demo-thanks.wav")
-	require.NoError(t, err)
-	require.Greater(t, playback.totalWritten, 10000)
-	t.Log("Written on RTP stream", playback.totalWritten)
+		errCh := make(chan error)
+		go func() { errCh <- playback.PlayFile("testdata/demo-thanks.wav") }()
+		playback.Stop()
+		require.ErrorIs(t, <-errCh, io.EOF)
+	})
+
+	t.Run("default", func(t *testing.T) {
+		playback, err := dialog.PlaybackCreate()
+		require.NoError(t, err)
+
+		err = playback.PlayFile("testdata/demo-thanks.wav")
+		require.NoError(t, err)
+		require.Greater(t, playback.totalWritten, 10000)
+		t.Log("Written on RTP stream", playback.totalWritten)
+	})
 }
 
 func TestIntegrationDialogMediaPlaybackURL(t *testing.T) {

@@ -61,9 +61,30 @@ func (d *DialogMedia) PlaybackCreate() (Playback, error) {
 	}
 
 	p := Playback{
-		writer: &audio.PlaybackControl{
-			Writer: enc,
+		writer: enc,
+	}
+	return p, nil
+}
+
+func (d *DialogMedia) PlaybackControlCreate() (PlaybackControl, error) {
+	// NOTE we should avoid returning pointers for any IN dialplan to avoid heap
+	rtpWriter := d.RTPWriter
+	pt := rtpWriter.PayloadType
+	enc, err := audio.NewPCMEncoder(pt, rtpWriter)
+	if err != nil {
+		return PlaybackControl{}, err
+	}
+
+	// Audio is controled via audio reader/writer
+	control := &audio.PlaybackControl{
+		Writer: enc,
+	}
+
+	p := PlaybackControl{
+		Playback: Playback{
+			writer: control,
 		},
+		control: control,
 	}
 	return p, nil
 }
