@@ -2,7 +2,6 @@ package audio
 
 import (
 	"io"
-	"sync"
 	"sync/atomic"
 )
 
@@ -11,35 +10,18 @@ import (
 */
 
 type PlaybackControl struct {
-	mu     sync.Mutex
-	reader io.Reader
-	writer io.Writer
+	Reader io.Reader // MUST be set if usede as reader
+	Writer io.Writer // Must be set if used as writer
 
 	muted atomic.Bool
 	stop  atomic.Bool
 }
 
-func NewPlaybackControl(reader io.Reader, writer io.Writer) *PlaybackControl {
-	return &PlaybackControl{
-		reader: reader,
-		writer: writer,
-	}
-}
-
-func NewPlaybackControlReader(reader io.Reader) *PlaybackControl {
-	return &PlaybackControl{
-		reader: reader,
-	}
-}
-
-func NewPlaybackControlWriter(writer io.Writer) *PlaybackControl {
-	return &PlaybackControl{
-		writer: writer,
-	}
+func (p *PlaybackControl) Init() {
 }
 
 func (c *PlaybackControl) Read(b []byte) (n int, err error) {
-	n, err = c.reader.Read(b)
+	n, err = c.Reader.Read(b)
 	if err != nil {
 		return n, err
 	}
@@ -68,7 +50,7 @@ func (c *PlaybackControl) Write(b []byte) (n int, err error) {
 		}
 	}
 
-	return c.writer.Write(b)
+	return c.Writer.Write(b)
 }
 
 func (c *PlaybackControl) Mute(mute bool) {
