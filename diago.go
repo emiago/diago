@@ -13,6 +13,7 @@ import (
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/emiago/sipgox"
+	"github.com/emiago/sipgox/sdp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -30,7 +31,8 @@ type Diago struct {
 	dialogServer *sipgo.DialogServer
 	dialogClient *sipgo.DialogClient
 
-	auth sipgo.DigestAuth
+	auth      sipgo.DigestAuth
+	mediaConf MediaConfig
 
 	log zerolog.Logger
 }
@@ -87,6 +89,20 @@ func WithTransport(t Transport) DiagoOption {
 	}
 }
 
+type MediaConfig struct {
+	Formats sdp.Formats
+
+	// TODO
+	// RTPPortStart int
+	// RTPPortEnd   int
+}
+
+func WithMediaConfig(conf MediaConfig) DiagoOption {
+	return func(dg *Diago) {
+		dg.mediaConf = conf
+	}
+}
+
 // NewDiago construct b2b user agent that will act as server and client
 func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	client, _ := sipgo.NewClient(ua)
@@ -101,6 +117,9 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			fmt.Println("Serve Handler not implemented")
 		},
 		transports: []Transport{},
+		mediaConf: MediaConfig{
+			Formats: sdp.NewFormats(sdp.FORMAT_TYPE_ULAW, sdp.FORMAT_TYPE_ALAW),
+		},
 	}
 
 	for _, o := range opts {
@@ -149,6 +168,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			DialogMedia:         DialogMedia{},
 
 			contactHDR: contactHDR,
+			formats:    dg.mediaConf.Formats,
 		}
 		defer dWrap.Close()
 
@@ -263,6 +283,8 @@ func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge, op
 	}
 	laddr := &net.UDPAddr{IP: ip, Port: port}
 	sess, err := sipgox.NewMediaSession(laddr)
+	sess.Formats = dg.mediaConf.Formats
+
 	if err != nil {
 		return nil, err
 	}

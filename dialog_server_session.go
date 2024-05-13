@@ -9,6 +9,7 @@ import (
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/emiago/sipgox"
+	"github.com/emiago/sipgox/sdp"
 )
 
 // DialogServerSession represents inbound channel
@@ -17,6 +18,7 @@ type DialogServerSession struct {
 	DialogMedia
 
 	contactHDR sip.ContactHeader
+	formats    sdp.Formats
 }
 
 func (d *DialogServerSession) Id() string {
@@ -75,6 +77,7 @@ func (d *DialogServerSession) Answer() error {
 
 	laddr := &net.UDPAddr{IP: ip, Port: 0}
 	sess, err := sipgox.NewMediaSession(laddr)
+	sess.Formats = d.formats
 	if err != nil {
 		return err
 	}
