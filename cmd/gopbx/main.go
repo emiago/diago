@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/emiago/diago"
+	"github.com/emiago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
+	"github.com/pion/rtp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -159,8 +161,10 @@ func (d *Dialplan) ExternalMedia(inDialog *diago.DialogServerSession) {
 
 	lastPrint := time.Now()
 	pktsCount := 0
+	buf := make([]byte, media.RTPBufSize)
 	for {
-		pkt, err := inDialog.Media().Session.ReadRTP()
+		pkt := rtp.Packet{}
+		err := inDialog.Media().Session.ReadRTP(buf, &pkt)
 		if err != nil {
 			return
 		}

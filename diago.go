@@ -10,10 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/emiago/media"
+	"github.com/emiago/media/sdp"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/emiago/sipgox"
-	"github.com/emiago/sipgox/sdp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -282,7 +283,7 @@ func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge, op
 		return nil, err
 	}
 	laddr := &net.UDPAddr{IP: ip, Port: port}
-	sess, err := sipgox.NewMediaSession(laddr)
+	sess, err := media.NewMediaSession(laddr)
 	sess.Formats = dg.mediaConf.Formats
 
 	if err != nil {

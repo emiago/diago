@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/emiago/diago/audio"
-	"github.com/emiago/sipgox"
+	"github.com/emiago/media"
 )
 
 var (
@@ -28,10 +28,10 @@ func init() {
 // DialogMedia is io.ReaderWriter for RTP. By default it exposes RTP Read and Write.
 type DialogMedia struct {
 	// DO NOT use IT or mix with reader and writer, unless it is specific case
-	Session *sipgox.MediaSession
+	Session *media.MediaSession
 
-	*sipgox.RTPWriter
-	*sipgox.RTPReader
+	*media.RTPWriter
+	*media.RTPReader
 }
 
 // Just to satisfy DialogSession interface

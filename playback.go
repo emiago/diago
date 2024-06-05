@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/emiago/diago/audio"
-	"github.com/emiago/sipgox"
+	"github.com/emiago/media"
 	"github.com/go-audio/riff"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -273,7 +273,7 @@ outloop:
 		return totalWritten, nil
 	}
 */
-func streamWavRTP(body io.Reader, rtpWriter *sipgox.RTPWriter) (int, error) {
+func streamWavRTP(body io.Reader, rtpWriter *media.RTPWriter) (int, error) {
 	pt := rtpWriter.PayloadType
 	enc, err := audio.NewPCMEncoder(pt, rtpWriter)
 	if err != nil {

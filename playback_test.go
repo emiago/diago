@@ -6,18 +6,23 @@ import (
 	"os"
 	"testing"
 
+<<<<<<< HEAD
 	"github.com/emiago/sipgox"
+=======
+	"github.com/emiago/diago/audio"
+	"github.com/emiago/media"
+>>>>>>> 7f3053f (fix: moved to media package)
 	"github.com/stretchr/testify/require"
 )
 
 func TestIntegrationStreamWAV(t *testing.T) {
 	fh, err := os.Open("testdata/demo-thanks.wav")
 	require.NoError(t, err)
-	sess, err := sipgox.NewMediaSession(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	sess, err := media.NewMediaSession(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	require.NoError(t, err)
 	defer sess.Close()
 
-	rtpWriter := sipgox.NewRTPWriter(sess)
+	rtpWriter := media.NewRTPWriterMedia(sess)
 	sess.Raddr = &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
 	udpDump, err := net.ListenUDP("udp4", sess.Raddr)

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emiago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/emiago/sipgox"
@@ -16,11 +17,12 @@ import (
 )
 
 func TestIntegrationDialogMediaPlaybackFile(t *testing.T) {
-	sess, err := sipgox.NewMediaSession(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	sess, err := media.NewMediaSession(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	require.NoError(t, err)
 	defer sess.Close()
 
-	rtpWriter := sipgox.NewRTPWriter(sess)
+	// TODO have RTPSession
+	rtpWriter := media.NewRTPWriterMedia(sess)
 	sess.Raddr = &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
 	dialog := DialogMedia{
@@ -71,7 +73,7 @@ func TestIntegrationDialogMediaPlaybackURL(t *testing.T) {
 	))
 
 	ctx := context.TODO()
-	sipgox.RTPDebug = true
+	// media.RTPDebug = true
 
 	urlStr := testStartAudioStreamServer(t)
 
@@ -102,7 +104,7 @@ func TestIntegrationDialogMediaPlaybackURL(t *testing.T) {
 		require.NoError(t, err)
 		defer dialog.Close()
 
-		rtpReader := sipgox.NewRTPReader(dialog.MediaSession)
+		rtpReader := media.NewRTPReaderMedia(dialog.MediaSession.MediaSession)
 
 		go func() {
 			defer dialog.Close()

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/emiago/sipgox"
+	"github.com/emiago/media"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -59,13 +59,13 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 	return nil
 }
 
-func (b *Bridge) proxyMedia(m1 *sipgox.MediaSession, m2 *sipgox.MediaSession) {
+func (b *Bridge) proxyMedia(m1 *media.MediaSession, m2 *media.MediaSession) {
 	if err := b.proxyMediaRTP(m1, m2); err != nil {
 		b.log.Error().Err(err).Msg("Proxy media stopped")
 	}
 }
 
-func (b *Bridge) proxyMediaRTP(m1 *sipgox.MediaSession, m2 *sipgox.MediaSession) error {
+func (b *Bridge) proxyMediaRTP(m1 *media.MediaSession, m2 *media.MediaSession) error {
 	buf := make([]byte, 1500) // MTU
 
 	for {

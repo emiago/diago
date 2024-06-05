@@ -6,10 +6,10 @@ import (
 	"net"
 	"time"
 
+	"github.com/emiago/media"
+	"github.com/emiago/media/sdp"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/emiago/sipgox"
-	"github.com/emiago/sipgox/sdp"
 )
 
 // DialogServerSession represents inbound channel
@@ -76,7 +76,7 @@ func (d *DialogServerSession) Answer() error {
 	}
 
 	laddr := &net.UDPAddr{IP: ip, Port: 0}
-	sess, err := sipgox.NewMediaSession(laddr)
+	sess, err := media.NewMediaSession(laddr)
 	sess.Formats = d.formats
 	if err != nil {
 		return err
@@ -92,8 +92,8 @@ func (d *DialogServerSession) Answer() error {
 	}
 
 	d.Session = sess
-	d.RTPReader = sipgox.NewRTPReader(sess)
-	d.RTPWriter = sipgox.NewRTPWriter(sess)
+	d.RTPReader = media.NewRTPReaderMedia(sess)
+	d.RTPWriter = media.NewRTPWriterMedia(sess)
 	if err := d.RespondSDP(sess.LocalSDP()); err != nil {
 		return err
 	}
