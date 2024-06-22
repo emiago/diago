@@ -104,7 +104,7 @@ func TestIntegrationDialogMediaPlaybackURL(t *testing.T) {
 		require.NoError(t, err)
 		defer dialog.Close()
 
-		rtpReader := media.NewRTPReaderMedia(dialog.MediaSession.MediaSession)
+		rtpReader := media.NewRTPReaderMedia(dialog.MediaSession)
 
 		go func() {
 			defer dialog.Close()

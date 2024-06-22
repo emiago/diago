@@ -69,6 +69,10 @@ func (d *DialogMedia) PlaybackCreate() (Playback, error) {
 func (d *DialogMedia) PlaybackControlCreate() (PlaybackControl, error) {
 	// NOTE we should avoid returning pointers for any IN dialplan to avoid heap
 	rtpWriter := d.RTPWriter
+	if rtpWriter == nil {
+		return PlaybackControl{}, fmt.Errorf("no media setup")
+	}
+
 	pt := rtpWriter.PayloadType
 	enc, err := audio.NewPCMEncoder(pt, rtpWriter)
 	if err != nil {

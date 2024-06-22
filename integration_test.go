@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emiago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/emiago/sipgox"
@@ -158,7 +159,8 @@ func TestIntegrationBridging(t *testing.T) {
 		require.NoError(t, err)
 		defer dialog.Close()
 
-		_, err = dialog.ReadRTP()
+		buf := make([]byte, media.RTPBufSize)
+		err = dialog.ReadRTP(buf, &rtp.Packet{})
 		require.NoError(t, err)
 
 		err = dialog.WriteRTP(&rtp.Packet{})
@@ -183,7 +185,8 @@ func TestIntegrationBridging(t *testing.T) {
 		err = dialog.WriteRTP(&rtp.Packet{})
 		require.NoError(t, err)
 
-		_, err = dialog.ReadRTP()
+		buf := make([]byte, media.RTPBufSize)
+		err = dialog.ReadRTP(buf, &rtp.Packet{})
 		require.NoError(t, err)
 
 		time.Sleep(1 * time.Second)

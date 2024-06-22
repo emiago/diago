@@ -29,18 +29,14 @@ type Playback struct {
 	totalWritten int
 }
 
-// func (p *Playback) StreamWav(reader io.Reader) error {
-
-// }
-
-func (p *Playback) PlayFile(filename string) (err error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return err
+func (p *Playback) Play(reader io.Reader, mimeType string) error {
+	switch mimeType {
+	case "audio/wav", "audio/x-wav", "audio/wav-x", "audio/vnd.wave":
+	default:
+		return fmt.Errorf("unsuported content type %q", mimeType)
 	}
-	defer file.Close()
 
-	written, err := streamWav(file, p.writer)
+	written, err := streamWav(reader, p.writer)
 	if err != nil {
 		return err
 	}
@@ -50,6 +46,15 @@ func (p *Playback) PlayFile(filename string) (err error) {
 	}
 	p.totalWritten += written
 	return nil
+}
+
+func (p *Playback) PlayFile(filename string) (err error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return p.Play(file, "audio/wav")
 }
 
 func (p *Playback) PlayURL(ctx context.Context, urlStr string) error {
@@ -283,7 +288,8 @@ func streamWavRTP(body io.Reader, rtpWriter *media.RTPWriter) (int, error) {
 }
 
 func streamWav(body io.Reader, enc io.Writer) (int, error) {
-	dec := audio.NewWavDecoderStreamer(body)
+	// dec := audio.NewWavDecoderStreamer(body)
+	dec := audio.NewWavReader(body)
 	if err := dec.ReadHeaders(); err != nil {
 		return 0, err
 	}

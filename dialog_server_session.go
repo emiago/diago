@@ -70,6 +70,7 @@ func (d *DialogServerSession) Answer() error {
 	// if err != nil {
 	// 	return err
 	// }
+
 	ip, _, err := sip.ResolveInterfacesIP("ip4", nil)
 	if err != nil {
 		return err
@@ -82,6 +83,12 @@ func (d *DialogServerSession) Answer() error {
 		return err
 	}
 
+	rtpSess := media.NewRTPSession(sess)
+	return d.AnswerWithMedia(rtpSess)
+}
+
+func (d *DialogServerSession) AnswerWithMedia(rtpSess *media.RTPSession) error {
+	sess := rtpSess.Sess
 	sdp := d.InviteRequest.Body()
 	if sdp == nil {
 		return fmt.Errorf("no sdp present in INVITE")
@@ -92,8 +99,9 @@ func (d *DialogServerSession) Answer() error {
 	}
 
 	d.Session = sess
-	d.RTPReader = media.NewRTPReaderMedia(sess)
-	d.RTPWriter = media.NewRTPWriterMedia(sess)
+	rtpSess.Monitor() // Starts reading RTCP
+	d.RTPReader = media.NewRTPReader(rtpSess)
+	d.RTPWriter = media.NewRTPWriter(rtpSess)
 	if err := d.RespondSDP(sess.LocalSDP()); err != nil {
 		return err
 	}

@@ -4,11 +4,10 @@ import (
 	"context"
 	"os"
 	"os/signal"
-	"path"
-	"runtime"
 	"time"
 
 	"github.com/emiago/diago"
+	"github.com/emiago/diago/testdata"
 	"github.com/emiago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
@@ -26,6 +25,9 @@ func main() {
 	if err != nil || lev == zerolog.NoLevel {
 		lev = zerolog.InfoLevel
 	}
+
+	sip.SIPDebug = os.Getenv("SIP_DEBUG") != ""
+	sip.TransactionFSMDebug = os.Getenv("SIP_TRANSACTION_DEBUG") != ""
 
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMicro
 	log.Logger = zerolog.New(zerolog.ConsoleWriter{
@@ -95,11 +97,26 @@ func (d *Dialplan) Playback(inDialog *diago.DialogServerSession) {
 	inDialog.Ringing()  // Ringing -> 180 Response
 	inDialog.Answer()   // Answqer -> 200 Response
 
-	_, filename, _, _ := runtime.Caller(1)
-	dir := path.Dir(filename)
-	playfile := path.Join(dir, "./demo-thanks.wav")
-	log.Info().Str("file", playfile).Msg("Playing a file")
-	if err := inDialog.PlaybackFile(playfile); err != nil {
+	// _, filename, _, _ := runtime.Caller(1)
+	// dir := path.Dir(filename)
+	// playfile := path.Join(dir, "./demo-thanks.wav")
+
+	file, err := testdata.OpenFile("demo-instruct.wav")
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to open embeded file")
+		return
+	}
+	fileInfo, _ := file.Stat()
+
+	log.Info().Str("file", fileInfo.Name()).Msg("Playing a file")
+
+	playback, err := inDialog.PlaybackCreate()
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create playback")
+		return
+	}
+
+	if err := playback.Play(file, "audio/wav"); err != nil {
 		log.Error().Err(err).Msg("Playing failed")
 	}
 
