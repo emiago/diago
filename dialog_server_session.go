@@ -26,8 +26,8 @@ func (d *DialogServerSession) Id() string {
 }
 
 func (d *DialogServerSession) Close() {
-	if d.Session != nil {
-		d.Session.Close()
+	if d.MediaSession != nil {
+		d.MediaSession.Close()
 	}
 
 	d.DialogServerSession.Close()
@@ -98,8 +98,8 @@ func (d *DialogServerSession) AnswerWithMedia(rtpSess *media.RTPSession) error {
 		return err
 	}
 
-	d.Session = sess
-	rtpSess.Monitor() // Starts reading RTCP
+	d.MediaSession = sess
+	rtpSess.MonitorBackground() // Starts reading RTCP
 	d.RTPReader = media.NewRTPReader(rtpSess)
 	d.RTPWriter = media.NewRTPWriter(rtpSess)
 	if err := d.RespondSDP(sess.LocalSDP()); err != nil {
@@ -110,7 +110,7 @@ func (d *DialogServerSession) AnswerWithMedia(rtpSess *media.RTPSession) error {
 	// If we do not wait ACK, hanguping call will fail as ACK can be delayed when we are doing Hangup
 	for {
 		select {
-		case <-time.After(1 * time.Second):
+		case <-time.After(10 * time.Second):
 			return fmt.Errorf("no ACK received")
 		case state := <-d.State():
 			if state == sip.DialogStateConfirmed {

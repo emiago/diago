@@ -26,8 +26,8 @@ func TestIntegrationDialogMediaPlaybackFile(t *testing.T) {
 	sess.Raddr = &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
 	dialog := DialogMedia{
-		Session:   sess,
-		RTPWriter: rtpWriter,
+		MediaSession: sess,
+		RTPWriter:    rtpWriter,
 	}
 
 	udpDump, err := net.ListenUDP("udp4", sess.Raddr)

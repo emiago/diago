@@ -181,7 +181,7 @@ func (d *Dialplan) ExternalMedia(inDialog *diago.DialogServerSession) {
 	buf := make([]byte, media.RTPBufSize)
 	for {
 		pkt := rtp.Packet{}
-		err := inDialog.Media().Session.ReadRTP(buf, &pkt)
+		err := inDialog.Media().MediaSession.ReadRTP(buf, &pkt)
 		if err != nil {
 			return
 		}

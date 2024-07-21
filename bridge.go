@@ -1,12 +1,19 @@
 package diago
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"net"
 
 	"github.com/emiago/media"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+)
+
+const (
+	bridgeKindProxy     = 1
+	bridgeKindRecording = 2
 )
 
 type Bridge struct {
@@ -14,12 +21,19 @@ type Bridge struct {
 	Originator DialogSession
 	dialogs    []DialogSession
 
-	log zerolog.Logger
+	kind int
+	log  zerolog.Logger
 }
 
 func NewBridge() Bridge {
 	return Bridge{
 		log: log.Logger,
+	}
+}
+
+func NewRecordingBridge() Bridge {
+	return Bridge{
+		kind: bridgeKindRecording,
 	}
 }
 
@@ -45,8 +59,8 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 	dlg1 := b.dialogs[0]
 	dlg2 := b.dialogs[1]
 
-	m1 := dlg1.Media().Session
-	m2 := dlg2.Media().Session
+	m1 := dlg1.Media().MediaSession
+	m2 := dlg2.Media().MediaSession
 
 	if m1 == nil || m2 == nil {
 		return fmt.Errorf("no media setup")
@@ -60,27 +74,73 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 }
 
 func (b *Bridge) proxyMedia(m1 *media.MediaSession, m2 *media.MediaSession) {
-	if err := b.proxyMediaRTP(m1, m2); err != nil {
+	go func() {
+		total, err := b.proxyMediaRTCP(m1, m2)
+		if err != nil && !errors.Is(err, net.ErrClosed) {
+			b.log.Error().Err(err).Msg("Proxy media RTCP stopped")
+		}
+		b.log.Debug().Int64("bytes", total).Str("peer1", m1.Raddr.String()).Str("peer2", m2.Raddr.String()).Msg("RTCP finished")
+	}()
+
+	total, err := b.proxyMediaRTP(m1, m2)
+	if err != nil && !errors.Is(err, net.ErrClosed) {
 		b.log.Error().Err(err).Msg("Proxy media stopped")
 	}
+	b.log.Debug().Int64("bytes", total).Str("peer1", m1.Raddr.String()).Str("peer2", m2.Raddr.String()).Msg("RTP finished")
 }
 
-func (b *Bridge) proxyMediaRTP(m1 *media.MediaSession, m2 *media.MediaSession) error {
+func (b *Bridge) proxyMediaRTP(m1 *media.MediaSession, m2 *media.MediaSession) (written int64, e error) {
 	buf := make([]byte, 1500) // MTU
 
+	var total int64
 	for {
 		// In case of recording we need to unmarshal RTP packet
 		n, err := m1.ReadRTPRaw(buf)
 		if err != nil {
-			return err
+			return total, err
 		}
 		written, err := m2.WriteRTPRaw(buf[:n])
 		if err != nil {
-			return err
+			return total, err
 		}
 		if written != n {
-			return io.ErrShortWrite
+			return total, io.ErrShortWrite
 		}
+		total += int64(written)
+	}
+
+	// for {
+	// 	// In case of recording we need to unmarshal RTP packet
+	// 	pkt, err := m1.ReadRTP()
+	// 	if err != nil {
+	// 		return err
+	// 	}
+
+	// 	if err := m2.WriteRTP(&pkt); err != nil {
+	// 		return err
+	// 	}
+	// }
+
+}
+
+func (b *Bridge) proxyMediaRTCP(m1 *media.MediaSession, m2 *media.MediaSession) (written int64, e error) {
+	buf := make([]byte, 1500) // MTU
+
+	var total int64
+	for {
+		// In case of recording we need to unmarshal RTP packet
+		n, err := m1.ReadRTCPRaw(buf)
+		if err != nil {
+			return total, err
+		}
+		written, err := m2.WriteRTCPRaw(buf[:n])
+		if err != nil {
+			return total, err
+		}
+		if written != n {
+			return total, io.ErrShortWrite
+		}
+		total += int64(written)
 	}
 
 	// for {

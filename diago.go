@@ -104,6 +104,12 @@ func WithMediaConfig(conf MediaConfig) DiagoOption {
 	}
 }
 
+func WithServer(srv *sipgo.Server) DiagoOption {
+	return func(dg *Diago) {
+		dg.server = srv
+	}
+}
+
 // NewDiago construct b2b user agent that will act as server and client
 func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	client, _ := sipgo.NewClient(ua)
@@ -239,9 +245,9 @@ func (dg *Diago) Serve(ctx context.Context, f ServeDialogFunc) error {
 		errCh := make(chan error, len(dg.transports))
 		for _, tran := range dg.transports {
 			hostport := net.JoinHostPort(tran.BindHost, strconv.Itoa(tran.BindPort))
-			go func() {
+			go func(tran Transport) {
 				errCh <- server.ListenAndServe(ctx, tran.Transport, hostport)
-			}()
+			}(tran)
 		}
 		return <-errCh
 	}
@@ -301,7 +307,7 @@ func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge, op
 	}
 
 	// Set media Session
-	d.Session = sess
+	d.MediaSession = sess
 
 	waitCall := func() error {
 		if err := dialog.WaitAnswer(ctx, opts); err != nil {
@@ -332,4 +338,45 @@ func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge, op
 	}
 
 	return d, nil
+}
+
+type RegisterRequest struct {
+	RegisterURI sip.Uri
+	sipgox.RegisterOptions
+}
+
+func (d *Diago) Register(ctx context.Context, req RegisterRequest) error {
+	if len(d.transports) == 0 {
+		return fmt.Errorf("No transports defined")
+	}
+	t := d.transports[0]
+	host, port := t.BindHost, t.BindPort
+	var err error
+	if t.ExternalAddr != "" {
+		host, port, err = sip.ParseAddr(t.ExternalAddr)
+		if err != nil {
+			return err
+		}
+	}
+	contHDR := sip.ContactHeader{
+		Address: sip.Uri{
+			Host: host,
+			Port: port,
+		},
+	}
+
+	// client := d.client
+	registerCtx := sipgox.NewRegisterTransaction(
+		d.log,
+		d.client,
+		req.RegisterURI,
+		contHDR,
+		req.RegisterOptions,
+	)
+
+	if err := registerCtx.Register(ctx); err != nil {
+		return err
+	}
+
+	return registerCtx.QualifyLoop(ctx)
 }

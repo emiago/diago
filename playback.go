@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/emiago/diago/audio"
@@ -25,6 +26,9 @@ type Playback struct {
 	// reader io.Reader
 	// TODO we could avoid mute controller
 	writer io.Writer
+	// codec  media.Codec
+	SampleRate uint32
+	SampleDur  time.Duration
 
 	totalWritten int
 }
@@ -36,7 +40,7 @@ func (p *Playback) Play(reader io.Reader, mimeType string) error {
 		return fmt.Errorf("unsuported content type %q", mimeType)
 	}
 
-	written, err := streamWav(reader, p.writer)
+	written, err := p.streamWav(reader, p.writer)
 	if err != nil {
 		return err
 	}
@@ -169,7 +173,7 @@ func (p *Playback) PlayURL(ctx context.Context, urlStr string) error {
 			httpErr <- err
 		}()
 
-		written, err := streamWav(reader, p.writer)
+		written, err := p.streamWav(reader, p.writer)
 
 		// There is no reason having http goroutine still running
 		// First make sure http goroutine exited and join errors
@@ -194,12 +198,42 @@ func (p *Playback) PlayURL(ctx context.Context, urlStr string) error {
 	defer res.Body.Close()
 
 	wavBuf := bytes.NewReader(samples)
-	written, err := streamWav(wavBuf, p.writer)
+	written, err := p.streamWav(wavBuf, p.writer)
 	if written == 0 {
 		return fmt.Errorf("nothing written")
 	}
 	p.totalWritten += written
 	return err
+}
+
+var playBufPool = sync.Pool{
+	New: func() any {
+		// Increase this size if there will be support for larger pools
+		return make([]byte, 320)
+	},
+}
+
+func (p *Playback) streamWav(body io.Reader, playWriter io.Writer) (int, error) {
+	// dec := audio.NewWavDecoderStreamer(body)
+	dec := audio.NewWavReader(body)
+	if err := dec.ReadHeaders(); err != nil {
+		return 0, err
+	}
+	if dec.BitsPerSample != 16 {
+		return 0, fmt.Errorf("received bitdepth=%d, but only 16 bit PCM supported", dec.BitsPerSample)
+	}
+	if dec.SampleRate != p.SampleRate {
+		return 0, fmt.Errorf("only 8000 sample rate supported")
+	}
+
+	// We need to read and packetize to 20 ms
+	sampleDurMS := int(p.SampleDur.Milliseconds())
+	payloadSize := int(dec.BitsPerSample) / 8 * int(dec.NumChannels) * int(dec.SampleRate) / 1000 * sampleDurMS
+
+	buf := playBufPool.Get()
+	payloadBuf := buf.([]byte)[:payloadSize] // 20 ms
+
+	return wavCopy(dec, playWriter, payloadBuf)
 }
 
 // func (p *Playback) PlayFileBackground(filename string) chan error {
@@ -287,7 +321,9 @@ func streamWavRTP(body io.Reader, rtpWriter *media.RTPWriter) (int, error) {
 	return streamWav(body, enc)
 }
 
-func streamWav(body io.Reader, enc io.Writer) (int, error) {
+// playWriter is expected that does playing audio or in other words rtp writer should have
+// ticker running and send samples based on audio reader
+func streamWav(body io.Reader, playWriter io.Writer) (int, error) {
 	// dec := audio.NewWavDecoderStreamer(body)
 	dec := audio.NewWavReader(body)
 	if err := dec.ReadHeaders(); err != nil {
@@ -304,8 +340,10 @@ func streamWav(body io.Reader, enc io.Writer) (int, error) {
 	sampleDurMS := 20
 	payloadBuf := make([]byte, int(dec.BitsPerSample)/8*int(dec.NumChannels)*int(dec.SampleRate)/1000*sampleDurMS) // 20 ms
 
-	ticker := time.NewTicker(time.Duration(sampleDurMS) * time.Millisecond)
-	defer ticker.Stop()
+	return wavCopy(dec, playWriter, payloadBuf)
+}
+
+func wavCopy(dec *audio.WavReader, playWriter io.Writer, payloadBuf []byte) (int, error) {
 	totalWritten := 0
 outloop:
 	for {
@@ -334,8 +372,7 @@ outloop:
 			}
 
 			// Ticker has already correction for slow operation so this is enough
-			<-ticker.C
-			n, err = enc.Write(payloadBuf[:n])
+			n, err = playWriter.Write(payloadBuf[:n])
 			if err != nil {
 				return 0, err
 			}

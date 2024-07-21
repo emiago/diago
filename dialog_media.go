@@ -28,7 +28,7 @@ func init() {
 // DialogMedia is io.ReaderWriter for RTP. By default it exposes RTP Read and Write.
 type DialogMedia struct {
 	// DO NOT use IT or mix with reader and writer, unless it is specific case
-	Session *media.MediaSession
+	MediaSession *media.MediaSession
 
 	*media.RTPWriter
 	*media.RTPReader
@@ -61,7 +61,9 @@ func (d *DialogMedia) PlaybackCreate() (Playback, error) {
 	}
 
 	p := Playback{
-		writer: enc,
+		writer:     enc,
+		SampleRate: rtpWriter.SampleRate,
+		SampleDur:  20 * time.Millisecond,
 	}
 	return p, nil
 }
@@ -86,7 +88,9 @@ func (d *DialogMedia) PlaybackControlCreate() (PlaybackControl, error) {
 
 	p := PlaybackControl{
 		Playback: Playback{
-			writer: control,
+			writer:     control,
+			SampleRate: rtpWriter.SampleRate,
+			SampleDur:  20 * time.Millisecond,
 		},
 		control: control,
 	}
@@ -94,7 +98,7 @@ func (d *DialogMedia) PlaybackControlCreate() (PlaybackControl, error) {
 }
 
 func (d *DialogMedia) PlaybackFile(filename string) error {
-	if d.Session == nil {
+	if d.MediaSession == nil {
 		return fmt.Errorf("call not answered")
 	}
 
@@ -108,7 +112,7 @@ func (d *DialogMedia) PlaybackFile(filename string) error {
 }
 
 func (d *DialogMedia) PlaybackURL(ctx context.Context, urlStr string) error {
-	if d.Session == nil {
+	if d.MediaSession == nil {
 		return fmt.Errorf("call not answered")
 	}
 

@@ -12,6 +12,14 @@ type DialogClientSession struct {
 	DialogMedia
 }
 
+func (d *DialogClientSession) Close() {
+	if d.MediaSession != nil {
+		d.MediaSession.Close()
+	}
+
+	d.DialogClientSession.Close()
+}
+
 func (d *DialogClientSession) Id() string {
 	return d.ID
 }
