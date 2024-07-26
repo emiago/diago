@@ -33,6 +33,15 @@ type Playback struct {
 	totalWritten int
 }
 
+// Use dialog.PlaybackCreate() instead creating manually playback
+func NewPlayback(writer io.Writer, sampleRate uint32, sampleDur time.Duration) Playback {
+	return Playback{
+		writer:     writer,
+		SampleRate: sampleRate,
+		SampleDur:  sampleDur,
+	}
+}
+
 func (p *Playback) Play(reader io.Reader, mimeType string) error {
 	switch mimeType {
 	case "audio/wav", "audio/x-wav", "audio/wav-x", "audio/vnd.wave":
@@ -52,16 +61,38 @@ func (p *Playback) Play(reader io.Reader, mimeType string) error {
 	return nil
 }
 
-func (p *Playback) PlayFile(filename string) (err error) {
+func (p *Playback) PlayFile(ctx context.Context, filename string) (err error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-	return p.Play(file, "audio/wav")
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- p.Play(file, "audio/wav")
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case e := <-errCh:
+		return e
+	}
 }
 
 func (p *Playback) PlayURL(ctx context.Context, urlStr string) error {
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- p.playURL(ctx, urlStr)
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case e := <-errCh:
+		return e
+	}
+}
+
+func (p *Playback) playURL(ctx context.Context, urlStr string) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
 	if err != nil {
 		return err

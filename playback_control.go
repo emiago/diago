@@ -14,6 +14,6 @@ func (p *PlaybackControl) Mute(mute bool) {
 	p.control.Mute(mute)
 }
 
-func (p *PlaybackControl) Stop() {
+func (p *PlaybackControl) Pause() {
 	p.control.Stop()
 }

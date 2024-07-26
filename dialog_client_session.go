@@ -9,6 +9,8 @@ import (
 // DialogClientSession represents outbound channel
 type DialogClientSession struct {
 	*sipgo.DialogClientSession
+
+	// MediaSession *media.MediaSession // For normal media
 	DialogMedia
 }
 

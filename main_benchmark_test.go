@@ -74,7 +74,7 @@ func BenchmarkIntegrationClientServer(t *testing.B) {
 			t.Log(err.Error())
 			return
 		}
-		err = pb.PlayFile("./testdata/demo-thanks.wav")
+		err = pb.PlayFile(context.TODO(), "./testdata/demo-thanks.wav")
 		if err != nil {
 			t.Log(err.Error())
 			return

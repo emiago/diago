@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/emiago/media"
@@ -112,14 +111,9 @@ func WithServer(srv *sipgo.Server) DiagoOption {
 
 // NewDiago construct b2b user agent that will act as server and client
 func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
-	client, _ := sipgo.NewClient(ua)
-	server, _ := sipgo.NewServer(ua)
-
 	dg := &Diago{
-		ua:     ua,
-		client: client,
-		server: server,
-		log:    log.Logger,
+		ua:  ua,
+		log: log.Logger,
 		serveHandler: func(d *DialogServerSession) {
 			fmt.Println("Serve Handler not implemented")
 		},
@@ -131,6 +125,14 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 
 	for _, o := range opts {
 		o(dg)
+	}
+
+	if dg.client == nil {
+		dg.client, _ = sipgo.NewClient(ua)
+	}
+
+	if dg.server == nil {
+		dg.server, _ = sipgo.NewServer(ua)
 	}
 
 	if len(dg.transports) == 0 {
@@ -156,7 +158,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	dg.dialogServer = sipgo.NewDialogServer(dg.client, contactHDR)
 	dg.dialogClient = sipgo.NewDialogClient(dg.client, contactHDR)
 
-	// Sedgp our dialog
+	server := dg.server
 	server.OnInvite(func(req *sip.Request, tx sip.ServerTransaction) {
 		// What if multiple server transports?
 
@@ -182,14 +184,16 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		// Find contact hdr matching transport
 		if len(dg.transports) > 1 {
 			for _, t := range dg.transports {
-				if strings.EqualFold(req.Transport(), t.Transport) {
+				if sip.NetworkToLower(req.Transport()) == t.Transport {
 					dWrap.contactHDR = sip.ContactHeader{
 						DisplayName: "", // TODO
 						Address: sip.Uri{
+							Encrypted: t.TLSConf != nil,
 							User:      ua.Name(),
 							Host:      t.BindHost,
 							Port:      t.BindPort,
 							UriParams: sip.NewParams(),
+							Headers:   sip.NewParams(),
 						},
 					}
 				}
@@ -237,7 +241,6 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 
 func (dg *Diago) Serve(ctx context.Context, f ServeDialogFunc) error {
 	server := dg.server
-
 	dg.serveHandler = f
 
 	// For multi transports start multi server
@@ -246,6 +249,11 @@ func (dg *Diago) Serve(ctx context.Context, f ServeDialogFunc) error {
 		for _, tran := range dg.transports {
 			hostport := net.JoinHostPort(tran.BindHost, strconv.Itoa(tran.BindPort))
 			go func(tran Transport) {
+				if tran.TLSConf != nil {
+					errCh <- server.ListenAndServeTLS(ctx, tran.Transport, hostport, tran.TLSConf)
+					return
+				}
+
 				errCh <- server.ListenAndServe(ctx, tran.Transport, hostport)
 			}(tran)
 		}
@@ -308,6 +316,9 @@ func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge, op
 
 	// Set media Session
 	d.MediaSession = sess
+	rtpSess := media.NewRTPSession(sess)
+	d.RTPReader = media.NewRTPReader(rtpSess)
+	d.RTPWriter = media.NewRTPWriter(rtpSess)
 
 	waitCall := func() error {
 		if err := dialog.WaitAnswer(ctx, opts); err != nil {

@@ -52,7 +52,6 @@ func (d *DialogMedia) Media() *DialogMedia {
 
 func (d *DialogMedia) PlaybackCreate() (Playback, error) {
 	// NOTE we should avoid returning pointers for any IN dialplan to avoid heap
-
 	rtpWriter := d.RTPWriter
 	pt := rtpWriter.PayloadType
 	enc, err := audio.NewPCMEncoder(pt, rtpWriter)
@@ -97,8 +96,8 @@ func (d *DialogMedia) PlaybackControlCreate() (PlaybackControl, error) {
 	return p, nil
 }
 
-func (d *DialogMedia) PlaybackFile(filename string) error {
-	if d.MediaSession == nil {
+func (d *DialogMedia) PlaybackFile(ctx context.Context, filename string) error {
+	if d.RTPWriter == nil {
 		return fmt.Errorf("call not answered")
 	}
 
@@ -107,12 +106,12 @@ func (d *DialogMedia) PlaybackFile(filename string) error {
 		return err
 	}
 
-	err = p.PlayFile(filename)
+	err = p.PlayFile(ctx, filename)
 	return err
 }
 
 func (d *DialogMedia) PlaybackURL(ctx context.Context, urlStr string) error {
-	if d.MediaSession == nil {
+	if d.RTPWriter == nil {
 		return fmt.Errorf("call not answered")
 	}
 

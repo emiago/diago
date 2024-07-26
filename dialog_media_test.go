@@ -26,8 +26,8 @@ func TestIntegrationDialogMediaPlaybackFile(t *testing.T) {
 	sess.Raddr = &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
 	dialog := DialogMedia{
-		MediaSession: sess,
-		RTPWriter:    rtpWriter,
+		// MediaSession: sess,
+		RTPWriter: rtpWriter,
 	}
 
 	udpDump, err := net.ListenUDP("udp4", sess.Raddr)
@@ -43,8 +43,8 @@ func TestIntegrationDialogMediaPlaybackFile(t *testing.T) {
 		require.NoError(t, err)
 
 		errCh := make(chan error)
-		go func() { errCh <- playback.PlayFile("testdata/demo-thanks.wav") }()
-		playback.Stop()
+		go func() { errCh <- playback.PlayFile(context.TODO(), "testdata/demo-thanks.wav") }()
+		playback.Pause()
 		require.ErrorIs(t, <-errCh, io.EOF)
 	})
 
@@ -52,7 +52,7 @@ func TestIntegrationDialogMediaPlaybackFile(t *testing.T) {
 		playback, err := dialog.PlaybackCreate()
 		require.NoError(t, err)
 
-		err = playback.PlayFile("testdata/demo-thanks.wav")
+		err = playback.PlayFile(context.TODO(), "testdata/demo-thanks.wav")
 		require.NoError(t, err)
 		require.Greater(t, playback.totalWritten, 10000)
 		t.Log("Written on RTP stream", playback.totalWritten)
