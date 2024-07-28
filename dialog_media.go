@@ -30,8 +30,8 @@ type DialogMedia struct {
 	// DO NOT use IT or mix with reader and writer, unless it is specific case
 	MediaSession *media.MediaSession
 
-	*media.RTPWriter
-	*media.RTPReader
+	*media.RTPPacketWriter
+	*media.RTPPacketReader
 }
 
 // Just to satisfy DialogSession interface
@@ -43,25 +43,25 @@ func (d *DialogMedia) Media() *DialogMedia {
 // You can think it as translator.
 // PCMDecoder is just io.Reader and it returns payload as decoded. Consider that size of PCM payloads will be bigger
 // func (d *DialogMedia) PCMDecoder() (*audio.PCMDecoder, error) {
-// 	return audio.NewPCMDecoder(d.RTPReader.PayloadType, d.RTPReader)
+// 	return audio.NewPCMDecoder(d.RTPPacketReader.PayloadType, d.RTPPacketReader)
 // }
 
 // func (d *DialogMedia) PCMEncoder() (*audio.PCMEncoder, error) {
-// 	return audio.NewPCMEncoder(d.RTPWriter.PayloadType, d.RTPWriter)
+// 	return audio.NewPCMEncoder(d.RTPPacketWriter.PayloadType, d.RTPPacketWriter)
 // }
 
 func (d *DialogMedia) PlaybackCreate() (Playback, error) {
 	// NOTE we should avoid returning pointers for any IN dialplan to avoid heap
-	rtpWriter := d.RTPWriter
-	pt := rtpWriter.PayloadType
-	enc, err := audio.NewPCMEncoder(pt, rtpWriter)
+	rtpPacketWriter := d.RTPPacketWriter
+	pt := rtpPacketWriter.PayloadType
+	enc, err := audio.NewPCMEncoder(pt, rtpPacketWriter)
 	if err != nil {
 		return Playback{}, err
 	}
 
 	p := Playback{
 		writer:     enc,
-		SampleRate: rtpWriter.SampleRate,
+		SampleRate: rtpPacketWriter.SampleRate,
 		SampleDur:  20 * time.Millisecond,
 	}
 	return p, nil
@@ -69,13 +69,13 @@ func (d *DialogMedia) PlaybackCreate() (Playback, error) {
 
 func (d *DialogMedia) PlaybackControlCreate() (PlaybackControl, error) {
 	// NOTE we should avoid returning pointers for any IN dialplan to avoid heap
-	rtpWriter := d.RTPWriter
-	if rtpWriter == nil {
+	rtpPacketWriter := d.RTPPacketWriter
+	if rtpPacketWriter == nil {
 		return PlaybackControl{}, fmt.Errorf("no media setup")
 	}
 
-	pt := rtpWriter.PayloadType
-	enc, err := audio.NewPCMEncoder(pt, rtpWriter)
+	pt := rtpPacketWriter.PayloadType
+	enc, err := audio.NewPCMEncoder(pt, rtpPacketWriter)
 	if err != nil {
 		return PlaybackControl{}, err
 	}
@@ -88,7 +88,7 @@ func (d *DialogMedia) PlaybackControlCreate() (PlaybackControl, error) {
 	p := PlaybackControl{
 		Playback: Playback{
 			writer:     control,
-			SampleRate: rtpWriter.SampleRate,
+			SampleRate: rtpPacketWriter.SampleRate,
 			SampleDur:  20 * time.Millisecond,
 		},
 		control: control,
@@ -97,7 +97,7 @@ func (d *DialogMedia) PlaybackControlCreate() (PlaybackControl, error) {
 }
 
 func (d *DialogMedia) PlaybackFile(ctx context.Context, filename string) error {
-	if d.RTPWriter == nil {
+	if d.RTPPacketWriter == nil {
 		return fmt.Errorf("call not answered")
 	}
 
@@ -111,7 +111,7 @@ func (d *DialogMedia) PlaybackFile(ctx context.Context, filename string) error {
 }
 
 func (d *DialogMedia) PlaybackURL(ctx context.Context, urlStr string) error {
-	if d.RTPWriter == nil {
+	if d.RTPPacketWriter == nil {
 		return fmt.Errorf("call not answered")
 	}
 

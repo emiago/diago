@@ -163,7 +163,7 @@ func BenchmarkIntegrationClientServer(t *testing.B) {
 					case <-time.After(7 * time.Second):
 						t.Log("NON SERVER hanguping")
 						dialog.Hangup(context.TODO())
-					case <-dialog.Done():
+					case <-dialog.Context().Done():
 					}
 					callDuration := time.Since(start)
 					dialog.Close()

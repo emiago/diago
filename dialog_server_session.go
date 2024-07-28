@@ -118,8 +118,8 @@ func (d *DialogServerSession) AnswerWithMedia(rtpSess *media.RTPSession) error {
 
 	d.MediaSession = sess
 	rtpSess.MonitorBackground() // Starts reading RTCP
-	d.RTPReader = media.NewRTPReader(rtpSess)
-	d.RTPWriter = media.NewRTPWriter(rtpSess)
+	d.RTPPacketReader = media.NewRTPPacketReaderSession(rtpSess)
+	d.RTPPacketWriter = media.NewRTPPacketWriterSession(rtpSess)
 	if err := d.RespondSDP(sess.LocalSDP()); err != nil {
 		return err
 	}
@@ -328,7 +328,7 @@ func (d *DialogServerSession) AnswerWebrtc() error {
 		return fmt.Errorf("Media remote track is not supported")
 	}
 
-	d.RTPReader = media.NewRTPReaderCodec(&ioReader, media.CodecAudioUlaw)
-	d.RTPWriter = media.NewRTPWriterCodec(writer, codec)
+	d.RTPPacketReader = media.NewRTPPacketReader(&ioReader, media.CodecAudioUlaw)
+	d.RTPPacketWriter = media.NewRTPPacketWriter(writer, codec)
 	return nil
 }

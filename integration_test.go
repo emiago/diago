@@ -48,13 +48,13 @@ func TestIntegrationInbound(t *testing.T) {
 			d.Ringing()
 			d.Answer()
 
-			<-d.Done()
+			<-d.Context().Done()
 			return
 		}
 
 		d.Respond(sip.StatusForbidden, "Forbidden", nil)
 
-		<-d.Done()
+		<-d.Context().Done()
 	})
 	require.NoError(t, err)
 

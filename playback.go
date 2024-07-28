@@ -343,7 +343,7 @@ outloop:
 		return totalWritten, nil
 	}
 */
-func streamWavRTP(body io.Reader, rtpWriter *media.RTPWriter) (int, error) {
+func streamWavRTP(body io.Reader, rtpWriter *media.RTPPacketWriter) (int, error) {
 	pt := rtpWriter.PayloadType
 	enc, err := audio.NewPCMEncoder(pt, rtpWriter)
 	if err != nil {

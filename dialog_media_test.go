@@ -22,12 +22,12 @@ func TestIntegrationDialogMediaPlaybackFile(t *testing.T) {
 	defer sess.Close()
 
 	// TODO have RTPSession
-	rtpWriter := media.NewRTPWriterMedia(sess)
+	rtpWriter := media.NewRTPPacketWriterMedia(sess)
 	sess.Raddr = &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
 	dialog := DialogMedia{
 		// MediaSession: sess,
-		RTPWriter: rtpWriter,
+		RTPPacketWriter: rtpWriter,
 	}
 
 	udpDump, err := net.ListenUDP("udp4", sess.Raddr)
@@ -104,7 +104,7 @@ func TestIntegrationDialogMediaPlaybackURL(t *testing.T) {
 		require.NoError(t, err)
 		defer dialog.Close()
 
-		rtpReader := media.NewRTPReaderMedia(dialog.MediaSession)
+		rtpReader := media.NewRTPPacketReaderMedia(dialog.MediaSession)
 
 		go func() {
 			defer dialog.Close()

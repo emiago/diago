@@ -100,14 +100,11 @@ func (r *WebrtcTrackRTPWriter) WriteRTPRaw(buf []byte) (int, error) {
 }
 
 func (r *WebrtcTrackRTPWriter) WriteRTCP(p rtcp.Packet) error {
-	// _, err := r.sender.Transport().WriteRTCP([]rtcp.Packet{p})
-	// return er
-
 	// By default pion does RTCP sending by default
 	return nil
 }
 
-func (r *WebrtcTrackRTPWriter) WriteRTPCRaw(buf []byte) (int, error) {
+func (r *WebrtcTrackRTPWriter) WriteRTCPRaw(buf []byte) (int, error) {
 	// By default pion does RTCP sending by default
 	return 0, nil
 }

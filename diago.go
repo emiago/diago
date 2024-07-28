@@ -28,9 +28,6 @@ type Diago struct {
 
 	serveHandler ServeDialogFunc
 
-	dialogServer *sipgo.DialogServer
-	dialogClient *sipgo.DialogClient
-
 	auth      sipgo.DigestAuth
 	mediaConf MediaConfig
 
@@ -155,18 +152,30 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		},
 	}
 
-	dg.dialogServer = sipgo.NewDialogServer(dg.client, contactHDR)
-	dg.dialogClient = sipgo.NewDialogClient(dg.client, contactHDR)
+	// dg.dialogServer = sipgo.NewDialogServer(dg.client, contactHDR)
+	// dg.dialogClient = sipgo.NewDialogClient(dg.client, contactHDR)
 
 	server := dg.server
 	server.OnInvite(func(req *sip.Request, tx sip.ServerTransaction) {
 		// What if multiple server transports?
 
-		dialog, err := dg.dialogServer.ReadInvite(req, tx)
+		dialogUA := sipgo.DialogUA{
+			Client:     dg.client,
+			ContactHDR: contactHDR,
+		}
+
+		dialog, err := dialogUA.ReadInvite(req, tx)
 		if err != nil {
 			dg.log.Error().Err(err).Msg("Handling new INVITE failed")
 			return
 		}
+
+		// Cache dialog
+
+		// if dialog.LoadState() == sip.DialogStateConfirmed {
+		// 	// This is probably REINVITE for media path update
+		// }
+
 		// dialog.Close
 		// We will close dialog with our wrapper below
 
@@ -180,6 +189,9 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			formats:    dg.mediaConf.Formats,
 		}
 		defer dWrap.Close()
+
+		dialogsServer.Store(dWrap.ID, dWrap)
+		defer dialogsServer.Delete(dWrap.ID)
 
 		// Find contact hdr matching transport
 		if len(dg.transports) > 1 {
@@ -220,19 +232,42 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	})
 
 	server.OnAck(func(req *sip.Request, tx sip.ServerTransaction) {
-		if err := dg.dialogServer.ReadAck(req, tx); err != nil {
+		d, err := MatchDialogServer(req)
+		if err != nil {
+			// Security? When to answer this?
+			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+			return
+		}
+
+		if err := d.ReadAck(req, tx); err != nil {
 			dg.log.Error().Err(err).Msg("ACK finished with error")
+			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+			return
 		}
 	})
 
 	server.OnBye(func(req *sip.Request, tx sip.ServerTransaction) {
-		err := dg.dialogServer.ReadBye(req, tx)
-		if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
-			err = dg.dialogClient.ReadBye(req, tx)
+		d, err := MatchDialogServer(req)
+		if err != nil {
+			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
+				cd, err := MatchDialogClient(req)
+				if err != nil {
+					// Security? When to answer this?
+					tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+					return
+				}
+
+				if err := cd.ReadBye(req, tx); err != nil {
+					tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+				}
+			}
+
+			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+			return
 		}
 
-		if err != nil {
-			dg.log.Error().Err(err).Msg("BYE finished with error")
+		if err := d.ReadBye(req, tx); err != nil {
+			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
 		}
 	})
 
@@ -288,11 +323,21 @@ func (dg *Diago) ServeBackground(ctx context.Context, f ServeDialogFunc) error {
 // This means SDP body can be different, but for now lets assume
 // codec definition is global and codec for inbound and outbound must be same
 func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
-	dialogCli := dg.dialogClient
+	transport := "udp"
+	if recipient.UriParams != nil {
+		if t := recipient.UriParams["transport"]; t != "" {
+			transport = t
+		}
+	}
+
+	dialogCli := sipgo.DialogUA{
+		Client:     dg.client,
+		ContactHDR: dg.getContactHDR(transport),
+	}
 
 	// Now media SEdgP
 	// TODO this probably needs take in account Contact header or listen addr
-	ip, port, err := sipgox.FindFreeInterfaceHostPort("udp", "")
+	ip, port, err := sipgox.FindFreeInterfaceHostPort(transport, "")
 	if err != nil {
 		return nil, err
 	}
@@ -317,8 +362,8 @@ func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge, op
 	// Set media Session
 	d.MediaSession = sess
 	rtpSess := media.NewRTPSession(sess)
-	d.RTPReader = media.NewRTPReader(rtpSess)
-	d.RTPWriter = media.NewRTPWriter(rtpSess)
+	d.RTPPacketReader = media.NewRTPPacketReaderSession(rtpSess)
+	d.RTPPacketWriter = media.NewRTPPacketWriterSession(rtpSess)
 
 	waitCall := func() error {
 		if err := dialog.WaitAnswer(ctx, opts); err != nil {
@@ -349,6 +394,29 @@ func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge, op
 	}
 
 	return d, nil
+}
+
+func (dg *Diago) getContactHDR(transport string) sip.ContactHeader {
+	// Find contact hdr matching transport
+	tran := dg.transports[0]
+
+	for _, t := range dg.transports[1:] {
+		if sip.NetworkToLower(transport) == t.Transport {
+			tran = t
+		}
+	}
+
+	return sip.ContactHeader{
+		DisplayName: "", // TODO
+		Address: sip.Uri{
+			Encrypted: tran.TLSConf != nil,
+			User:      dg.ua.Name(),
+			Host:      tran.BindHost,
+			Port:      tran.BindPort,
+			UriParams: sip.NewParams(),
+			Headers:   sip.NewParams(),
+		},
+	}
 }
 
 type RegisterRequest struct {

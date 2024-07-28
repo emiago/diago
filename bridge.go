@@ -11,6 +11,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type Bridger interface {
+	AddDialogSession(d DialogSession) error
+}
+
 const (
 	bridgeKindProxy     = 1
 	bridgeKindRecording = 2
@@ -28,12 +32,6 @@ type Bridge struct {
 func NewBridge() Bridge {
 	return Bridge{
 		log: log.Logger,
-	}
-}
-
-func NewRecordingBridge() Bridge {
-	return Bridge{
-		kind: bridgeKindRecording,
 	}
 }
 
@@ -62,10 +60,10 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 	if dlg1.Media().MediaSession == nil {
 		// This could be webrtc
 
-		r1 := dlg1.Media().RTPReader.Reader.(media.RTPIOReaderRaw)
-		r2 := dlg2.Media().RTPReader.Reader.(media.RTPIOReaderRaw)
-		w1 := dlg1.Media().RTPWriter.Writer.(media.RTPIOWriterRaw)
-		w2 := dlg2.Media().RTPWriter.Writer.(media.RTPIOWriterRaw)
+		r1 := dlg1.Media().RTPPacketReader.Reader.(media.RTPReaderRaw)
+		r2 := dlg2.Media().RTPPacketReader.Reader.(media.RTPReaderRaw)
+		w1 := dlg1.Media().RTPPacketWriter.Writer.(media.RTPWriterRaw)
+		w2 := dlg2.Media().RTPPacketWriter.Writer.(media.RTPWriterRaw)
 
 		go b.proxyMediaRTPRaw(r1, w2)
 		go b.proxyMediaRTPRaw(r2, w1)
@@ -89,6 +87,10 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 	go b.proxyMedia(m2, m1)
 	return nil
 }
+
+// func (b *Bridge) RemoveDialogSession(d DialogSession) error {
+
+// }
 
 func (b *Bridge) proxyMedia(m1 *media.MediaSession, m2 *media.MediaSession) {
 	go func() {
@@ -140,7 +142,7 @@ func (b *Bridge) proxyMediaRTP(m1 *media.MediaSession, m2 *media.MediaSession) (
 
 }
 
-func (b *Bridge) proxyMediaRTPRaw(m1 media.RTPIOReaderRaw, m2 media.RTPIOWriterRaw) (written int64, e error) {
+func (b *Bridge) proxyMediaRTPRaw(m1 media.RTPReaderRaw, m2 media.RTPWriterRaw) (written int64, e error) {
 	buf := make([]byte, 1500) // MTU
 
 	var total int64
@@ -208,7 +210,7 @@ func (b *Bridge) proxyMediaRTCP(m1 *media.MediaSession, m2 *media.MediaSession) 
 
 }
 
-func (b *Bridge) proxyMediaRTCPRaw(m1 media.RTPCIOReaderRaw, m2 media.RTCPIOWriterRaw) (written int64, e error) {
+func (b *Bridge) proxyMediaRTCPRaw(m1 media.RTPCReaderRaw, m2 media.RTCPWriterRaw) (written int64, e error) {
 	buf := make([]byte, 1500) // MTU
 
 	var total int64
