@@ -57,8 +57,8 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 	dlg1 := b.dialogs[0]
 	dlg2 := b.dialogs[1]
 
-	if dlg1.Media().MediaSession == nil {
-		// This could be webrtc
+	// For webrtc we have no session for our packet readers
+	if dlg1.Media().RTPPacketReader.Sess == nil {
 
 		r1 := dlg1.Media().RTPPacketReader.Reader.(media.RTPReaderRaw)
 		r2 := dlg2.Media().RTPPacketReader.Reader.(media.RTPReaderRaw)

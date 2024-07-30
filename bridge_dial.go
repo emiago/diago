@@ -1,8 +1,10 @@
 package diago
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"net"
 
 	"github.com/emiago/media"
 	"github.com/rs/zerolog"
@@ -60,8 +62,8 @@ func (b *BridgeDial) AddDialogSession(d DialogSession) error {
 	}
 
 	// For now just as proxy media
-	// go b.proxyMedia(m1, m2)
-	// go b.proxyMedia(m2, m1)
+	go proxyMedia(b.log, m1, m2)
+	go proxyMedia(b.log, m2, m1)
 	return nil
 }
 
@@ -96,6 +98,56 @@ func proxyMediaRTPRaw(m1 media.RTPReaderRaw, m2 media.RTPWriterRaw) (written int
 			return total, err
 		}
 		written, err := m2.WriteRTPRaw(buf[:n])
+		if err != nil {
+			return total, err
+		}
+		if written != n {
+			return total, io.ErrShortWrite
+		}
+		total += int64(written)
+	}
+
+	// for {
+	// 	// In case of recording we need to unmarshal RTP packet
+	// 	pkt, err := m1.ReadRTP()
+	// 	if err != nil {
+	// 		return err
+	// 	}
+
+	// 	if err := m2.WriteRTP(&pkt); err != nil {
+	// 		return err
+	// 	}
+	// }
+
+}
+
+func proxyMedia(log zerolog.Logger, m1 *media.MediaSession, m2 *media.MediaSession) {
+	go func() {
+		total, err := proxyMediaRTCP(m1, m2)
+		if err != nil && !errors.Is(err, net.ErrClosed) {
+			log.Error().Err(err).Msg("Proxy media RTCP stopped")
+		}
+		log.Debug().Int64("bytes", total).Str("peer1", m1.Raddr.String()).Str("peer2", m2.Raddr.String()).Msg("RTCP finished")
+	}()
+
+	total, err := proxyMediaRTPRaw(m1, m2)
+	if err != nil && !errors.Is(err, net.ErrClosed) {
+		log.Error().Err(err).Msg("Proxy media stopped")
+	}
+	log.Debug().Int64("bytes", total).Str("peer1", m1.Raddr.String()).Str("peer2", m2.Raddr.String()).Msg("RTP finished")
+}
+
+func proxyMediaRTCP(m1 *media.MediaSession, m2 *media.MediaSession) (written int64, e error) {
+	buf := make([]byte, 1500) // MTU
+
+	var total int64
+	for {
+		// In case of recording we need to unmarshal RTP packet
+		n, err := m1.ReadRTCPRaw(buf)
+		if err != nil {
+			return total, err
+		}
+		written, err := m2.WriteRTCPRaw(buf[:n])
 		if err != nil {
 			return total, err
 		}

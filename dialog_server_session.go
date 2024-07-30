@@ -328,6 +328,10 @@ func (d *DialogServerSession) AnswerWebrtc() error {
 		return fmt.Errorf("Media remote track is not supported")
 	}
 
+	// For compatibility reasons we are creating media session, to be able to read things like SDP formats
+	d.MediaSession = &media.MediaSession{
+		Formats: sdp.NewFormats(sdp.FORMAT_TYPE_ULAW),
+	}
 	d.RTPPacketReader = media.NewRTPPacketReader(&ioReader, media.CodecAudioUlaw)
 	d.RTPPacketWriter = media.NewRTPPacketWriter(writer, codec)
 	return nil

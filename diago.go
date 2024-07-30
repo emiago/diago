@@ -343,13 +343,49 @@ func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge, op
 	}
 	laddr := &net.UDPAddr{IP: ip, Port: port}
 	sess, err := media.NewMediaSession(laddr)
-	sess.Formats = dg.mediaConf.Formats
-
 	if err != nil {
 		return nil, err
 	}
+	sess.Formats = dg.mediaConf.Formats
 
-	dialog, err := dialogCli.Invite(ctx, recipient, sess.LocalSDP(), sip.NewHeader("Content-Type", "application/sdp"))
+	dialHDRS := []sip.Header{
+		sip.NewHeader("Content-Type", "application/sdp"),
+	}
+
+	if omed := bridge.Originator; omed != nil {
+		// In case originator, use then same media formats
+		// The problem is if user did not yet answer then we have no media setup
+		if d, ok := omed.(*DialogServerSession); ok {
+			// From header should be preserved from originator
+			dialHDRS = append(dialHDRS, sip.HeaderClone(d.InviteRequest.From()))
+
+			// This is messy
+			sd := sdp.SessionDescription{}
+			if err := sdp.Unmarshal(d.InviteRequest.Body(), &sd); err != nil {
+				return nil, err
+			}
+			md, err := sd.MediaDescription("audio")
+			if err != nil {
+				return nil, err
+			}
+
+			// Check do we support this formats, and filter first that we support
+			// Limiting to one format we remove need for transcoding
+			singleFormat := sess.Formats[0]
+		outloop:
+			for _, f := range md.Formats {
+				for _, sf := range dg.mediaConf.Formats {
+					if f == sf {
+						singleFormat = f
+						break outloop
+					}
+				}
+			}
+			sess.Formats = []string{singleFormat}
+		}
+	}
+
+	dialog, err := dialogCli.Invite(ctx, recipient, sess.LocalSDP(), dialHDRS...)
 	if err != nil {
 		sess.Close()
 		return nil, err
