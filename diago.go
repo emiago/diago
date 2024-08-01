@@ -353,13 +353,14 @@ func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge, op
 	}
 
 	if omed := bridge.Originator; omed != nil {
-		// In case originator, use then same media formats
+		// In case originator then:
+		// - check do we support this media formats by conf
+		// - if we do, then filter and pass to dial endpoint filtered
 		// The problem is if user did not yet answer then we have no media setup
 		if d, ok := omed.(*DialogServerSession); ok {
 			// From header should be preserved from originator
 			dialHDRS = append(dialHDRS, sip.HeaderClone(d.InviteRequest.From()))
 
-			// This is messy
 			sd := sdp.SessionDescription{}
 			if err := sdp.Unmarshal(d.InviteRequest.Body(), &sd); err != nil {
 				return nil, err
@@ -371,7 +372,7 @@ func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge, op
 
 			// Check do we support this formats, and filter first that we support
 			// Limiting to one format we remove need for transcoding
-			singleFormat := sess.Formats[0]
+			singleFormat := ""
 		outloop:
 			for _, f := range md.Formats {
 				for _, sf := range dg.mediaConf.Formats {
@@ -381,6 +382,11 @@ func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge, op
 					}
 				}
 			}
+
+			if singleFormat == "" {
+				return nil, fmt.Errorf("no audio media is supported from originator")
+			}
+
 			sess.Formats = []string{singleFormat}
 		}
 	}

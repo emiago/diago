@@ -145,6 +145,16 @@ func (d *DialogServerSession) Hangup(ctx context.Context) error {
 // For dialog bridge as proxy raw media. We need also to support raw media passing
 func (d *DialogServerSession) AnswerWebrtc() error {
 
+	// TODO Check diago media conf
+	mimeTypes := []string{
+		webrtc.MimeTypePCMU,
+		webrtc.MimeTypePCMA,
+		// webrtc.MimeTypeOpus,
+	}
+	return d.answerWebrtc(mimeTypes)
+}
+
+func (d *DialogServerSession) answerWebrtc(mimeTypes []string) error {
 	// Create a new RTCPeerConnection
 	peerConnection, err := webrtcAPI.NewPeerConnection(webrtcConfig)
 	if err != nil {

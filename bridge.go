@@ -57,6 +57,12 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 	dlg1 := b.dialogs[0]
 	dlg2 := b.dialogs[1]
 
+	// Check are both answered
+	for _, d := range b.dialogs {
+		if d.Media().RTPPacketReader == nil || d.Media().RTPPacketWriter == nil {
+			return fmt.Errorf("dialog session not answered %q", d.Id())
+		}
+	}
 	// For webrtc we have no session for our packet readers
 	if dlg1.Media().RTPPacketReader.Sess == nil {
 
