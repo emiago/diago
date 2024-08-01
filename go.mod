@@ -8,7 +8,6 @@ require (
 	github.com/emiago/sipgox v0.8.1
 	github.com/go-audio/riff v1.0.0
 	github.com/go-audio/wav v1.1.0
-	github.com/phuslu/log v1.0.107
 	github.com/pion/rtcp v1.2.14
 	github.com/pion/rtp v1.8.7
 	github.com/pion/webrtc/v3 v3.2.50

@@ -315,14 +315,18 @@ func (dg *Diago) ServeBackground(ctx context.Context, f ServeDialogFunc) error {
 	}
 }
 
-// When bridge is provided then this call will be bridged with any participant already present in bridge
-// When bridge is nil, only dialing is done
+// Dial makes outgoing call leg.
+// If you want to bridge call then use DialBridge
+func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
+	return dg.DialBridge(ctx, recipient, nil, opts)
+}
 
-// TODO
-// When bridge we need to enforce same codec order
-// This means SDP body can be different, but for now lets assume
-// codec definition is global and codec for inbound and outbound must be same
-func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
+// DialBridge makes outgoing call leg and does bridging
+// If bridge has Originator (first participant) it will be used for creating outgoing call leg
+// When bridge is provided then this call will be bridged with any participant already present in bridge
+// TO avoid transcoding only first is offered
+// TODO:
+func (dg *Diago) DialBridge(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
 	transport := "udp"
 	if recipient.UriParams != nil {
 		if t := recipient.UriParams["transport"]; t != "" {
@@ -352,17 +356,26 @@ func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, bridge *Bridge, op
 		sip.NewHeader("Content-Type", "application/sdp"),
 	}
 
-	if omed := bridge.Originator; omed != nil {
-		// In case originator then:
-		// - check do we support this media formats by conf
-		// - if we do, then filter and pass to dial endpoint filtered
-		// The problem is if user did not yet answer then we have no media setup
-		if d, ok := omed.(*DialogServerSession); ok {
+	// Are we bridging?
+	if bridge != nil {
+		if omed := bridge.Originator; omed != nil {
+			// In case originator then:
+			// - check do we support this media formats by conf
+			// - if we do, then filter and pass to dial endpoint filtered
+			inviteReq := omed.DialogSIP().InviteRequest
+			fromHDROrig := inviteReq.From()
+			fromHDR := sip.FromHeader{
+				DisplayName: fromHDROrig.DisplayName,
+				Address:     *fromHDROrig.Address.Clone(),
+				Params:      fromHDROrig.Params.Clone(),
+			}
+			fromHDR.Params["tag"] = sip.GenerateTagN(16)
+
 			// From header should be preserved from originator
-			dialHDRS = append(dialHDRS, sip.HeaderClone(d.InviteRequest.From()))
+			dialHDRS = append(dialHDRS, &fromHDR)
 
 			sd := sdp.SessionDescription{}
-			if err := sdp.Unmarshal(d.InviteRequest.Body(), &sd); err != nil {
+			if err := sdp.Unmarshal(inviteReq.Body(), &sd); err != nil {
 				return nil, err
 			}
 			md, err := sd.MediaDescription("audio")
@@ -500,4 +513,8 @@ func (d *Diago) Register(ctx context.Context, req RegisterRequest) error {
 	}
 
 	return registerCtx.QualifyLoop(ctx)
+}
+
+func (dg *Diago) DialWebrtc(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
+	return nil, fmt.Errorf("not implemented yet")
 }

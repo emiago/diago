@@ -61,6 +61,10 @@ func (d *DialogServerSession) Ringing() error {
 	return d.Respond(sip.StatusRinging, "Ringing", nil)
 }
 
+func (d *DialogServerSession) DialogSIP() *sipgo.Dialog {
+	return &d.Dialog
+}
+
 func (d *DialogServerSession) Respond(statusCode sip.StatusCode, reason string, body []byte, headers ...sip.Header) error {
 	// TODO fix this on dialog srv
 	headers = append(headers, &d.contactHDR)

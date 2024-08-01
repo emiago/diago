@@ -37,3 +37,7 @@ func (d *DialogClientSession) FromUser() string {
 func (d *DialogClientSession) ToUser() string {
 	return d.InviteRequest.To().Address.User
 }
+
+func (d *DialogClientSession) DialogSIP() *sipgo.Dialog {
+	return &d.Dialog
+}

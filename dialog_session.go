@@ -1,10 +1,15 @@
 package diago
 
-import "context"
+import (
+	"context"
+
+	"github.com/emiago/sipgo"
+)
 
 type DialogSession interface {
 	Id() string
 	Context() context.Context
 	Hangup(ctx context.Context) error
 	Media() *DialogMedia
+	DialogSIP() *sipgo.Dialog
 }
