@@ -43,7 +43,7 @@ d := diago.NewDiago(ua,
 ```
 
 
-#### Handle incoming
+#### Incoming call
 ```go
 d.Serve(ctx, func(inDialog *diago.DialogServerSession) {
 	// - Do your call routing.
@@ -54,12 +54,12 @@ d.Serve(ctx, func(inDialog *diago.DialogServerSession) {
 })
 ```
 
-#### Do outgoing
+#### Outgoing
 
 ```go
-d.Dial(ctx, recipient sip.Uri, bridge *Bridge, opts sipgo.AnswerOptions) 
+dialog, err := d.Dial(ctx, recipient sip.Uri, bridge *Bridge, opts sipgo.AnswerOptions)
+dialog.Hangup()
 ```
-
 
 ## Answering call
 
@@ -125,13 +125,13 @@ pb.Mute(true) // Mute call
 pb.Mute(false) // Unmute call 
 ```
 
-## Direct media 
+## Proxy media 
 
 Accessing media (audio payload) for custom processing or proxying. 
-Consider this when using Speech to Text is required.
+This is something you will use for **Speech to Text**.
 
 ```go 
-func DirectMedia(inDialog *diago.DialogServerSession) {
+func ProxyMedia(inDialog *diago.DialogServerSession) {
 	inDialog.Progress() // Progress -> 100 Trying
 	inDialog.Ringing()  // Ringing -> 180 Response
 	inDialog.Answer()   // Answqer -> 200 Response
@@ -153,6 +153,50 @@ func DirectMedia(inDialog *diago.DialogServerSession) {
         pktsCount++
 	}
 }
+```
+# Bridging calls (B2BUA)
+
+**Bridge** is entity that needs to be created before media can be bridged.
+
+Normally you need to Dial + Bridge, but there is helper for this called `DialBridge()`
+
+Example:
+```go
+var recipient = sip.Uri{User: "test", Host: "127.0.0.1", Port: 5090}
+
+func BridgeCall(inDialog *diago.DialogServerSession) {
+	inDialog.Progress() // Progress -> 100 Trying
+	inDialog.Ringing()  // Ringing -> 180 Response
+	inDialog.Answer()
+
+	bridge := diago.NewBridge()
+	// Add our leg into bridge
+	if err := bridge.AddDialogSession(inDialog); err != nil {
+		fmt.Println("Failed to add inDialog session", err)
+		return
+	}
+
+	outDialog, err := d.DialBridge(ctx, , &bridge, sipgo.AnswerOptions{})
+	if err != nil {
+		fmt.Println("Failed to dial", err)
+		return
+	}
+	defer outDialog.Close() // Always close, not have media hanging
+
+	outCtx := outDialog.Context()
+	defer func() {
+		if err := outDialog.Hangup(outCtx); err != nil {
+			fmt.Println("Failed to hangup", err)
+		}
+	}()
+
+	// Wait for hangup of one of dialogs
+	select {
+	case <-inCtx.Done():
+	case <-outCtx.Done():
+	}
+}
+
 ```
 
 
