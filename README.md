@@ -145,12 +145,12 @@ func DirectMedia(inDialog *diago.DialogServerSession) {
 			return
 		}
         // Access to RTP Header If needed
-		// pkt := inDialog.Media().RTPPacketReader.PacketHeader
+        rtpHeader := inDialog.Media().RTPPacketReader.PacketHeader
 
+        // Get Audio payload. Decode it, send to THIRD PARTY
         audioEncoded := buf[:n]
-        // Decode audio and send it to THIRD PARTY
 
-		pktsCount++
+        pktsCount++
 	}
 }
 ```
