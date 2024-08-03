@@ -134,7 +134,7 @@ This is something you will use for **Speech to Text**.
 func ProxyMedia(inDialog *diago.DialogServerSession) {
 	inDialog.Progress() // Progress -> 100 Trying
 	inDialog.Ringing()  // Ringing -> 180 Response
-	inDialog.Answer()   // Answqer -> 200 Response
+	inDialog.Answer()   // Answer -> 200 Response
 
 	lastPrint := time.Now()
 	pktsCount := 0
