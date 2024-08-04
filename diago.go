@@ -315,18 +315,18 @@ func (dg *Diago) ServeBackground(ctx context.Context, f ServeDialogFunc) error {
 	}
 }
 
-// Dial makes outgoing call leg.
+// Invite makes outgoing call leg.
 // If you want to bridge call then use DialBridge
-func (dg *Diago) Dial(ctx context.Context, recipient sip.Uri, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
-	return dg.DialBridge(ctx, recipient, nil, opts)
+func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
+	return dg.InviteBridge(ctx, recipient, nil, opts)
 }
 
-// DialBridge makes outgoing call leg and does bridging
+// InviteBridge makes outgoing call leg and does bridging
 // If bridge has Originator (first participant) it will be used for creating outgoing call leg
 // When bridge is provided then this call will be bridged with any participant already present in bridge
 // TO avoid transcoding only first is offered
 // TODO:
-func (dg *Diago) DialBridge(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
+func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
 	transport := "udp"
 	if recipient.UriParams != nil {
 		if t := recipient.UriParams["transport"]; t != "" {
@@ -515,6 +515,8 @@ func (d *Diago) Register(ctx context.Context, req RegisterRequest) error {
 	return registerCtx.QualifyLoop(ctx)
 }
 
-func (dg *Diago) DialWebrtc(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
+// InviteWebrtc dials endpoint with webrtc stack
+func (dg *Diago) InviteWebrtc(ctx context.Context, recipient sip.Uri, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
+
 	return nil, fmt.Errorf("not implemented yet")
 }

@@ -147,8 +147,7 @@ func (d *Dialplan) BridgeCall(inDialog *diago.DialogServerSession) {
 	defer cancel()
 
 	// Wa want to bridge this call with originator
-	bridge := new(diago.Bridge)
-	outDialog, err := tu.Dial(ctx, sip.Uri{User: "test", Host: "127.0.0.1", Port: 5090}, bridge, sipgo.AnswerOptions{})
+	outDialog, err := tu.Invite(ctx, sip.Uri{User: "test", Host: "127.0.0.1", Port: 5090}, sipgo.AnswerOptions{})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to dial")
 		return
