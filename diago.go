@@ -73,7 +73,8 @@ type Transport struct {
 	BindHost  string
 	BindPort  int
 
-	ExternalAddr string // SIP signaling and media external addr
+	ExternalHost string // SIP signaling and media external addr
+	ExternalPort int
 	// ExternalMediaAddr string // External media addr
 
 	// In case TLS protocol
@@ -82,6 +83,14 @@ type Transport struct {
 
 func WithTransport(t Transport) DiagoOption {
 	return func(dg *Diago) {
+		if t.ExternalHost == "" {
+			t.ExternalHost = t.BindHost
+			// If unspecified IP???
+		}
+		if t.ExternalPort == 0 {
+			t.ExternalPort = t.BindPort
+		}
+
 		dg.transports = append(dg.transports, t)
 	}
 }
@@ -140,17 +149,8 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		})
 	}
 
-	transport := dg.transports[0]
 	// Create our default contact hdr
-	contactHDR := sip.ContactHeader{
-		DisplayName: "", // TODO
-		Address: sip.Uri{
-			User:      ua.Name(),
-			Host:      transport.BindHost,
-			Port:      transport.BindPort,
-			UriParams: sip.NewParams(),
-		},
-	}
+	contactHDR := dg.getContactHDR("")
 
 	// dg.dialogServer = sipgo.NewDialogServer(dg.client, contactHDR)
 	// dg.dialogClient = sipgo.NewDialogClient(dg.client, contactHDR)
@@ -185,32 +185,13 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			DialogServerSession: dialog,
 			DialogMedia:         DialogMedia{},
 
-			contactHDR: contactHDR,
+			contactHDR: dg.getContactHDR(req.Transport()),
 			formats:    dg.mediaConf.Formats,
 		}
 		defer dWrap.Close()
 
 		dialogsServer.Store(dWrap.ID, dWrap)
 		defer dialogsServer.Delete(dWrap.ID)
-
-		// Find contact hdr matching transport
-		if len(dg.transports) > 1 {
-			for _, t := range dg.transports {
-				if sip.NetworkToLower(req.Transport()) == t.Transport {
-					dWrap.contactHDR = sip.ContactHeader{
-						DisplayName: "", // TODO
-						Address: sip.Uri{
-							Encrypted: t.TLSConf != nil,
-							User:      ua.Name(),
-							Host:      t.BindHost,
-							Port:      t.BindPort,
-							UriParams: sip.NewParams(),
-							Headers:   sip.NewParams(),
-						},
-					}
-				}
-			}
-		}
 
 		dg.serveHandler(dWrap)
 
@@ -270,6 +251,15 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
 		}
 	})
+
+	// server.OnRefer(func(req *sip.Request, tx sip.ServerTransaction) {
+	// 	d, err := MatchDialogServer(req)
+	// 	if err != nil {
+	// 		// Security? When to answer this?
+	// 		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+	// 		return
+	// 	}
+	// })
 
 	return dg
 }
@@ -401,6 +391,23 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 			}
 
 			sess.Formats = []string{singleFormat}
+
+			// Unless caller is customizing response handling we want to answer caller on
+			// callerState := omed.DialogSIP().LoadState()
+			if opts.OnResponse != nil {
+				opts.OnResponse = func(res *sip.Response) error {
+					if res.StatusCode == 200 {
+						switch om := omed.(type) {
+						case *DialogClientSession:
+						case *DialogServerSession:
+							return om.answerWebrtc([]string{
+								
+							})
+						}
+					}
+					return nil
+				}
+			}
 		}
 	}
 
@@ -466,8 +473,8 @@ func (dg *Diago) getContactHDR(transport string) sip.ContactHeader {
 		Address: sip.Uri{
 			Encrypted: tran.TLSConf != nil,
 			User:      dg.ua.Name(),
-			Host:      tran.BindHost,
-			Port:      tran.BindPort,
+			Host:      tran.ExternalHost,
+			Port:      tran.ExternalPort,
 			UriParams: sip.NewParams(),
 			Headers:   sip.NewParams(),
 		},
@@ -484,18 +491,10 @@ func (d *Diago) Register(ctx context.Context, req RegisterRequest) error {
 		return fmt.Errorf("No transports defined")
 	}
 	t := d.transports[0]
-	host, port := t.BindHost, t.BindPort
-	var err error
-	if t.ExternalAddr != "" {
-		host, port, err = sip.ParseAddr(t.ExternalAddr)
-		if err != nil {
-			return err
-		}
-	}
 	contHDR := sip.ContactHeader{
 		Address: sip.Uri{
-			Host: host,
-			Port: port,
+			Host: t.ExternalHost,
+			Port: t.ExternalPort,
 		},
 	}
 

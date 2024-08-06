@@ -151,14 +151,28 @@ func (d *DialogServerSession) AnswerWebrtc() error {
 
 	// TODO Check diago media conf
 	mimeTypes := []string{
-		webrtc.MimeTypePCMU,
-		webrtc.MimeTypePCMA,
-		// webrtc.MimeTypeOpus,
+		// sdp.FORMAT_TYPE_ALAW,
+		sdp.FORMAT_TYPE_ULAW,
 	}
 	return d.answerWebrtc(mimeTypes)
 }
 
-func (d *DialogServerSession) answerWebrtc(mimeTypes []string) error {
+func (d *DialogServerSession) answerWebrtc(formats sdp.Formats) error {
+	// Convert mime types to formats
+	mimeTypes := make([]string, 0, len(formats))
+	for _, f := range formats {
+		var mt string
+		switch f {
+		case sdp.FORMAT_TYPE_ALAW:
+			mt = webrtc.MimeTypePCMA
+		case sdp.FORMAT_TYPE_ULAW:
+			mt = webrtc.MimeTypePCMU
+		default:
+			return fmt.Errorf("unsuported mime type for webrtc %q", f)
+		}
+		mimeTypes = append(mimeTypes, mt)
+	}
+
 	// Create a new RTCPeerConnection
 	peerConnection, err := webrtcAPI.NewPeerConnection(webrtcConfig)
 	if err != nil {
@@ -334,8 +348,10 @@ func (d *DialogServerSession) answerWebrtc(mimeTypes []string) error {
 	// 	log.Warn().Msg("Opus is requested but we have no support yet")
 	case webrtc.MimeTypePCMU:
 		log.Info().Msg("Remote track PCMU")
-	// case webrtc.MimeTypePCMA:
-	// 	log.Info().Msg("Remote track PCMA")
+		d.RTPPacketReader = media.NewRTPPacketReader(&ioReader, media.CodecAudioUlaw)
+	case webrtc.MimeTypePCMA:
+		log.Info().Msg("Remote track PCMA")
+		d.RTPPacketReader = media.NewRTPPacketReader(&ioReader, media.CodecAudioAlaw)
 	// 	d.RTPReader = media.NewRTPReaderCodec(ioReader, media.CodecAudioAlaw)
 	default:
 		log.Warn().Msgf("Media requested is not supported %s", med)
@@ -346,7 +362,7 @@ func (d *DialogServerSession) answerWebrtc(mimeTypes []string) error {
 	d.MediaSession = &media.MediaSession{
 		Formats: sdp.NewFormats(sdp.FORMAT_TYPE_ULAW),
 	}
-	d.RTPPacketReader = media.NewRTPPacketReader(&ioReader, media.CodecAudioUlaw)
+	// d.RTPPacketReader = media.NewRTPPacketReader(&ioReader, media.CodecAudioUlaw)
 	d.RTPPacketWriter = media.NewRTPPacketWriter(writer, codec)
 	return nil
 }

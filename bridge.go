@@ -64,6 +64,7 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 		}
 	}
 	// For webrtc we have no session for our packet readers
+	// TODO find better distiction
 	if dlg1.Media().RTPPacketReader.Sess == nil {
 
 		r1 := dlg1.Media().RTPPacketReader.Reader.(media.RTPReaderRaw)
