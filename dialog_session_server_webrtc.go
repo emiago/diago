@@ -5,6 +5,7 @@ import (
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
+	"github.com/rs/zerolog/log"
 )
 
 // Prepare the configuration
@@ -64,11 +65,18 @@ func (r *WebrtcTrackRTPReader) ReadRTP(buf []byte, p *rtp.Packet) error {
 		return err
 	}
 
-	return p.Unmarshal(buf[:n])
+	err = p.Unmarshal(buf[:n])
+	if media.RTPDebug {
+		log.Debug().Msgf("Sent RTP\n%s", p.String())
+	}
+	return err
 }
 
 func (r *WebrtcTrackRTPReader) ReadRTPRaw(buf []byte) (int, error) {
 	n, _, err := r.track.Read(buf)
+	if media.RTPDebug {
+		log.Debug().Msgf("READ RTP Raw len=%d\n", n)
+	}
 	return n, err
 }
 
@@ -92,10 +100,16 @@ type WebrtcTrackRTPWriter struct {
 }
 
 func (r *WebrtcTrackRTPWriter) WriteRTP(p *rtp.Packet) error {
+	if media.RTPDebug {
+		log.Debug().Msgf("Sent RTP\n%s", p.String())
+	}
 	return r.track.WriteRTP(p)
 }
 
 func (r *WebrtcTrackRTPWriter) WriteRTPRaw(buf []byte) (int, error) {
+	if media.RTPDebug {
+		log.Debug().Msgf("Recv RTP Raw len=%d\n", len(buf))
+	}
 	return r.track.Write(buf)
 }
 

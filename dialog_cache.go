@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	dialogsClient = sync.Map{}
-	dialogsServer = sync.Map{}
+	DialogsClientCache = sync.Map{}
+	DialogsServerCache = sync.Map{}
 )
 
 func MatchDialogClient(req *sip.Request) (*DialogClientSession, error) {
@@ -19,7 +19,7 @@ func MatchDialogClient(req *sip.Request) (*DialogClientSession, error) {
 		return nil, errors.Join(err, sipgo.ErrDialogOutsideDialog)
 	}
 
-	val, ok := dialogsClient.Load(id)
+	val, ok := DialogsClientCache.Load(id)
 	if !ok || val == nil {
 		return nil, sipgo.ErrDialogDoesNotExists
 	}
@@ -34,7 +34,7 @@ func MatchDialogServer(req *sip.Request) (*DialogServerSession, error) {
 		return nil, errors.Join(err, sipgo.ErrDialogOutsideDialog)
 	}
 
-	val, ok := dialogsServer.Load(id)
+	val, ok := DialogsServerCache.Load(id)
 	if !ok || val == nil {
 		return nil, sipgo.ErrDialogDoesNotExists
 	}

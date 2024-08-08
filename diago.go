@@ -185,13 +185,14 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			DialogServerSession: dialog,
 			DialogMedia:         DialogMedia{},
 
-			contactHDR: dg.getContactHDR(req.Transport()),
-			formats:    dg.mediaConf.Formats,
+			// contactHDR: dg.getContactHDR(req.Transport()),
+			// formats:    dg.mediaConf.Formats,
 		}
+		dg.InitServerSession(dWrap)
 		defer dWrap.Close()
 
-		dialogsServer.Store(dWrap.ID, dWrap)
-		defer dialogsServer.Delete(dWrap.ID)
+		DialogsServerCache.Store(dWrap.ID, dWrap)
+		defer DialogsServerCache.Delete(dWrap.ID)
 
 		dg.serveHandler(dWrap)
 
@@ -264,6 +265,11 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	return dg
 }
 
+func (dg *Diago) InitServerSession(d *DialogServerSession) {
+	d.contactHDR = dg.getContactHDR(d.InviteRequest.Transport())
+	d.formats = dg.mediaConf.Formats
+}
+
 func (dg *Diago) Serve(ctx context.Context, f ServeDialogFunc) error {
 	server := dg.server
 	dg.serveHandler = f
@@ -306,16 +312,17 @@ func (dg *Diago) ServeBackground(ctx context.Context, f ServeDialogFunc) error {
 }
 
 // Invite makes outgoing call leg.
-// If you want to bridge call then use DialBridge
+// If you want to bridge call then use helper InviteBridge
 func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
 	return dg.InviteBridge(ctx, recipient, nil, opts)
 }
 
-// InviteBridge makes outgoing call leg and does bridging
-// If bridge has Originator (first participant) it will be used for creating outgoing call leg
+// InviteBridge makes outgoing call leg and does bridging.
+// Outgoing session will be added into bridge on answer
+// If bridge has Originator (first participant) it will be used for creating outgoing call leg as in B2BUA
 // When bridge is provided then this call will be bridged with any participant already present in bridge
-// TO avoid transcoding only first is offered
 // TODO:
+// - transcoding will not be allowed -> error will be returned
 func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
 	transport := "udp"
 	if recipient.UriParams != nil {
@@ -394,22 +401,23 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 
 			// Unless caller is customizing response handling we want to answer caller on
 			// callerState := omed.DialogSIP().LoadState()
-			if opts.OnResponse != nil {
-				opts.OnResponse = func(res *sip.Response) error {
-					if res.StatusCode == 200 {
-						switch om := omed.(type) {
-						case *DialogClientSession:
-						case *DialogServerSession:
-							return om.answerWebrtc([]string{
-								
-							})
-						}
-					}
-					return nil
-				}
-			}
+			// if opts.OnResponse == nil {
+			// 	opts.OnResponse = func(res *sip.Response) error {
+			// 		if res.StatusCode == 200 {
+			// 			switch om := omed.(type) {
+			// 			case *DialogClientSession:
+			// 			case *DialogServerSession:
+			// 				return om.answerWebrtc([]string{})
+			// 			}
+			// 		}
+			// 		return nil
+			// 	}
+			// }
 		}
 	}
+
+	rtpSess := media.NewRTPSession(sess)
+	rtpSess.MonitorBackground()
 
 	dialog, err := dialogCli.Invite(ctx, recipient, sess.LocalSDP(), dialHDRS...)
 	if err != nil {
@@ -423,11 +431,11 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 
 	// Set media Session
 	d.MediaSession = sess
-	rtpSess := media.NewRTPSession(sess)
 	d.RTPPacketReader = media.NewRTPPacketReaderSession(rtpSess)
 	d.RTPPacketWriter = media.NewRTPPacketWriterSession(rtpSess)
 
 	waitCall := func() error {
+		log.Info().Msg("Waiting answer")
 		if err := dialog.WaitAnswer(ctx, opts); err != nil {
 			return err
 		}

@@ -30,8 +30,8 @@ type DialogMedia struct {
 	// DO NOT use IT or mix with reader and writer, unless it is specific case
 	MediaSession *media.MediaSession
 
-	*media.RTPPacketWriter
-	*media.RTPPacketReader
+	RTPPacketWriter *media.RTPPacketWriter
+	RTPPacketReader *media.RTPPacketReader
 }
 
 // Just to satisfy DialogSession interface

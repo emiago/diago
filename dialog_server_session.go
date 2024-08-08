@@ -200,7 +200,7 @@ func (d *DialogServerSession) answerWebrtc(formats sdp.Formats) error {
 	// }
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	remoteTrackCh := make(chan WebrtcTrackRTPReader)
+	remoteTrackCh := make(chan *WebrtcTrackRTPReader)
 
 	// Set a handler for when a new remote track starts, this just distributes all our packets
 	// to connected peers
@@ -217,7 +217,7 @@ func (d *DialogServerSession) answerWebrtc(formats sdp.Formats) error {
 		}
 
 		select {
-		case remoteTrackCh <- wr:
+		case remoteTrackCh <- &wr:
 		case <-ctx.Done():
 			log.Info().Msg("call finished before receiving remote track")
 			return
@@ -336,7 +336,7 @@ func (d *DialogServerSession) answerWebrtc(formats sdp.Formats) error {
 		sender: rtpSender,
 	}
 
-	var ioReader WebrtcTrackRTPReader
+	var ioReader *WebrtcTrackRTPReader
 	select {
 	case <-ctx.Done():
 		return fmt.Errorf("waiting remote failed: %w", ctx.Err())
@@ -348,10 +348,10 @@ func (d *DialogServerSession) answerWebrtc(formats sdp.Formats) error {
 	// 	log.Warn().Msg("Opus is requested but we have no support yet")
 	case webrtc.MimeTypePCMU:
 		log.Info().Msg("Remote track PCMU")
-		d.RTPPacketReader = media.NewRTPPacketReader(&ioReader, media.CodecAudioUlaw)
+		d.RTPPacketReader = media.NewRTPPacketReader(ioReader, media.CodecAudioUlaw)
 	case webrtc.MimeTypePCMA:
 		log.Info().Msg("Remote track PCMA")
-		d.RTPPacketReader = media.NewRTPPacketReader(&ioReader, media.CodecAudioAlaw)
+		d.RTPPacketReader = media.NewRTPPacketReader(ioReader, media.CodecAudioAlaw)
 	// 	d.RTPReader = media.NewRTPReaderCodec(ioReader, media.CodecAudioAlaw)
 	default:
 		log.Warn().Msgf("Media requested is not supported %s", med)
