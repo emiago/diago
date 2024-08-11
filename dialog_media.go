@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httputil"
 	"os"
 	"time"
 
 	"github.com/emiago/diago/audio"
 	"github.com/emiago/media"
+	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -81,7 +83,7 @@ func (d *DialogMedia) PlaybackControlCreate() (PlaybackControl, error) {
 	}
 
 	// Audio is controled via audio reader/writer
-	control := &audio.PlaybackControl{
+	control := &audioControl{
 		Writer: enc,
 	}
 
@@ -122,4 +124,20 @@ func (d *DialogMedia) PlaybackURL(ctx context.Context, urlStr string) error {
 
 	err = p.PlayURL(ctx, urlStr)
 	return err
+}
+
+type loggingTransport struct{}
+
+func (s *loggingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	bytes, _ := httputil.DumpRequestOut(r, false)
+
+	resp, err := http.DefaultTransport.RoundTrip(r)
+	// err is returned after dumping the response
+
+	respBytes, _ := httputil.DumpResponse(resp, false)
+	bytes = append(bytes, respBytes...)
+
+	log.Debug().Msgf("HTTP Debug:\n%s\n", bytes)
+
+	return resp, err
 }
