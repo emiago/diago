@@ -1,13 +1,14 @@
 package diago
 
 import (
-	"github.com/emiago/diago/audio"
+	"io"
+	"sync/atomic"
 )
 
 type PlaybackControl struct {
 	Playback
 
-	control *audio.PlaybackControl
+	control *audioControl
 }
 
 func (p *PlaybackControl) Mute(mute bool) {
@@ -16,4 +17,58 @@ func (p *PlaybackControl) Mute(mute bool) {
 
 func (p *PlaybackControl) Pause() {
 	p.control.Stop()
+}
+
+/*
+	Playback control should provide functionality like Mute Unmute over audio.
+*/
+
+type audioControl struct {
+	Reader io.Reader // MUST be set if usede as reader
+	Writer io.Writer // Must be set if used as writer
+
+	muted atomic.Bool
+	stop  atomic.Bool
+}
+
+func (c *audioControl) Read(b []byte) (n int, err error) {
+	n, err = c.Reader.Read(b)
+	if err != nil {
+		return n, err
+	}
+
+	if c.stop.Load() {
+		return 0, io.EOF
+	}
+
+	if c.muted.Load() {
+		for i := range b[:n] {
+			b[i] = 0
+		}
+	}
+
+	return n, err
+}
+
+func (c *audioControl) Write(b []byte) (n int, err error) {
+	if c.stop.Load() {
+		return 0, io.EOF
+	}
+
+	if c.muted.Load() {
+		for i := range b {
+			b[i] = 0
+		}
+	}
+
+	return c.Writer.Write(b)
+}
+
+func (c *audioControl) Mute(mute bool) {
+	c.muted.Store(mute)
+}
+
+// Stop will stop reader/writer and return io.Eof
+func (c *audioControl) Stop() {
+	c.stop.Store(true)
 }
