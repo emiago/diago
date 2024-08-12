@@ -1,4 +1,4 @@
-// Non public
+// Copyright (C) 2024 Emir Aganovic
 
 package diago
 

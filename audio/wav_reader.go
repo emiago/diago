@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BSD-2-Clause
+// Copyright (C) 2024 Emir Aganovic
+
 package audio
 
 import (
