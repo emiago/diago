@@ -1,15 +1,25 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/emiago/diago)](https://goreportcard.com/report/github.com/emiago/diago)
+![Coverage](https://img.shields.io/badge/coverage-38.1%25-blue)
+[![License](https://img.shields.io/badge/License-BSD_2--Clause-orange.svg)](https://github.com/emiago/sipgo/LICENCE) 
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/emiago/media)
+
+
 # Diago
 
 Short of **dialog + GO**.  
-New framework for building comunication (VOIP) solutions in GO. 
+Framework for building comunication (VOIP) solutions in GO. 
 
-**Library is here shared only partially with some core features. For full version checkout contact section**
+It is providing more developer friendly solution on top of [SIPgo](https://github.com/emiago/sipgo) with **media** stack integrations. 
+
+
+
+**Library is here shared only partially with some core features. If you want to get extended version with more features, support or consulting checkout**  [Support section](#support)**
 
 Stack: 
 - Signaling: SIP
 - Media: RTP/UDP, Webrtc
 
-**NOTE: This API design is not FINAL**
+**NOTE: This API design is WIP and no PRs are accepted, but issues or feature requests are welcome**
 
 # Getting started
 

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/emiago/diago"
-	"github.com/emiago/media"
+	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"

@@ -9,7 +9,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/emiago/media"
+	"github.com/emiago/diago/media"
 	"github.com/stretchr/testify/require"
 )
 

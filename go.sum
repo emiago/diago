@@ -2,8 +2,8 @@ github.com/coreos/go-systemd/v22 v22.5.0/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSV
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/emiago/media v0.1.0 h1:w+TWK/lTfi2A/Jszl6eRXYF7WRY9Ac5R+Quh+Kpom2o=
-github.com/emiago/media v0.1.0/go.mod h1:ZR7F8OydXIBOSFXQwxkMs56fJD3I/KpN/Z+ZOhyaIiY=
+github.com/emiago/media v0.2.0 h1:ZghWP5BJ+YG52qBmedCKtb/Dj1VNek0gTNXBl9Q9Lbs=
+github.com/emiago/media v0.2.0/go.mod h1:phTj1EGDttAaMyKVvR/NG2CTdUVnbIDm5QzdH4nZUsU=
 github.com/emiago/sipgo v0.22.0 h1:GaQ51m26M9QnVBVY2aDJ/mXqq/BDfZ1A+nW7XgU/4Ts=
 github.com/emiago/sipgo v0.22.0/go.mod h1:a77FgPEEjJvfYWYfP3p53u+dNhWEMb/VGVS6guvBzx0=
 github.com/emiago/sipgox v0.8.1 h1:GI3VwLk+2sozyMfp6UjtaFk2TQKplA9yt69OVdgf8Wc=

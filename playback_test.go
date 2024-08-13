@@ -8,13 +8,10 @@ import (
 	"net"
 	"os"
 	"testing"
+	"time"
 
-<<<<<<< HEAD
-	"github.com/emiago/sipgox"
-=======
 	"github.com/emiago/diago/audio"
-	"github.com/emiago/media"
->>>>>>> 7f3053f (fix: moved to media package)
+	"github.com/emiago/diago/media"
 	"github.com/stretchr/testify/require"
 )
 

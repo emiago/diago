@@ -1,0 +1,17 @@
+/astscale
+/dialog
+/goproxy
+/go.work*
+/gophone
+/soundplayer
+/.vscode
+/g711
+/pbx
+/rtp_session*.bck
+/rtp_playout_buffer*
+/MEDIA_QUALITY.md
+/asterisk-sounds-wav
+/audio/pcm_encoder.go
+/testdata
+/rtp_parse_test.go
+/rfc*.txt

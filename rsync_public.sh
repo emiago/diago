@@ -13,6 +13,7 @@ rsync -avR --progress --inplace --delete --dry-run \
     --exclude=$PWD/examples/webrtc \
     --exclude=$PWD/diagomod \
     --exclude='*.md' \
+    --exclude='*.sh' \
     --exclude=$PWD/cmd \
     --exclude='go.work*' \
     $PWD \

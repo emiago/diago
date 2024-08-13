@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/emiago/diago/audio"
-	"github.com/emiago/media"
+	"github.com/emiago/diago/media"
 	"github.com/rs/zerolog/log"
 )
 

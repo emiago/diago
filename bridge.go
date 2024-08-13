@@ -10,7 +10,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/emiago/media"
+	"github.com/emiago/diago/media"
 	"github.com/pion/rtp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"

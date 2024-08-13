@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/emiago/media"
+	"github.com/emiago/diago/media"
 	"github.com/emiago/media/sdp"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"

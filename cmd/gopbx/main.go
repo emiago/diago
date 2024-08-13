@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/emiago/diago"
+	"github.com/emiago/diago/media"
 	"github.com/emiago/diago/testdata"
-	"github.com/emiago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/pion/rtp"

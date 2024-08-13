@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/emiago/media"
+	"github.com/emiago/diago/media"
 	"github.com/emiago/media/sdp"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"

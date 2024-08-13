@@ -11,10 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emiago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/emiago/sipgox"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,21 +51,28 @@ func TestIntegrationDialogMediaPlaybackURL(t *testing.T) {
 
 	{
 		ua, _ := sipgo.NewUA()
-		phone := sipgox.NewPhone(ua, sipgox.WithPhoneListenAddr(
-			sipgox.ListenAddr{
-				Network: "udp",
-				Addr:    "127.0.0.100:5090",
-			},
-		))
-		dialog, err := phone.Dial(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, sipgox.DialOptions{})
+		// phone := sipgox.NewPhone(ua, sipgox.WithPhoneListenAddr(
+		// 	sipgox.ListenAddr{
+		// 		Network: "udp",
+		// 		Addr:    "127.0.0.100:5090",
+		// 	},
+		// ))
+
+		phone := NewDiago(ua, WithTransport(Transport{
+			Transport: "udp",
+			BindHost:  "127.0.0.100",
+			BindPort:  5090,
+		}))
+
+		dialog, err := phone.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, sipgo.AnswerOptions{})
 		require.NoError(t, err)
 		defer dialog.Close()
 
-		rtpReader := media.NewRTPPacketReaderMedia(dialog.MediaSession)
+		rtpReader := dialog.RTPPacketReader
 
 		go func() {
 			defer dialog.Close()
-			time.Sleep(5 * time.Second)
+			time.Sleep(10 * time.Second)
 			dialog.Hangup(ctx)
 		}()
 
