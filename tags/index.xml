@@ -1,12 +1,12 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Diago – Tags</title>
-    <link>https://diago.org/tags/</link>
+    <link>https://emiago.github.io/diago/tags/</link>
     <description>Recent content in Tags on Diago</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     
-	  <atom:link href="https://diago.org/tags/index.xml" rel="self" type="application/rss+xml" />
+	  <atom:link href="https://emiago.github.io/diago/tags/index.xml" rel="self" type="application/rss+xml" />
     
     
       
