@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://diago.org/docs/guide/</loc>
+  </url><url>
+    <loc>https://diago.org/docs/getting_started/</loc>
+  </url><url>
+    <loc>https://diago.org/categories/</loc>
+  </url><url>
+    <loc>https://diago.org/docs/</loc>
+  </url><url>
+    <loc>https://diago.org/tags/</loc>
+  </url><url>
+    <loc>https://diago.org/</loc>
+  </url>
+</urlset>

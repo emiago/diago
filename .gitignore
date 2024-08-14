@@ -1,4 +1,4 @@
-*
-
-!.gitignore
-!README.md
+/README.md
+/diago-site
+*.svg
+*.png
