@@ -31,6 +31,7 @@ const (
 
 type PCMDecoder struct {
 	Source   io.Reader
+	Writer   io.Writer
 	Decoder  func(encoded []byte) (lpcm []byte)
 	buf      []byte
 	lastLPCM []byte
@@ -83,6 +84,30 @@ func (d *PCMDecoder) Read(b []byte) (n int, err error) {
 	return copied, nil
 }
 
+func NewPCMDecoderWriter(codec uint8, writer io.Writer) (*PCMDecoder, error) {
+	d, err := NewPCMDecoder(codec, nil)
+	if err != nil {
+		return nil, err
+	}
+	d.Writer = writer
+	return d, nil
+}
+
+func (d *PCMDecoder) Write(b []byte) (n int, err error) {
+	// TODO avoid this allocation
+	lpcm := d.Decoder(b)
+	nn := 0
+	for nn < len(lpcm) {
+		n, err = d.Writer.Write(lpcm)
+		if err != nil {
+			return 0, err
+		}
+		nn += n
+	}
+
+	return len(b), nil
+}
+
 type PCMEncoder struct {
 	Destination io.Writer
 	Encoder     func(encoded []byte) (lpcm []byte)
@@ -116,8 +141,7 @@ func (d *PCMEncoder) Write(b []byte) (n int, err error) {
 	for nn < len(lpcm) {
 		n, err = d.Destination.Write(lpcm)
 		if err != nil {
-			// return must match n
-			return nn * 2, err
+			return 0, err
 		}
 		nn += n
 	}

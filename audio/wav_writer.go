@@ -14,26 +14,45 @@ type WavWriter struct {
 	NumChans    int
 	AudioFormat int
 
-	W              io.Writer
+	W              io.WriteSeeker
 	headersWritten bool
-	dataSize       int
+	dataSize       int64
 }
 
-func NewWavWriter(w io.Writer, dataSize int) *WavWriter {
+func NewWavWriter(w io.WriteSeeker) *WavWriter {
 	return &WavWriter{
 		SampleRate:  8000,
 		BitDepth:    16,
 		NumChans:    1,
 		AudioFormat: 0,
-		dataSize:    dataSize,
+		dataSize:    0,
+		W:           w,
 	}
 }
 
 func (ww *WavWriter) Write(audio []byte) (int, error) {
+	n, err := ww.writeData(audio)
+	ww.dataSize += int64(n)
+	return n, err
+}
+
+func (ww *WavWriter) writeData(audio []byte) (int, error) {
+	w := ww.W
 	if ww.headersWritten {
-		return ww.W.Write(audio)
+		return w.Write(audio)
 	}
 
+	_, err := ww.writeHeader()
+	if err != nil {
+		return 0, err
+	}
+	ww.headersWritten = true
+
+	n, err := w.Write(audio)
+	return n, err
+}
+
+func (ww *WavWriter) writeHeader() (int, error) {
 	w := ww.W
 	// WAV header constants
 	const (
@@ -69,12 +88,19 @@ func (ww *WavWriter) Write(audio []byte) (int, error) {
 	binary.LittleEndian.PutUint32(header[40:44], uint32(ww.dataSize))
 
 	// Combine header and audio payload
-	n, err := w.Write(header)
-	if err != nil {
-		return 0, err
-	}
-	ww.headersWritten = true
+	return w.Write(header)
+}
 
-	nn, err := w.Write(audio)
-	return n + nn, err
+func (ww *WavWriter) Close() error {
+	// It is needed to finalize and update wav
+	_, err := ww.W.Seek(0, 0)
+	if err != nil {
+		return err
+	}
+	// Update header.
+	_, err = ww.writeHeader()
+	if err != nil {
+		return err
+	}
+	return err
 }
