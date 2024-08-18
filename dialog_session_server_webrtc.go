@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/emiago/diago/media"
-	"github.com/emiago/media/sdp"
+	"github.com/emiago/diago/media/sdp"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
@@ -342,11 +342,13 @@ func (d *DialogServerSession) answerWebrtc(formats sdp.Formats) error {
 		return fmt.Errorf("Media remote track is not supported")
 	}
 
+	d.DialogMedia.mu.Lock()
 	// For compatibility reasons we are creating media session, to be able to read things like SDP formats
 	d.MediaSession = &media.MediaSession{
 		Formats: sdp.NewFormats(sdp.FORMAT_TYPE_ULAW),
 	}
 	// d.RTPPacketReader = media.NewRTPPacketReader(&ioReader, media.CodecAudioUlaw)
 	d.RTPPacketWriter = media.NewRTPPacketWriter(writer, codec)
+	d.DialogMedia.mu.Unlock()
 	return nil
 }

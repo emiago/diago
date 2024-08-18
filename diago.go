@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/emiago/diago/media"
-	"github.com/emiago/media/sdp"
+	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/emiago/sipgox"
@@ -161,6 +161,21 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	server := dg.server
 	server.OnInvite(func(req *sip.Request, tx sip.ServerTransaction) {
 		// What if multiple server transports?
+		id, err := sip.UASReadRequestDialogID(req)
+		if err == nil {
+			// No Error means we have ID
+			val, ok := DialogsServerCache.Load(id)
+			if !ok {
+				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotFound, "Dialog does not exists", nil))
+				return
+			}
+
+			dg := val.(*DialogServerSession)
+
+			// This is reinvite
+			dg.reinvite(req, tx)
+			return
+		}
 
 		dialogUA := sipgo.DialogUA{
 			Client:     dg.client,
@@ -173,7 +188,8 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			return
 		}
 
-		// Cache dialog
+		// Check is this dialog in cache
+		DialogsServerCache.Load(dialog.ID)
 
 		// if dialog.LoadState() == sip.DialogStateConfirmed {
 		// 	// This is probably REINVITE for media path update
@@ -226,7 +242,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 
 		if err := d.ReadAck(req, tx); err != nil {
 			dg.log.Error().Err(err).Msg("ACK finished with error")
-			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+			// Do not respond bad request as client will DOS on any non 2xx response
 			return
 		}
 	})
@@ -314,9 +330,19 @@ func (dg *Diago) ServeBackground(ctx context.Context, f ServeDialogFunc) error {
 	}
 }
 
-// Invite makes outgoing call leg.
+type InviteOptions struct {
+	OnResponse func(res *sip.Response) error
+
+	// For digest authentication
+	Username string
+	Password string
+
+	Headers []sip.Header
+}
+
+// Invite makes outgoing call leg and waits for answer.
 // If you want to bridge call then use helper InviteBridge
-func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
+func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts InviteOptions) (d *DialogClientSession, err error) {
 	return dg.InviteBridge(ctx, recipient, nil, opts)
 }
 
@@ -326,7 +352,7 @@ func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts sipgo.Answe
 // When bridge is provided then this call will be bridged with any participant already present in bridge
 // TODO:
 // - transcoding will not be allowed -> error will be returned
-func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
+func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts InviteOptions) (d *DialogClientSession, err error) {
 	transport := "udp"
 	if recipient.UriParams != nil {
 		if t := recipient.UriParams["transport"]; t != "" {
@@ -352,9 +378,7 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 	}
 	sess.Formats = dg.mediaConf.Formats
 
-	dialHDRS := []sip.Header{
-		sip.NewHeader("Content-Type", "application/sdp"),
-	}
+	dialHDRS := append(opts.Headers, sip.NewHeader("Content-Type", "application/sdp"))
 
 	// Are we bridging?
 	if bridge != nil {
@@ -433,13 +457,21 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 	}
 
 	// Set media Session
+	d.DialogMedia.mu.Lock()
 	d.MediaSession = sess
 	d.RTPPacketReader = media.NewRTPPacketReaderSession(rtpSess)
 	d.RTPPacketWriter = media.NewRTPPacketWriterSession(rtpSess)
+	d.DialogMedia.mu.Unlock()
 
 	waitCall := func() error {
 		log.Info().Msg("Waiting answer")
-		if err := dialog.WaitAnswer(ctx, opts); err != nil {
+		answO := sipgo.AnswerOptions{
+			Username:   opts.Username,
+			Password:   opts.Password,
+			OnResponse: opts.OnResponse,
+		}
+
+		if err := dialog.WaitAnswer(ctx, answO); err != nil {
 			return err
 		}
 

@@ -22,7 +22,7 @@ func TestIntegrationStreamWAV(t *testing.T) {
 	require.NoError(t, err)
 	defer sess.Close()
 
-	rtpWriter := media.NewRTPPacketWriterMedia(sess)
+	rtpWriter := media.NewRTPPacketWriter(sess, media.CodecFromSession(sess))
 	sess.Raddr = &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
 	udpDump, err := net.ListenUDP("udp4", sess.Raddr)
@@ -45,7 +45,7 @@ func TestIntegrationPlaybackStreamWAV(t *testing.T) {
 	require.NoError(t, err)
 	defer sess.Close()
 
-	rtpWriter := media.NewRTPPacketWriterMedia(sess)
+	rtpWriter := media.NewRTPPacketWriter(sess, media.CodecFromSession(sess))
 	sess.Raddr = &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
 	enc, err := audio.NewPCMEncoder(rtpWriter.PayloadType, rtpWriter)

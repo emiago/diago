@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emiago/media/sdp"
+	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/fakes"
 	"github.com/pion/rtcp"
 	"github.com/rs/zerolog/log"

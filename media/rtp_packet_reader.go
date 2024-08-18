@@ -32,9 +32,11 @@ type RTPCReaderRaw interface {
 
 // RTPPacketReader reads RTP packet and extracts payload and header
 type RTPPacketReader struct {
-	Sess       *MediaSession
-	RTPSession *RTPSession
-	Reader     RTPReader
+	mu sync.RWMutex
+
+	Sess       *MediaSession // TODO remove this
+	RTPSession *RTPSession   // TODO remove this
+	reader     RTPReader
 
 	// Deprecated
 	//
@@ -59,14 +61,14 @@ type RTPPacketReader struct {
 func NewRTPPacketReaderSession(sess *RTPSession) *RTPPacketReader {
 	r := NewRTPPacketReaderMedia(sess.Sess)
 	r.RTPSession = sess
-	r.Reader = sess
+	r.reader = sess
 	return r
 }
 
 // NewRTPWriterMedia is left for backward compability. It does not add RTCP reporting
 // It talks directly to network
 func NewRTPPacketReaderMedia(sess *MediaSession) *RTPPacketReader {
-	codec := codecFromSession(sess)
+	codec := CodecFromSession(sess)
 
 	// w := RTPReader{
 	// 	Sess:        sess,
@@ -84,7 +86,7 @@ func NewRTPPacketReaderMedia(sess *MediaSession) *RTPPacketReader {
 
 func NewRTPPacketReader(reader RTPReader, codec Codec) *RTPPacketReader {
 	w := RTPPacketReader{
-		Reader:      reader,
+		reader:      reader,
 		PayloadType: codec.PayloadType,
 		OnRTP:       func(pkt *rtp.Packet) {},
 
@@ -120,7 +122,12 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 
 	pkt := rtp.Packet{}
 
-	if err := r.Reader.ReadRTP(buf, &pkt); err != nil {
+	r.mu.RLock()
+	pt := r.PayloadType
+	reader := r.reader
+	r.mu.RUnlock()
+
+	if err := reader.ReadRTP(buf, &pkt); err != nil {
 		// For now underhood IO should only net closed
 		// Here we are returning EOF to be io package compatilble
 		// like with func io.ReadAll
@@ -156,8 +163,8 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 
 	// }
 
-	if r.PayloadType != pkt.PayloadType {
-		return 0, fmt.Errorf("payload type does not match. expected=%d, actual=%d", r.PayloadType, pkt.PayloadType)
+	if pt != pkt.PayloadType {
+		return 0, fmt.Errorf("payload type does not match. expected=%d, actual=%d", pt, pkt.PayloadType)
 	}
 
 	// If we are tracking this source, do check are we keep getting pkts in sequence
@@ -198,30 +205,17 @@ func (r *RTPPacketReader) readPayload(b []byte, payload []byte) int {
 	return n
 }
 
-// Experimental
-//
-// RTPPacketReaderConcurent allows updating RTPSession on RTPWriter and more (in case of regonation)
-type RTPPacketReaderConcurent struct {
-	*RTPPacketReader
-	mu sync.Mutex
+func (r *RTPPacketReader) Reader() RTPReader {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.reader
 }
 
-func (r *RTPPacketReaderConcurent) Read(b []byte) (int, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.RTPPacketReader.Read(b)
-}
-
-func (r *RTPPacketReaderConcurent) SetRTPSession(rtpSess *RTPSession) {
-	codec := codecFromSession(rtpSess.Sess)
+func (r *RTPPacketReader) UpdateRTPSession(rtpSess *RTPSession) {
+	codec := CodecFromSession(rtpSess.Sess)
 	r.mu.Lock()
 	r.RTPSession = rtpSess
 	r.PayloadType = codec.PayloadType
-	r.mu.Unlock()
-}
-
-func (r *RTPPacketReaderConcurent) SetRTPReader(rtpReader *RTPPacketReader) {
-	r.mu.Lock()
-	r.RTPPacketReader = rtpReader
+	r.reader = rtpSess
 	r.mu.Unlock()
 }

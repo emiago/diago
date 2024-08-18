@@ -79,10 +79,10 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 	// TODO find better distiction
 	if dlg1.Media().RTPPacketReader.Sess == nil || dlg2.Media().RTPPacketReader.Sess == nil {
 		b.log.Info().Msg("Starting proxy media no session")
-		r1 := dlg1.Media().RTPPacketReader.Reader.(media.RTPReaderRaw)
-		r2 := dlg2.Media().RTPPacketReader.Reader.(media.RTPReaderRaw)
-		w1 := dlg1.Media().RTPPacketWriter.Writer.(media.RTPWriterRaw)
-		w2 := dlg2.Media().RTPPacketWriter.Writer.(media.RTPWriterRaw)
+		r1 := dlg1.Media().RTPPacketReader.Reader().(media.RTPReaderRaw)
+		r2 := dlg2.Media().RTPPacketReader.Reader().(media.RTPReaderRaw)
+		w1 := dlg1.Media().RTPPacketWriter.Writer().(media.RTPWriterRaw)
+		w2 := dlg2.Media().RTPPacketWriter.Writer().(media.RTPWriterRaw)
 
 		go b.proxyMediaRTPRaw(r1, w2)
 		go b.proxyMediaRTPRaw(r2, w1)

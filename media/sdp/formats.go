@@ -3,7 +3,10 @@
 
 package sdp
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 const (
 	FORMAT_TYPE_ULAW            = "0"
@@ -29,6 +32,22 @@ func (fmts Formats) ToNumeric() (nfmts []int, err error) {
 		}
 	}
 	return nfmt, nil
+}
+
+func (fmts Formats) String() string {
+	out := make([]string, len(fmts))
+	for i, v := range fmts {
+		switch v {
+		case "0":
+			out[i] = "0(ulaw)"
+		case "8":
+			out[i] = "8(alaw)"
+		default:
+			// Unknown then just use as number
+			out[i] = v
+		}
+	}
+	return strings.Join(out, ",")
 }
 
 // Only valid for RTP/AVP formats

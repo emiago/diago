@@ -9,7 +9,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/emiago/media/sdp"
+	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/fakes"
 	"github.com/pion/rtp"
 	"github.com/rs/zerolog/log"

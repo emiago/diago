@@ -64,7 +64,7 @@ func TestIntegrationDialogMediaPlaybackURL(t *testing.T) {
 			BindPort:  5090,
 		}))
 
-		dialog, err := phone.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, sipgo.AnswerOptions{})
+		dialog, err := phone.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
 		require.NoError(t, err)
 		defer dialog.Close()
 

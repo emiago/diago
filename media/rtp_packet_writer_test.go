@@ -8,9 +8,11 @@ import (
 	"io"
 	"net"
 	"testing"
+	"time"
 
-	"github.com/emiago/media/sdp"
+	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/fakes"
+	"github.com/pion/rtp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,4 +55,33 @@ func TestRTPWriter(t *testing.T) {
 		require.Equal(t, i == 0, pkt.Marker)
 		require.Equal(t, len(payload), len(pkt.Payload))
 	}
+}
+
+func BenchmarkRTPPacketWriter(b *testing.B) {
+	reader, writer := io.Pipe()
+	session := fakeMediaSessionWriter(0, 1234, writer)
+	rtpSess := NewRTPSession(session)
+	w := NewRTPPacketWriterSession(rtpSess)
+	w.clockTicker.Reset(1 * time.Nanosecond)
+
+	go func() {
+		io.ReadAll(reader)
+	}()
+
+	pkt := rtp.Packet{
+		Payload: make([]byte, 160),
+	}
+	data, err := pkt.Marshal()
+	if err != nil {
+		return
+	}
+
+	for i := 0; i < b.N; i++ {
+		_, err := w.Write(data)
+		if err != nil {
+			b.Error(err)
+		}
+	}
+
+	b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "writes/s")
 }

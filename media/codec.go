@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/emiago/media/sdp"
+	"github.com/emiago/diago/media/sdp"
 	"github.com/rs/zerolog/log"
 )
 
@@ -26,7 +26,7 @@ func (c *Codec) SampleTimestamp() uint32 {
 	return uint32(float64(c.SampleRate) * c.SampleDur.Seconds())
 }
 
-func codecFromSession(s *MediaSession) Codec {
+func CodecFromSession(s *MediaSession) Codec {
 	f := s.Formats[0]
 	c := Codec{
 		PayloadType: sdp.FormatNumeric(f),

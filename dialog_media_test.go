@@ -19,7 +19,7 @@ func TestIntegrationDialogMediaPlaybackFile(t *testing.T) {
 	defer sess.Close()
 
 	// TODO have RTPSession
-	rtpWriter := media.NewRTPPacketWriterMedia(sess)
+	rtpWriter := media.NewRTPPacketWriter(sess, media.CodecFromSession(sess))
 	sess.Raddr = &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
 	dialog := DialogMedia{

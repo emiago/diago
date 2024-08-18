@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/emiago/diago/audio"
@@ -32,6 +33,7 @@ func init() {
 
 // DialogMedia is io.ReaderWriter for RTP. By default it exposes RTP Read and Write.
 type DialogMedia struct {
+	mu sync.Mutex
 	// DO NOT use IT or mix with reader and writer, unless it is specific case
 	MediaSession *media.MediaSession
 
@@ -39,8 +41,10 @@ type DialogMedia struct {
 	RTPPacketReader *media.RTPPacketReader
 }
 
-// Just to satisfy DialogSession interface
+// DialogSession interface
 func (d *DialogMedia) Media() *DialogMedia {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	return d
 }
 
@@ -102,7 +106,8 @@ func (d *DialogMedia) PlaybackControlCreate() (PlaybackControl, error) {
 }
 
 func (d *DialogMedia) PlaybackFile(ctx context.Context, filename string) error {
-	if d.RTPPacketWriter == nil {
+	m := d.Media()
+	if m.RTPPacketWriter == nil {
 		return fmt.Errorf("call not answered")
 	}
 
@@ -116,7 +121,8 @@ func (d *DialogMedia) PlaybackFile(ctx context.Context, filename string) error {
 }
 
 func (d *DialogMedia) PlaybackURL(ctx context.Context, urlStr string) error {
-	if d.RTPPacketWriter == nil {
+	m := d.Media()
+	if m.RTPPacketWriter == nil {
 		return fmt.Errorf("call not answered")
 	}
 

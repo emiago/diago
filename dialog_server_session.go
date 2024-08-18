@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/emiago/diago/media"
-	"github.com/emiago/media/sdp"
+	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/pion/webrtc/v3"
+	"github.com/rs/zerolog/log"
 )
 
 // DialogServerSession represents inbound channel
@@ -121,10 +122,13 @@ func (d *DialogServerSession) AnswerWithMedia(rtpSess *media.RTPSession) error {
 		return err
 	}
 
+	d.DialogMedia.mu.Lock()
 	d.MediaSession = sess
 	rtpSess.MonitorBackground()
 	d.RTPPacketReader = media.NewRTPPacketReaderSession(rtpSess)
 	d.RTPPacketWriter = media.NewRTPPacketWriterSession(rtpSess)
+	d.DialogMedia.mu.Unlock()
+
 	if err := d.RespondSDP(sess.LocalSDP()); err != nil {
 		return err
 	}
@@ -145,4 +149,34 @@ func (d *DialogServerSession) AnswerWithMedia(rtpSess *media.RTPSession) error {
 
 func (d *DialogServerSession) Hangup(ctx context.Context) error {
 	return d.Bye(ctx)
+}
+
+func (d *DialogServerSession) reinvite(req *sip.Request, tx sip.ServerTransaction) {
+	if err := d.ReadRequest(req, tx); err != nil {
+		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+		return
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	msess := d.MediaSession.Fork()
+	if err := msess.RemoteSDP(req.Body()); err != nil {
+		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "SDP applying failed", nil))
+		return
+	}
+
+	d.MediaSession = msess
+
+	log.Info().
+		Str("formats", msess.Formats.String()).
+		Str("localAddr", msess.Laddr.String()).
+		Str("remoteAddr", msess.Raddr.String()).
+		Msg("Media/RTP session updated")
+
+	rtpSess := media.NewRTPSession(msess)
+	d.RTPPacketReader.UpdateRTPSession(rtpSess)
+	d.RTPPacketWriter.UpdateRTPSession(rtpSess)
+	rtpSess.MonitorBackground()
+
+	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusOK, "OK", nil))
 }

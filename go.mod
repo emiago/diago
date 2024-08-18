@@ -4,7 +4,7 @@ go 1.22.1
 
 require (
 	github.com/emiago/media v0.2.0
-	github.com/emiago/sipgo v0.22.0
+	github.com/emiago/sipgo v0.22.2-0.20240803100330-cdeb0ceb3a95
 	github.com/emiago/sipgox v0.8.1
 	github.com/go-audio/riff v1.0.0
 	github.com/go-audio/wav v1.1.0
@@ -24,6 +24,7 @@ require (
 	github.com/gobwas/ws v1.3.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/icholy/digest v0.1.22 // indirect
+	github.com/mattetti/filebuffer v1.0.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/pion/datachannel v1.5.8 // indirect
