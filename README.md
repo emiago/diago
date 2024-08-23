@@ -12,7 +12,6 @@ Framework for building comunication (VOIP) solutions in GO.
 It is providing more developer friendly solution on top of [SIPgo](https://github.com/emiago/sipgo) with **media** stack integrations. 
 
 
-
 **Library is here shared only partially with some core features. If you want to get extended version with more features, support or consulting checkout**  [Support section](#support)**
 
 Stack: 
@@ -20,6 +19,14 @@ Stack:
 - Media: RTP/UDP, Webrtc
 
 **NOTE: This API design is WIP and no PRs are accepted, but issues or feature requests are welcome**
+
+# Why it exists
+
+Due to experience development of VOIP services is slow or it was full workarrounds. Lot of this needs to be maintained or extended in low level languages  or as alternative you need to build services arround frameworks like Asterisk. Of course second approach adds scalling problem. 
+Nowdays also there is requirement to also deal more closely with media(audio) so the more abstractions you have, maintance and arhitecture becomes complext.
+
+Diago is build with GO language and we are keeping well optimized sip and media stack to have performance and low GC latency. Major win is Go offers fast development speed and memory safety.
+
 
 # Getting started
 

@@ -16,6 +16,11 @@ var (
 	DialogsServerCache = sync.Map{}
 )
 
+type DialogData struct {
+	InviteRequest sip.Request
+	State         sip.DialogState
+}
+
 func MatchDialogClient(req *sip.Request) (*DialogClientSession, error) {
 	id, err := sip.UACReadRequestDialogID(req)
 	if err != nil {

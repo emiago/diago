@@ -32,6 +32,8 @@ func TestMain(m *testing.M) {
 		TimeFormat: time.StampMicro,
 	}).With().Timestamp().Logger().Level(lev)
 
+	sip.SIPDebug = os.Getenv("SIP_DEBUG") != ""
+
 	m.Run()
 }
 
@@ -195,4 +197,88 @@ func TestIntegrationBridging(t *testing.T) {
 		time.Sleep(1 * time.Second)
 		dialog.Hangup(ctx)
 	}
+}
+
+func TestDialogClientReinvite(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	{
+		ua, _ := sipgo.NewUA(sipgo.WithUserAgent("server"))
+		dg := NewDiago(ua, WithTransport(
+			Transport{
+				Transport: "udp",
+				BindHost:  "127.0.0.1",
+				BindPort:  15060,
+			},
+		))
+		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+			t.Log("Call received")
+			d.Answer()
+			<-d.Context().Done()
+		})
+		require.NoError(t, err)
+	}
+
+	ua, _ := sipgo.NewUA()
+	dg := NewDiago(ua)
+
+	dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15060}, InviteOptions{})
+	require.NoError(t, err)
+
+	err = dialog.ReInvite(ctx)
+	require.NoError(t, err)
+
+	dialog.Hangup(ctx)
+}
+
+func TestDialogServerReinvite(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	{
+		ua, _ := sipgo.NewUA(sipgo.WithUserAgent("server"))
+		dg := NewDiago(ua, WithTransport(
+			Transport{
+				Transport: "udp",
+				BindHost:  "127.0.0.1",
+				BindPort:  15070,
+			},
+		))
+
+		// Run listener to accepte reinvites, but it should not receive any request
+		err := dg.ServeBackground(ctx, nil)
+		require.NoError(t, err)
+
+		go func() {
+			dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15060}, InviteOptions{})
+			require.NoError(t, err)
+			<-dialog.Context().Done()
+		}()
+	}
+
+	ua, _ := sipgo.NewUA()
+	dg := NewDiago(ua, WithTransport(
+		Transport{
+			Transport: "udp",
+			BindHost:  "127.0.0.1",
+			BindPort:  15060,
+		},
+	))
+
+	waitDialog := make(chan *DialogServerSession)
+	err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+		t.Log("Call received")
+		waitDialog <- d
+		<-d.Context().Done()
+	})
+	require.NoError(t, err)
+	d := <-waitDialog
+
+	err = d.Answer()
+	require.NoError(t, err)
+	err = d.ReInvite(d.Context())
+	require.NoError(t, err)
+
+	d.Hangup(context.TODO())
 }

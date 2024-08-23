@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/emiago/diago/audio"
@@ -32,32 +31,44 @@ func init() {
 }
 
 // DialogMedia is io.ReaderWriter for RTP. By default it exposes RTP Read and Write.
+// Not thread safe and must be protected by lock
 type DialogMedia struct {
-	mu sync.Mutex
-	// DO NOT use IT or mix with reader and writer, unless it is specific case
-	MediaSession *media.MediaSession
+	// media session is RTP local and remote
+	// it is forked on media changes and updated on writer and reader
+	// must be mutex protected
+	mediaSession *media.MediaSession
 
 	RTPPacketWriter *media.RTPPacketWriter
 	RTPPacketReader *media.RTPPacketReader
 }
 
-// DialogSession interface
-func (d *DialogMedia) Media() *DialogMedia {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return d
+// Must be protected with lock
+func (d *DialogMedia) sdpReInvite(sdp []byte) error {
+	msess := d.mediaSession.Fork()
+	if err := msess.RemoteSDP(sdp); err != nil {
+		log.Error().Err(err).Msg("reinvite media remote SDP applying failed")
+		return fmt.Errorf("Malformed SDP")
+	}
+
+	d.mediaSession = msess
+
+	rtpSess := media.NewRTPSession(msess)
+	d.RTPPacketReader.UpdateRTPSession(rtpSess)
+	d.RTPPacketWriter.UpdateRTPSession(rtpSess)
+	rtpSess.MonitorBackground()
+
+	log.Info().
+		Str("formats", msess.Formats.String()).
+		Str("localAddr", msess.Laddr.String()).
+		Str("remoteAddr", msess.Raddr.String()).
+		Msg("Media/RTP session updated")
+	return nil
 }
 
-// MediaPCMDecoder wraps RTP reader and decodes current codec to PCM
-// You can think it as translator.
-// PCMDecoder is just io.Reader and it returns payload as decoded. Consider that size of PCM payloads will be bigger
-// func (d *DialogMedia) PCMDecoder() (*audio.PCMDecoder, error) {
-// 	return audio.NewPCMDecoder(d.RTPPacketReader.PayloadType, d.RTPPacketReader)
-// }
-
-// func (d *DialogMedia) PCMEncoder() (*audio.PCMEncoder, error) {
-// 	return audio.NewPCMEncoder(d.RTPPacketWriter.PayloadType, d.RTPPacketWriter)
-// }
+// DialogSession interface
+func (d *DialogMedia) Media() *DialogMedia {
+	return d
+}
 
 func (d *DialogMedia) PlaybackCreate() (Playback, error) {
 	// NOTE we should avoid returning pointers for any IN dialplan to avoid heap

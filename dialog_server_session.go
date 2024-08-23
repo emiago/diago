@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/emiago/diago/media"
@@ -14,12 +15,16 @@ import (
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/pion/webrtc/v3"
-	"github.com/rs/zerolog/log"
 )
 
 // DialogServerSession represents inbound channel
 type DialogServerSession struct {
 	*sipgo.DialogServerSession
+
+	mu sync.Mutex
+	// lastInvite is actual last invite sent by remote REINVITE
+	// We do not use sipgo as this needs mutex but also keeping original invite
+	lastInvite *sip.Request
 
 	// MediaSession *media.MediaSession
 	DialogMedia
@@ -35,8 +40,8 @@ func (d *DialogServerSession) Id() string {
 }
 
 func (d *DialogServerSession) Close() {
-	if d.MediaSession != nil {
-		d.MediaSession.Close()
+	if d.mediaSession != nil {
+		d.mediaSession.Close()
 	}
 
 	if d.webrtPeer != nil {
@@ -65,6 +70,16 @@ func (d *DialogServerSession) Ringing() error {
 
 func (d *DialogServerSession) DialogSIP() *sipgo.Dialog {
 	return &d.Dialog
+}
+
+func (d *DialogServerSession) RemoteContact() *sip.ContactHeader {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.lastInvite != nil {
+		return d.lastInvite.Contact()
+	}
+	return d.InviteRequest.Contact()
 }
 
 func (d *DialogServerSession) Respond(statusCode sip.StatusCode, reason string, body []byte, headers ...sip.Header) error {
@@ -122,12 +137,12 @@ func (d *DialogServerSession) AnswerWithMedia(rtpSess *media.RTPSession) error {
 		return err
 	}
 
-	d.DialogMedia.mu.Lock()
-	d.MediaSession = sess
+	d.mu.Lock()
+	d.mediaSession = sess
 	rtpSess.MonitorBackground()
 	d.RTPPacketReader = media.NewRTPPacketReaderSession(rtpSess)
 	d.RTPPacketWriter = media.NewRTPPacketWriterSession(rtpSess)
-	d.DialogMedia.mu.Unlock()
+	d.mu.Unlock()
 
 	if err := d.RespondSDP(sess.LocalSDP()); err != nil {
 		return err
@@ -151,7 +166,26 @@ func (d *DialogServerSession) Hangup(ctx context.Context) error {
 	return d.Bye(ctx)
 }
 
-func (d *DialogServerSession) reinvite(req *sip.Request, tx sip.ServerTransaction) {
+func (d *DialogServerSession) ReInvite(ctx context.Context) error {
+	sdp := d.mediaSession.LocalSDP()
+	contact := d.RemoteContact()
+	req := sip.NewRequest(sip.INVITE, contact.Address)
+	req.SetBody(sdp)
+
+	res, err := d.Do(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if !res.IsSuccess() {
+		return sipgo.ErrDialogResponse{
+			Res: res,
+		}
+	}
+	return nil
+}
+
+func (d *DialogServerSession) handleReInvite(req *sip.Request, tx sip.ServerTransaction) {
 	if err := d.ReadRequest(req, tx); err != nil {
 		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
 		return
@@ -159,24 +193,12 @@ func (d *DialogServerSession) reinvite(req *sip.Request, tx sip.ServerTransactio
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	msess := d.MediaSession.Fork()
-	if err := msess.RemoteSDP(req.Body()); err != nil {
-		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "SDP applying failed", nil))
+	d.lastInvite = req
+
+	if err := d.sdpReInvite(req.Body()); err != nil {
+		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestTerminated, err.Error(), nil))
 		return
 	}
-
-	d.MediaSession = msess
-
-	log.Info().
-		Str("formats", msess.Formats.String()).
-		Str("localAddr", msess.Laddr.String()).
-		Str("remoteAddr", msess.Raddr.String()).
-		Msg("Media/RTP session updated")
-
-	rtpSess := media.NewRTPSession(msess)
-	d.RTPPacketReader.UpdateRTPSession(rtpSess)
-	d.RTPPacketWriter.UpdateRTPSession(rtpSess)
-	rtpSess.MonitorBackground()
 
 	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusOK, "OK", nil))
 }

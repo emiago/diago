@@ -146,9 +146,11 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 
 	if len(dg.transports) == 0 {
 		dg.transports = append(dg.transports, Transport{
-			Transport: "udp",
-			BindHost:  "127.0.0.1",
-			BindPort:  5060,
+			Transport:    "udp",
+			BindHost:     "127.0.0.1",
+			BindPort:     5060,
+			ExternalHost: "127.0.0.1",
+			ExternalPort: 5060,
 		})
 	}
 
@@ -163,20 +165,11 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		// What if multiple server transports?
 		id, err := sip.UASReadRequestDialogID(req)
 		if err == nil {
-			// No Error means we have ID
-			val, ok := DialogsServerCache.Load(id)
-			if !ok {
-				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotFound, "Dialog does not exists", nil))
-				return
-			}
-
-			dg := val.(*DialogServerSession)
-
-			// This is reinvite
-			dg.reinvite(req, tx)
+			dg.handleReInvite(req, tx, id)
 			return
 		}
 
+		// Proceed as new call
 		dialogUA := sipgo.DialogUA{
 			Client:     dg.client,
 			ContactHDR: contactHDR,
@@ -207,7 +200,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			// contactHDR: dg.getContactHDR(req.Transport()),
 			// formats:    dg.mediaConf.Formats,
 		}
-		dg.InitServerSession(dWrap)
+		dg.initServerSession(dWrap)
 		defer dWrap.Close()
 
 		DialogsServerCache.Store(dWrap.ID, dWrap)
@@ -235,8 +228,23 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	server.OnAck(func(req *sip.Request, tx sip.ServerTransaction) {
 		d, err := MatchDialogServer(req)
 		if err != nil {
-			// Security? When to answer this?
-			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+			// if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
+			// 	_, err := MatchDialogClient(req)
+			// 	if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
+			// 		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
+			// 		return
+			// 	}
+
+			// 	if err != nil {
+			// 		// Security? When to answer this?
+			// 		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+			// 		return
+			// 	}
+			// 	return
+			// }
+
+			// Normally ACK will be received if some out of dialog request is received or we responded negatively
+			// tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
 			return
 		}
 
@@ -284,7 +292,33 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	return dg
 }
 
-func (dg *Diago) InitServerSession(d *DialogServerSession) {
+func (dg *Diago) handleReInvite(req *sip.Request, tx sip.ServerTransaction, id string) {
+	// No Error means we have ID
+	val, ok := DialogsServerCache.Load(id)
+	if !ok {
+		id, err := sip.UACReadRequestDialogID(req)
+		if err != nil {
+			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil))
+			return
+
+		}
+		// No Error means we have ID
+		val, ok := DialogsClientCache.Load(id)
+		if !ok {
+			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, "Call/Transaction Does Not Exist", nil))
+			return
+		}
+
+		s := val.(*DialogClientSession)
+		s.handleReInvite(req, tx)
+		return
+	}
+
+	s := val.(*DialogServerSession)
+	s.handleReInvite(req, tx)
+}
+
+func (dg *Diago) initServerSession(d *DialogServerSession) {
 	d.contactHDR = dg.getContactHDR(d.InviteRequest.Transport())
 	d.formats = dg.mediaConf.Formats
 }
@@ -457,11 +491,11 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 	}
 
 	// Set media Session
-	d.DialogMedia.mu.Lock()
-	d.MediaSession = sess
+	d.mu.Lock()
+	d.mediaSession = sess
 	d.RTPPacketReader = media.NewRTPPacketReaderSession(rtpSess)
 	d.RTPPacketWriter = media.NewRTPPacketWriterSession(rtpSess)
-	d.DialogMedia.mu.Unlock()
+	d.mu.Unlock()
 
 	waitCall := func() error {
 		log.Info().Msg("Waiting answer")
