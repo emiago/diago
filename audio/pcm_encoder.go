@@ -84,6 +84,15 @@ func (d *PCMDecoder) Read(b []byte) (n int, err error) {
 	return copied, nil
 }
 
+func NewPCMDecoderReader(codec uint8, reader io.Reader) (*PCMDecoder, error) {
+	d, err := NewPCMDecoder(codec, nil)
+	if err != nil {
+		return nil, err
+	}
+	d.Source = reader
+	return d, nil
+}
+
 func NewPCMDecoderWriter(codec uint8, writer io.Writer) (*PCMDecoder, error) {
 	d, err := NewPCMDecoder(codec, nil)
 	if err != nil {
