@@ -46,6 +46,7 @@ type MediaSession struct {
 
 	// SDP stuff
 	// Depending of negotiation this can change.
+	// Formats will always try to match remote, to avoid different codec matching
 	Formats sdp.Formats
 	Mode    sdp.Mode
 
@@ -137,11 +138,11 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	raddr := &net.UDPAddr{IP: ci.IP, Port: md.Port}
 	s.SetRemoteAddr(raddr)
 
-	s.updateFormats(md.Formats)
+	s.updateRemoteFormats(md.Formats)
 	return nil
 }
 
-func (s *MediaSession) updateFormats(formats sdp.Formats) {
+func (s *MediaSession) updateRemoteFormats(formats sdp.Formats) {
 	// Check remote vs local
 	if len(s.Formats) > 0 {
 		filter := make([]string, 0, cap(formats))

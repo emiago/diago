@@ -40,7 +40,8 @@ func TestIntegrationDialogMediaPlaybackURL(t *testing.T) {
 		in.Answer()
 		t.Log("Playing url ", urlStr)
 		ctx := in.Context()
-		if err := in.PlaybackURL(ctx, urlStr); err != nil {
+		pb, _ := in.PlaybackCreate()
+		if err := pb.PlayURL(ctx, urlStr); err != nil {
 			t.Error(err)
 		}
 

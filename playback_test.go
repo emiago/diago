@@ -51,11 +51,11 @@ func TestIntegrationPlaybackStreamWAV(t *testing.T) {
 	enc, err := audio.NewPCMEncoder(rtpWriter.PayloadType, rtpWriter)
 	require.NoError(t, err)
 
-	p := Playback{
-		writer:     enc,
+	codec := media.Codec{
 		SampleRate: rtpWriter.SampleRate,
 		SampleDur:  20 * time.Millisecond,
 	}
+	p := NewPlayback(enc, codec)
 
 	udpDump, err := net.ListenUDP("udp4", sess.Raddr)
 	require.NoError(t, err)

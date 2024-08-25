@@ -4,8 +4,8 @@
 package diago
 
 import (
-	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -23,69 +23,107 @@ type Recording struct {
 	// Is id of recording
 	ID string
 
-	// MonitorWriter is monitoring writer stream
-	MonitorWriter io.Writer
-	pcmDecWriter  *audio.PCMDecoder
-
-	// MonitorReader is monitoring reader strea
-	MonitorReader io.Reader
-	pcmDecReader  *audio.PCMDecoder
+	// monitorWriter is monitoring writer stream
+	monitorWriter io.Writer
+	// monitorReader is monitoring reader strea
+	monitorReader io.Reader
 
 	// Writer is our store
 	// It will be closed toggether when recording is closed. Should be rare case
 	// to keep writer open after recording
 	// In some cases this is needed where for example WavWriter will update headers on close
-	Writer io.WriteCloser
+	Writer io.WriteSeeker
+
+	wavWriter *audio.WavWriter
+
+	pcmDecWriter *audio.PCMDecoder
+	pcmDecReader *audio.PCMDecoder
 
 	mu          sync.Mutex
 	paused      atomic.Bool
 	bufPCM      []byte
 	leftN       int
 	rightN      int
-	BitSize     int
+	BitDepth    int
 	numChannels int
 }
 
-func NewRecordingWav(readCodec media.Codec, writeCodec media.Codec,
-	mreader io.Reader, mwriter io.Writer, w io.WriteSeeker) (*Recording, error) {
+// NewRecordingWav constructs recording for storing WAV
+func NewRecordingWav(id string, w io.WriteSeeker) *Recording {
+	return &Recording{
+		ID:     id,
+		Writer: w, // Set as our default writer
+	}
+}
 
+// func newRecordingWav(readCodec media.Codec, writeCodec media.Codec,
+// 	mreader io.Reader, mwriter io.Writer, w io.WriteSeeker) (*Recording, error) {
+// 	rec := NewRecordingWav(uuid.NewString(), w)
+// 	rec.initStreams(readCodec, writeCodec, mreader, mwriter)
+// 	return rec, nil
+// }
+
+func (r *Recording) initStreams(readCodec media.Codec, writeCodec media.Codec,
+	mreader io.Reader, mwriter io.Writer) error {
+
+	if mreader == nil {
+		return fmt.Errorf("monitor reader is not present. Is session Answered?")
+	}
+	if mwriter == nil {
+		return fmt.Errorf("monitor writer is not present. Is session Answered?")
+	}
+
+	// TODO: do we need resampling if this codecs are not same?
+	// Problem storing than as single wav file is not possible
 	decR, eR := audio.NewPCMDecoderReader(readCodec.PayloadType, nil)
 	decW, eW := audio.NewPCMDecoderWriter(writeCodec.PayloadType, nil)
 	if err := errors.Join(eR, eW); err != nil {
-		return nil, err
+		return err
 	}
 
-	rec := &Recording{
-		MonitorReader: mreader,
-		pcmDecReader:  decR,
-		MonitorWriter: bytes.NewBuffer(make([]byte, 0, 50)),
-		pcmDecWriter:  decW,
-		Writer:        audio.NewWavWriter(w),
-		BitSize:       16,
+	r.monitorReader = mreader
+	r.monitorWriter = mwriter
+	r.pcmDecReader = decR
+	r.pcmDecWriter = decW
+	r.Init()
+
+	wawWriter := audio.WavWriter{
+		SampleRate:  int(readCodec.SampleRate),
+		BitDepth:    r.BitDepth,
+		NumChans:    2, // We will store
+		AudioFormat: 1, // PCM
+		W:           r.Writer,
 	}
-	rec.Init()
-	return rec, nil
+
+	r.wavWriter = &wawWriter
+
+	return nil
 }
 
 func (r *Recording) Init() {
 	r.bufPCM = make([]byte, RecordingFlushSize)
-	if r.BitSize == 0 {
-		r.BitSize = 16
+	if r.BitDepth == 0 {
+		r.BitDepth = 16
 	}
 
-	r.rightN = r.BitSize / 8
+	r.rightN = r.BitDepth / 8
 	r.numChannels = 2
 }
 
 func (r *Recording) Close() error {
+	log.Debug().Str("id", r.ID).Msg("Saving record")
+	if r.wavWriter == nil {
+		return fmt.Errorf("no format writer setup")
+	}
 	// do flush
 	off := min(r.leftN, r.rightN)
 
-	if _, err := r.Writer.Write(r.bufPCM[:off]); err != nil {
+	fmt.Println("flushing", off, r.leftN, r.rightN, len(r.bufPCM[:off]))
+	if _, err := r.wavWriter.Write(r.bufPCM[:off]); err != nil {
 		return err
 	}
 
-	return r.Writer.Close()
+	return r.wavWriter.Close()
 }
 
 func (r *Recording) Pause(toggle bool) {
@@ -93,8 +131,9 @@ func (r *Recording) Pause(toggle bool) {
 }
 
 func (r *Recording) Read(b []byte) (int, error) {
-	n, err := r.MonitorReader.Read(b)
+	n, err := r.monitorReader.Read(b)
 	if err != nil {
+		// We could here close our writer
 		return 0, err
 	}
 	if r.paused.Load() {
@@ -110,7 +149,7 @@ func (r *Recording) Read(b []byte) (int, error) {
 }
 
 func (r *Recording) Write(b []byte) (int, error) {
-	n, err := r.MonitorWriter.Write(b)
+	n, err := r.monitorWriter.Write(b)
 	if err != nil {
 		return 0, err
 	}
@@ -130,7 +169,8 @@ func (r *Recording) Write(b []byte) (int, error) {
 func (r *Recording) writePCM(lpcm []byte, channel int) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	size := r.BitSize / 8
+
+	size := r.BitDepth / 8
 	numChannels := r.numChannels
 
 	off := &r.leftN
@@ -143,7 +183,7 @@ func (r *Recording) writePCM(lpcm []byte, channel int) error {
 
 	// Flush if needed
 	if available < len(lpcm)*numChannels {
-		if _, err := r.Writer.Write(buf); err != nil {
+		if _, err := r.wavWriter.Write(buf); err != nil {
 			return err
 		}
 		r.leftN = 0
@@ -161,5 +201,29 @@ func (r *Recording) writePCM(lpcm []byte, channel int) error {
 		*off += size * (numChannels - 1) // shift for multi channels
 	}
 
+	return nil
+}
+
+// Attach attaches to media of session
+// This in other words chains new media reader,writers and monitors session
+// NOTE: Listen must be called after in order recording stores this stream
+func (r *Recording) Attach(d DialogSession) error {
+	// TODO
+	// We want to have ability to find all recordings on system and refernce them
+	// with DialogSession they are listening
+	m := d.Media()
+	codec := media.CodecFromSession(m.mediaSession)
+
+	err := r.initStreams(
+		codec, codec,
+		m.AudioReader(), m.AudioWriter(),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Chain recording as new stream
+	m.setAudioReader(r)
+	m.setAudioWriter(r)
 	return nil
 }

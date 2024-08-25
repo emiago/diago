@@ -7,11 +7,9 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/emiago/diago/media"
-	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/pion/webrtc/v3"
@@ -21,18 +19,16 @@ import (
 type DialogServerSession struct {
 	*sipgo.DialogServerSession
 
-	mu sync.Mutex
+	// MediaSession *media.MediaSession
+	DialogMedia
+
+	// mu sync.Mutex We will reuse lock from Media
 	// lastInvite is actual last invite sent by remote REINVITE
 	// We do not use sipgo as this needs mutex but also keeping original invite
 	lastInvite *sip.Request
 
-	// MediaSession *media.MediaSession
-	DialogMedia
-
-	webrtPeer *webrtc.PeerConnection
-
+	webrtPeer  *webrtc.PeerConnection
 	contactHDR sip.ContactHeader
-	formats    sdp.Formats
 }
 
 func (d *DialogServerSession) Id() string {

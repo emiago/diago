@@ -4,15 +4,18 @@
 package diago
 
 import (
-	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/emiago/diago/audio"
 	"github.com/emiago/diago/media"
+	"github.com/emiago/diago/media/sdp"
 	"github.com/rs/zerolog/log"
 )
 
@@ -36,14 +39,23 @@ type DialogMedia struct {
 	// media session is RTP local and remote
 	// it is forked on media changes and updated on writer and reader
 	// must be mutex protected
+	mu sync.Mutex
+
 	mediaSession *media.MediaSession
 
 	RTPPacketWriter *media.RTPPacketWriter
 	RTPPacketReader *media.RTPPacketReader
+
+	audioReader io.Reader
+	audioWriter io.Writer
+
+	formats sdp.Formats
 }
 
 // Must be protected with lock
 func (d *DialogMedia) sdpReInvite(sdp []byte) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	msess := d.mediaSession.Fork()
 	if err := msess.RemoteSDP(sdp); err != nil {
 		log.Error().Err(err).Msg("reinvite media remote SDP applying failed")
@@ -65,6 +77,38 @@ func (d *DialogMedia) sdpReInvite(sdp []byte) error {
 	return nil
 }
 
+func (d *DialogMedia) AudioReader() io.Reader {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.audioReader != nil {
+		return d.audioReader
+	}
+	return d.RTPPacketReader
+}
+
+func (d *DialogMedia) setAudioReader(r io.Reader) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.audioReader = r
+}
+
+func (d *DialogMedia) AudioWriter() io.Writer {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.audioReader != nil {
+		return d.audioWriter
+	}
+	return d.RTPPacketWriter
+}
+
+func (d *DialogMedia) setAudioWriter(r io.Writer) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.audioWriter = r
+}
+
 // DialogSession interface
 func (d *DialogMedia) Media() *DialogMedia {
 	return d
@@ -79,11 +123,8 @@ func (d *DialogMedia) PlaybackCreate() (Playback, error) {
 		return Playback{}, err
 	}
 
-	p := Playback{
-		writer:     enc,
-		SampleRate: rtpPacketWriter.SampleRate,
-		SampleDur:  20 * time.Millisecond,
-	}
+	codec := media.CodecFromPayloadType(pt)
+	p := NewPlayback(enc, codec)
 	return p, nil
 }
 
@@ -105,45 +146,35 @@ func (d *DialogMedia) PlaybackControlCreate() (PlaybackControl, error) {
 		Writer: enc,
 	}
 
+	codec := media.CodecFromPayloadType(pt)
+
 	p := PlaybackControl{
-		Playback: Playback{
-			writer:     control,
-			SampleRate: rtpPacketWriter.SampleRate,
-			SampleDur:  20 * time.Millisecond,
-		},
-		control: control,
+		Playback: NewPlayback(enc, codec),
+		control:  control,
 	}
 	return p, nil
 }
 
-func (d *DialogMedia) PlaybackFile(ctx context.Context, filename string) error {
-	m := d.Media()
-	if m.RTPPacketWriter == nil {
-		return fmt.Errorf("call not answered")
+// Listen is main function to be called when we want to listen stream on this dialog.
+// Example:
+// - you attach your media reader/writer. ex Recording
+// - Once ready you start to listen on stream
+//
+// This approach gives caller control when to listen stream but also it removes
+// need to
+func (m *DialogMedia) Listen() error {
+	buf := make([]byte, media.RTPBufSize)
+	r := m.AudioReader()
+	for {
+		_, err := r.Read(buf)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+
+			return err
+		}
 	}
-
-	p, err := d.PlaybackCreate()
-	if err != nil {
-		return err
-	}
-
-	err = p.PlayFile(ctx, filename)
-	return err
-}
-
-func (d *DialogMedia) PlaybackURL(ctx context.Context, urlStr string) error {
-	m := d.Media()
-	if m.RTPPacketWriter == nil {
-		return fmt.Errorf("call not answered")
-	}
-
-	p, err := d.PlaybackCreate()
-	if err != nil {
-		return err
-	}
-
-	err = p.PlayURL(ctx, urlStr)
-	return err
 }
 
 type loggingTransport struct{}

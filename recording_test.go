@@ -54,8 +54,9 @@ func TestRecording(t *testing.T) {
 	wavBytes := make([]byte, 1000)
 	wavFile := NewFileBuffer(wavBytes)
 
-	rec, err := NewRecordingWav(media.CodecAudioUlaw, media.CodecAudioUlaw,
-		bytes.NewBuffer(incommingStream), bytes.NewBuffer(outgoingStream), wavFile)
+	rec := NewRecordingWav("testrecId", wavFile)
+	err := rec.initStreams(media.CodecAudioUlaw, media.CodecAudioUlaw,
+		bytes.NewBuffer(incommingStream), bytes.NewBuffer([]byte{}))
 	require.NoError(t, err)
 
 	in, err := io.ReadAll(rec)
@@ -65,7 +66,7 @@ func TestRecording(t *testing.T) {
 	n, err := rec.Write(outgoingStream)
 	require.NoError(t, err)
 	require.Equal(t, n, len(outgoingStream))
-	require.Equal(t, rec.MonitorWriter.(*bytes.Buffer).Bytes(), outgoingStream)
+	require.Equal(t, outgoingStream, rec.monitorWriter.(*bytes.Buffer).Bytes())
 
 	err = rec.Close()
 	require.NoError(t, err)
@@ -73,3 +74,7 @@ func TestRecording(t *testing.T) {
 	wavBytes = wavFile.Bytes()
 	t.Log(string(wavBytes), wavBytes[44:], len(wavBytes))
 }
+
+// func TestRecordingDialog(t *testing.T) {
+
+// }

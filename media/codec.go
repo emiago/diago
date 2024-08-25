@@ -42,7 +42,7 @@ func CodecFromSession(s *MediaSession) Codec {
 	return c
 }
 
-func codecFromPayloadType(payloadType uint8) Codec {
+func CodecFromPayloadType(payloadType uint8) Codec {
 	c := Codec{
 		PayloadType: uint8(payloadType),
 		SampleRate:  8000,

@@ -545,10 +545,14 @@ func (dg *Diago) getContactHDR(transport string) sip.ContactHeader {
 		}
 	}
 
+	scheme := "sip"
+	if tran.TLSConf != nil {
+		scheme = "sips"
+	}
 	return sip.ContactHeader{
 		DisplayName: "", // TODO
 		Address: sip.Uri{
-			Encrypted: tran.TLSConf != nil,
+			Scheme:    scheme,
 			User:      dg.ua.Name(),
 			Host:      tran.ExternalHost,
 			Port:      tran.ExternalPort,

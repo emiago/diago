@@ -42,8 +42,8 @@ type RTPPacketWriter struct {
 
 	// This properties are read only or can be changed only after creating writer
 	PayloadType uint8
-	SSRC        uint32
 	SampleRate  uint32
+	SSRC        uint32
 
 	// Internals
 	// clock rate is decided based on media

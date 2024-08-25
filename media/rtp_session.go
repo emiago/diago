@@ -133,7 +133,7 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) error {
 	if stats.SSRC != readPkt.SSRC {
 		// For now we will reset all our stats.
 		// We expect that SSRC only changed but MULTI RTP stream per one session are not fully supported!
-		codec := codecFromPayloadType(readPkt.PayloadType)
+		codec := CodecFromPayloadType(readPkt.PayloadType)
 
 		*stats = RTPReadStats{
 			SSRC:                   readPkt.SSRC,
@@ -199,7 +199,7 @@ func (s *RTPSession) WriteRTP(pkt *rtp.Packet) error {
 	writeStats := &s.writeStats
 	// For now we only track latest SSRC
 	if writeStats.SSRC != pkt.SSRC {
-		codec := codecFromPayloadType(pkt.PayloadType)
+		codec := CodecFromPayloadType(pkt.PayloadType)
 
 		*writeStats = RTPWriteStats{
 			SSRC:       pkt.SSRC,

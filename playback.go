@@ -21,19 +21,18 @@ type Playback struct {
 	// reader io.Reader
 	// TODO we could avoid mute controller
 	writer io.Writer
-	// codec  media.Codec
-	SampleRate uint32
-	SampleDur  time.Duration
+	codec  media.Codec
+	// SampleRate uint32
+	// SampleDur  time.Duration
 
 	totalWritten int
 }
 
 // Use dialog.PlaybackCreate() instead creating manually playback
-func NewPlayback(writer io.Writer, sampleRate uint32, sampleDur time.Duration) Playback {
+func NewPlayback(writer io.Writer, codec media.Codec) Playback {
 	return Playback{
-		writer:     writer,
-		SampleRate: sampleRate,
-		SampleDur:  sampleDur,
+		writer: writer,
+		codec:  codec,
 	}
 }
 
@@ -84,6 +83,7 @@ var playBufPool = sync.Pool{
 
 func (p *Playback) streamWav(body io.Reader, playWriter io.Writer) (int, error) {
 	// dec := audio.NewWavDecoderStreamer(body)
+	codec := &p.codec
 	dec := audio.NewWavReader(body)
 	if err := dec.ReadHeaders(); err != nil {
 		return 0, err
@@ -91,12 +91,12 @@ func (p *Playback) streamWav(body io.Reader, playWriter io.Writer) (int, error) 
 	if dec.BitsPerSample != 16 {
 		return 0, fmt.Errorf("received bitdepth=%d, but only 16 bit PCM supported", dec.BitsPerSample)
 	}
-	if dec.SampleRate != p.SampleRate {
+	if dec.SampleRate != codec.SampleRate {
 		return 0, fmt.Errorf("only 8000 sample rate supported")
 	}
 
 	// We need to read and packetize to 20 ms
-	sampleDurMS := int(p.SampleDur.Milliseconds())
+	sampleDurMS := int(codec.SampleDur.Milliseconds())
 	payloadSize := int(dec.BitsPerSample) / 8 * int(dec.NumChannels) * int(dec.SampleRate) / 1000 * sampleDurMS
 
 	buf := playBufPool.Get()
@@ -113,9 +113,11 @@ func streamWavRTP(body io.Reader, rtpWriter *media.RTPPacketWriter) (int, error)
 	}
 
 	p := Playback{
-		writer:     enc,
-		SampleRate: rtpWriter.SampleRate,
-		SampleDur:  20 * time.Millisecond,
+		writer: enc,
+		codec: media.Codec{
+			SampleRate: rtpWriter.SampleRate,
+			SampleDur:  20 * time.Millisecond,
+		},
 	}
 	return p.streamWav(body, enc)
 }
