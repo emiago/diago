@@ -77,6 +77,12 @@ func (d *DialogMedia) sdpReInvite(sdp []byte) error {
 	return nil
 }
 
+func (d *DialogMedia) MediaSession() *media.MediaSession {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.mediaSession
+}
+
 func (d *DialogMedia) AudioReader() io.Reader {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -87,7 +93,7 @@ func (d *DialogMedia) AudioReader() io.Reader {
 	return d.RTPPacketReader
 }
 
-func (d *DialogMedia) setAudioReader(r io.Reader) {
+func (d *DialogMedia) SetAudioReader(r io.Reader) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.audioReader = r
@@ -103,7 +109,7 @@ func (d *DialogMedia) AudioWriter() io.Writer {
 	return d.RTPPacketWriter
 }
 
-func (d *DialogMedia) setAudioWriter(r io.Writer) {
+func (d *DialogMedia) SetAudioWriter(r io.Writer) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.audioWriter = r

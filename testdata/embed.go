@@ -15,3 +15,7 @@ var filesDir embed.FS
 func OpenFile(filename string) (fs.File, error) {
 	return filesDir.Open(path.Join("files", filename))
 }
+
+func ReadFile(filename string) ([]byte, error) {
+	return filesDir.ReadFile(path.Join("files", filename))
+}

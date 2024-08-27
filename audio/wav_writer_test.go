@@ -11,7 +11,7 @@ import (
 )
 
 func TestWavWriter(t *testing.T) {
-	f, err := os.OpenFile("/tmp/audio-test-record.wav", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0755)
+	f, err := os.OpenFile("/tmp/test-waw-writer.wav", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0755)
 	require.NoError(t, err)
 	defer f.Close()
 
