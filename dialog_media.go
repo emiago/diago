@@ -43,6 +43,8 @@ type DialogMedia struct {
 
 	mediaSession *media.MediaSession
 
+	// Packet readers are default readers for RTP audio stream
+	// Use AudioReader if you are only interested in stream
 	RTPPacketWriter *media.RTPPacketWriter
 	RTPPacketReader *media.RTPPacketReader
 

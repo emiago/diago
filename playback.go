@@ -17,6 +17,10 @@ import (
 	"github.com/go-audio/riff"
 )
 
+var (
+	PlaybackBufferSize = 320
+)
+
 type Playback struct {
 	// reader io.Reader
 	// TODO we could avoid mute controller
@@ -25,7 +29,7 @@ type Playback struct {
 	// SampleRate uint32
 	// SampleDur  time.Duration
 
-	totalWritten int
+	totalWritten int64
 }
 
 // Use dialog.PlaybackCreate() instead creating manually playback
@@ -37,14 +41,18 @@ func NewPlayback(writer io.Writer, codec media.Codec) Playback {
 }
 
 // Play is generic approach to play supported audio contents
+// Empty mimeType will stream reader as just buffer and underneath encoding will apply
 func (p *Playback) Play(reader io.Reader, mimeType string) error {
+	var written int64
+	var err error
 	switch mimeType {
+	case "":
+		written, err = p.stream(reader, p.writer)
 	case "audio/wav", "audio/x-wav", "audio/wav-x", "audio/vnd.wave":
+		written, err = p.streamWav(reader, p.writer)
 	default:
 		return fmt.Errorf("unsuported content type %q", mimeType)
 	}
-
-	written, err := p.streamWav(reader, p.writer)
 	if err != nil {
 		return err
 	}
@@ -77,11 +85,30 @@ func (p *Playback) PlayFile(ctx context.Context, filename string) (err error) {
 var playBufPool = sync.Pool{
 	New: func() any {
 		// Increase this size if there will be support for larger pools
-		return make([]byte, 320)
+		return make([]byte, PlaybackBufferSize)
 	},
 }
 
-func (p *Playback) streamWav(body io.Reader, playWriter io.Writer) (int, error) {
+func (p *Playback) stream(body io.Reader, playWriter io.Writer) (int64, error) {
+	codec := &p.codec
+	sampleDurMS := int(codec.SampleDur.Milliseconds())
+
+	bitsPerSample := 16
+	numChannels := 2
+	sampleRate := codec.SampleRate
+	payloadSize := int(bitsPerSample) / 8 * int(numChannels) * int(sampleRate) / 1000 * sampleDurMS
+
+	buf := playBufPool.Get()
+	defer playBufPool.Put(buf)
+	payloadBuf := buf.([]byte)[:payloadSize] // 20 ms
+	written, err := copyWithBuf(body, playWriter, payloadBuf)
+	if !errors.Is(err, io.EOF) {
+		return written, err
+	}
+	return written, nil
+}
+
+func (p *Playback) streamWav(body io.Reader, playWriter io.Writer) (int64, error) {
 	// dec := audio.NewWavDecoderStreamer(body)
 	codec := &p.codec
 	dec := audio.NewWavReader(body)
@@ -102,10 +129,14 @@ func (p *Playback) streamWav(body io.Reader, playWriter io.Writer) (int, error) 
 	buf := playBufPool.Get()
 	payloadBuf := buf.([]byte)[:payloadSize] // 20 ms
 
-	return wavCopy(dec, playWriter, payloadBuf)
+	written, err := wavCopy(dec, playWriter, payloadBuf)
+	if !errors.Is(err, io.EOF) {
+		return written, err
+	}
+	return written, nil
 }
 
-func streamWavRTP(body io.Reader, rtpWriter *media.RTPPacketWriter) (int, error) {
+func streamWavRTP(body io.Reader, rtpWriter *media.RTPPacketWriter) (int64, error) {
 	pt := rtpWriter.PayloadType
 	enc, err := audio.NewPCMEncoder(pt, rtpWriter)
 	if err != nil {
@@ -122,16 +153,27 @@ func streamWavRTP(body io.Reader, rtpWriter *media.RTPPacketWriter) (int, error)
 	return p.streamWav(body, enc)
 }
 
-func wavCopy(dec *audio.WavReader, playWriter io.Writer, payloadBuf []byte) (int, error) {
-	totalWritten := 0
-outloop:
+func copyWithBuf(body io.Reader, playWriter io.Writer, payloadBuf []byte) (int64, error) {
+	var totalWritten int64
+	for {
+		n, err := body.Read(payloadBuf)
+		if err != nil {
+			return totalWritten, err
+		}
+		n, err = playWriter.Write(payloadBuf[:n])
+		if err != nil {
+			return totalWritten, err
+		}
+		totalWritten += int64(n)
+	}
+}
+
+func wavCopy(dec *audio.WavReader, playWriter io.Writer, payloadBuf []byte) (int64, error) {
+	var totalWritten int64
 	for {
 		ch, err := dec.NextChunk()
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return 0, err
+			return totalWritten, err
 		}
 
 		if ch.ID != riff.DataFormatID && ch.ID != [4]byte{} {
@@ -140,22 +182,10 @@ outloop:
 			continue
 		}
 
-		for {
-			n, err := ch.Read(payloadBuf)
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					break outloop
-				}
-				return 0, err
-			}
-
-			// Ticker has already correction for slow operation so this is enough
-			n, err = playWriter.Write(payloadBuf[:n])
-			if err != nil {
-				return 0, err
-			}
-			totalWritten += n
+		n, err := copyWithBuf(ch, playWriter, payloadBuf)
+		if err != nil {
+			return totalWritten, err
 		}
+		totalWritten += n
 	}
-	return totalWritten, nil
 }

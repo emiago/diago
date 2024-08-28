@@ -55,13 +55,14 @@ func ReadMedia(inDialog *diago.DialogServerSession) {
 	lastPrint := time.Now()
 	pktsCount := 0
 	buf := make([]byte, media.RTPBufSize)
+
 	for {
-		_, err := inDialog.Media().RTPPacketReader.Read(buf)
+		_, err := inDialog.Media().AudioReader().Read(buf)
 		if err != nil {
 			return
 		}
-		pkt := inDialog.Media().RTPPacketReader.PacketHeader
 
+		pkt := inDialog.Media().RTPPacketReader.PacketHeader
 		if time.Since(lastPrint) > 3*time.Second {
 			lastPrint = time.Now()
 			log.Info().Uint8("PayloadType", pkt.PayloadType).Int("pkts", pktsCount).Msg("Received packets")

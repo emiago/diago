@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/emiago/diago/audio"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -177,26 +176,4 @@ func (p *Playback) playURL(ctx context.Context, urlStr string) error {
 	}
 	p.totalWritten += written
 	return err
-}
-
-// playWriter is expected that does playing audio or in other words rtp writer should have
-// ticker running and send samples based on audio reader
-func streamWav(body io.Reader, playWriter io.Writer) (int, error) {
-	// dec := audio.NewWavDecoderStreamer(body)
-	dec := audio.NewWavReader(body)
-	if err := dec.ReadHeaders(); err != nil {
-		return 0, err
-	}
-	if dec.BitsPerSample != 16 {
-		return 0, fmt.Errorf("received bitdepth=%d, but only 16 bit PCM supported", dec.BitsPerSample)
-	}
-	if dec.SampleRate != 8000 {
-		return 0, fmt.Errorf("only 8000 sample rate supported")
-	}
-
-	// We need to read and packetize to 20 ms
-	sampleDurMS := 20
-	payloadBuf := make([]byte, int(dec.BitsPerSample)/8*int(dec.NumChannels)*int(dec.SampleRate)/1000*sampleDurMS) // 20 ms
-
-	return wavCopy(dec, playWriter, payloadBuf)
 }
