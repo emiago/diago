@@ -22,12 +22,13 @@ var (
 )
 
 type Playback struct {
-	// reader io.Reader
-	// TODO we could avoid mute controller
 	writer io.Writer
 	codec  media.Codec
-	// SampleRate uint32
-	// SampleDur  time.Duration
+
+	// Read only values
+	// This will influence playout sampling buffer
+	BitDepth    int
+	NumChannels int
 
 	totalWritten int64
 }
@@ -35,13 +36,15 @@ type Playback struct {
 // Use dialog.PlaybackCreate() instead creating manually playback
 func NewPlayback(writer io.Writer, codec media.Codec) Playback {
 	return Playback{
-		writer: writer,
-		codec:  codec,
+		writer:      writer,
+		codec:       codec,
+		BitDepth:    16,
+		NumChannels: 2,
 	}
 }
 
 // Play is generic approach to play supported audio contents
-// Empty mimeType will stream reader as just buffer and underneath encoding will apply
+// Empty mimeType will stream reader as buffer. Make sure that bitdepth and numchannels is set correctly
 func (p *Playback) Play(reader io.Reader, mimeType string) error {
 	var written int64
 	var err error
@@ -90,17 +93,11 @@ var playBufPool = sync.Pool{
 }
 
 func (p *Playback) stream(body io.Reader, playWriter io.Writer) (int64, error) {
-	codec := &p.codec
-	sampleDurMS := int(codec.SampleDur.Milliseconds())
-
-	bitsPerSample := 16
-	numChannels := 2
-	sampleRate := codec.SampleRate
-	payloadSize := int(bitsPerSample) / 8 * int(numChannels) * int(sampleRate) / 1000 * sampleDurMS
-
+	payloadSize := p.calcPlayoutSize()
 	buf := playBufPool.Get()
 	defer playBufPool.Put(buf)
 	payloadBuf := buf.([]byte)[:payloadSize] // 20 ms
+
 	written, err := copyWithBuf(body, playWriter, payloadBuf)
 	if !errors.Is(err, io.EOF) {
 		return written, err
@@ -115,11 +112,11 @@ func (p *Playback) streamWav(body io.Reader, playWriter io.Writer) (int64, error
 	if err := dec.ReadHeaders(); err != nil {
 		return 0, err
 	}
-	if dec.BitsPerSample != 16 {
-		return 0, fmt.Errorf("received bitdepth=%d, but only 16 bit PCM supported", dec.BitsPerSample)
+	if dec.BitsPerSample != uint16(p.BitDepth) {
+		return 0, fmt.Errorf("wav file bitdepth=%d does not match expected=%d", dec.BitsPerSample, p.BitDepth)
 	}
 	if dec.SampleRate != codec.SampleRate {
-		return 0, fmt.Errorf("only 8000 sample rate supported")
+		return 0, fmt.Errorf("wav file samplerate=%d does not match expected=%d", dec.SampleRate, codec.SampleRate)
 	}
 
 	// We need to read and packetize to 20 ms
@@ -136,6 +133,16 @@ func (p *Playback) streamWav(body io.Reader, playWriter io.Writer) (int64, error
 	return written, nil
 }
 
+func (p *Playback) calcPlayoutSize() int {
+	codec := &p.codec
+	sampleDurMS := int(codec.SampleDur.Milliseconds())
+
+	bitsPerSample := p.BitDepth
+	numChannels := p.NumChannels
+	sampleRate := codec.SampleRate
+	return int(bitsPerSample) / 8 * int(numChannels) * int(sampleRate) / 1000 * sampleDurMS
+}
+
 func streamWavRTP(body io.Reader, rtpWriter *media.RTPPacketWriter) (int64, error) {
 	pt := rtpWriter.PayloadType
 	enc, err := audio.NewPCMEncoder(pt, rtpWriter)
@@ -143,13 +150,10 @@ func streamWavRTP(body io.Reader, rtpWriter *media.RTPPacketWriter) (int64, erro
 		return 0, err
 	}
 
-	p := Playback{
-		writer: enc,
-		codec: media.Codec{
-			SampleRate: rtpWriter.SampleRate,
-			SampleDur:  20 * time.Millisecond,
-		},
-	}
+	p := NewPlayback(enc, media.Codec{
+		SampleRate: rtpWriter.SampleRate,
+		SampleDur:  20 * time.Millisecond,
+	})
 	return p.streamWav(body, enc)
 }
 
@@ -183,9 +187,9 @@ func wavCopy(dec *audio.WavReader, playWriter io.Writer, payloadBuf []byte) (int
 		}
 
 		n, err := copyWithBuf(ch, playWriter, payloadBuf)
+		totalWritten += n
 		if err != nil {
 			return totalWritten, err
 		}
-		totalWritten += n
 	}
 }

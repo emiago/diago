@@ -35,7 +35,7 @@ func TestIntegrationStreamWAV(t *testing.T) {
 
 	written, err := streamWavRTP(fh, rtpWriter)
 	require.NoError(t, err)
-	require.Greater(t, written, 10000)
+	require.Greater(t, written, int64(10000))
 }
 
 func TestIntegrationPlaybackStreamWAV(t *testing.T) {
@@ -67,5 +67,5 @@ func TestIntegrationPlaybackStreamWAV(t *testing.T) {
 
 	written, err := p.streamWav(fh, rtpWriter)
 	require.NoError(t, err)
-	require.Greater(t, written, 10000)
+	require.Greater(t, written, int64(10000))
 }
