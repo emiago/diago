@@ -122,17 +122,18 @@ func (d *DialogMedia) Media() *DialogMedia {
 	return d
 }
 
-func (d *DialogMedia) PlaybackCreate() (Playback, error) {
+// PlaybackCreate creates playback for PCM audio
+func (d *DialogMedia) PlaybackCreate() (AudioPlayback, error) {
 	// NOTE we should avoid returning pointers for any IN dialplan to avoid heap
 	rtpPacketWriter := d.RTPPacketWriter
 	pt := rtpPacketWriter.PayloadType
 	enc, err := audio.NewPCMEncoder(pt, rtpPacketWriter)
 	if err != nil {
-		return Playback{}, err
+		return AudioPlayback{}, err
 	}
 
 	codec := media.CodecFromPayloadType(pt)
-	p := NewPlayback(enc, codec)
+	p := NewAudioPlayback(enc, codec)
 	return p, nil
 }
 
@@ -157,8 +158,8 @@ func (d *DialogMedia) PlaybackControlCreate() (PlaybackControl, error) {
 	codec := media.CodecFromPayloadType(pt)
 
 	p := PlaybackControl{
-		Playback: NewPlayback(enc, codec),
-		control:  control,
+		AudioPlayback: NewAudioPlayback(enc, codec),
+		control:       control,
 	}
 	return p, nil
 }

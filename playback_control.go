@@ -9,7 +9,7 @@ import (
 )
 
 type PlaybackControl struct {
-	Playback
+	AudioPlayback
 
 	control *audioControl
 }

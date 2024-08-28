@@ -40,7 +40,7 @@ func TestIntegrationDialogMediaPlaybackFile(t *testing.T) {
 		require.NoError(t, err)
 
 		errCh := make(chan error)
-		go func() { errCh <- playback.PlayFile(context.TODO(), "testdata/demo-thanks.wav") }()
+		go func() { errCh <- playback.PlayFile(context.TODO(), "testdata/files/demo-echodone.wav") }()
 		playback.Pause()
 		require.ErrorIs(t, <-errCh, io.EOF)
 	})
@@ -49,7 +49,7 @@ func TestIntegrationDialogMediaPlaybackFile(t *testing.T) {
 		playback, err := dialog.PlaybackCreate()
 		require.NoError(t, err)
 
-		err = playback.PlayFile(context.TODO(), "testdata/demo-thanks.wav")
+		err = playback.PlayFile(context.TODO(), "testdata/files/demo-echodone.wav")
 		require.NoError(t, err)
 		require.Greater(t, playback.totalWritten, 10000)
 		t.Log("Written on RTP stream", playback.totalWritten)

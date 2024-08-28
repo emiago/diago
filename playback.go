@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"sync"
 	"time"
 
@@ -21,7 +22,7 @@ var (
 	PlaybackBufferSize = 320
 )
 
-type Playback struct {
+type AudioPlayback struct {
 	writer io.Writer
 	codec  media.Codec
 
@@ -33,10 +34,11 @@ type Playback struct {
 	totalWritten int64
 }
 
+// NewAudioPlayback creates a playback where writer is encoder/streamer to media codec
 // Use dialog.PlaybackCreate() instead creating manually playback
-func NewPlayback(writer io.Writer, codec media.Codec) Playback {
-	return Playback{
-		writer:      writer,
+func NewAudioPlayback(encWriter io.Writer, codec media.Codec) AudioPlayback {
+	return AudioPlayback{
+		writer:      encWriter,
 		codec:       codec,
 		BitDepth:    16,
 		NumChannels: 2,
@@ -45,7 +47,7 @@ func NewPlayback(writer io.Writer, codec media.Codec) Playback {
 
 // Play is generic approach to play supported audio contents
 // Empty mimeType will stream reader as buffer. Make sure that bitdepth and numchannels is set correctly
-func (p *Playback) Play(reader io.Reader, mimeType string) error {
+func (p *AudioPlayback) Play(reader io.Reader, mimeType string) error {
 	var written int64
 	var err error
 	switch mimeType {
@@ -67,12 +69,17 @@ func (p *Playback) Play(reader io.Reader, mimeType string) error {
 	return nil
 }
 
-func (p *Playback) PlayFile(ctx context.Context, filename string) (err error) {
+func (p *AudioPlayback) PlayFile(ctx context.Context, filename string) (err error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
+
+	if ext := path.Ext(file.Name()); ext != ".wav" {
+		return fmt.Errorf("only playing wav file is now supported, but detected=%s", ext)
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- p.Play(file, "audio/wav")
@@ -92,7 +99,7 @@ var playBufPool = sync.Pool{
 	},
 }
 
-func (p *Playback) stream(body io.Reader, playWriter io.Writer) (int64, error) {
+func (p *AudioPlayback) stream(body io.Reader, playWriter io.Writer) (int64, error) {
 	payloadSize := p.calcPlayoutSize()
 	buf := playBufPool.Get()
 	defer playBufPool.Put(buf)
@@ -105,7 +112,7 @@ func (p *Playback) stream(body io.Reader, playWriter io.Writer) (int64, error) {
 	return written, nil
 }
 
-func (p *Playback) streamWav(body io.Reader, playWriter io.Writer) (int64, error) {
+func (p *AudioPlayback) streamWav(body io.Reader, playWriter io.Writer) (int64, error) {
 	// dec := audio.NewWavDecoderStreamer(body)
 	codec := &p.codec
 	dec := audio.NewWavReader(body)
@@ -133,7 +140,7 @@ func (p *Playback) streamWav(body io.Reader, playWriter io.Writer) (int64, error
 	return written, nil
 }
 
-func (p *Playback) calcPlayoutSize() int {
+func (p *AudioPlayback) calcPlayoutSize() int {
 	codec := &p.codec
 	sampleDurMS := int(codec.SampleDur.Milliseconds())
 
@@ -150,7 +157,7 @@ func streamWavRTP(body io.Reader, rtpWriter *media.RTPPacketWriter) (int64, erro
 		return 0, err
 	}
 
-	p := NewPlayback(enc, media.Codec{
+	p := NewAudioPlayback(enc, media.Codec{
 		SampleRate: rtpWriter.SampleRate,
 		SampleDur:  20 * time.Millisecond,
 	})

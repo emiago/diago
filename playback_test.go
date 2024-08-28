@@ -55,7 +55,7 @@ func TestIntegrationPlaybackStreamWAV(t *testing.T) {
 		SampleRate: rtpWriter.SampleRate,
 		SampleDur:  20 * time.Millisecond,
 	}
-	p := NewPlayback(enc, codec)
+	p := NewAudioPlayback(enc, codec)
 
 	udpDump, err := net.ListenUDP("udp4", sess.Raddr)
 	require.NoError(t, err)

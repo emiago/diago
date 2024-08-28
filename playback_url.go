@@ -20,7 +20,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func (p *Playback) PlayURL(ctx context.Context, urlStr string) error {
+func (p *AudioPlayback) PlayURL(ctx context.Context, urlStr string) error {
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- p.playURL(ctx, urlStr)
@@ -33,7 +33,7 @@ func (p *Playback) PlayURL(ctx context.Context, urlStr string) error {
 	}
 }
 
-func (p *Playback) playURL(ctx context.Context, urlStr string) error {
+func (p *AudioPlayback) playURL(ctx context.Context, urlStr string) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
 	if err != nil {
 		return err
