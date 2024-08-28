@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en"><head>
+<html lang="en"><head><script src="/diago/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=diago/livereload" data-no-instant defer></script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="robots" content="index, follow" />
+  <meta name="robots" content="noindex, nofollow" />
   <link rel="icon shortcut" href="/diago/favicon.ico" sizes="32x32" />
 <link rel="icon" href="/diago/favicon.svg" type="image/svg+xml" />
 <link rel="icon" href="/diago/favicon-dark.svg" type="image/svg+xml" media="(prefers-color-scheme: dark)" />
@@ -11,37 +11,43 @@
 <link rel="apple-touch-icon" href="/diago/apple-touch-icon.png" sizes="180x180" />
 <link fetchpriority="low" href="/diago/site.webmanifest" rel="manifest" />
 
-  <title>Diago</title>
-  <meta name="description" content="Why Diago? Development of VOIP services can be slow or it was full workarrounds. Diago try to offer more modern Stack and put you closer to network/media with less abstractions.
-Diago is built with GO language and we are keeping well optimized sip and media stack to have performance and low GC latency. Major win is Go offers fast development speed and memory safety, but also tooling to tweak best performance." />
+  <title>Understading SIP with Call Scenarios – Diago</title>
+  <meta name="description" content="Every call starts with INVITE SIP Messages. Here is how to relate SIP message to PHONE actions
+Dialing = INVITE Answer = 200 OK response on INVITE Hangup = BYE Cancel = CANCEL Reject = 486 Busy INVITE is creating session which we call dialog.
+INVITE carries SDP (application/sdp) in body of message as offer to exlain media capabilites and connection setup. INVITE can have any other type in Body like HTTP, but SDP protocol is mainly used." />
 
   
-    <link rel="canonical" href="https://emiago.github.io/diago/docs/" itemprop="url" />
+    <link rel="canonical" href="http://localhost:1313/diago/docs/guides/_index-copy/" itemprop="url" />
   
 
   
 
-<meta property="og:title" content="" />
-<meta property="og:description" content="" />
-<meta property="og:type" content="website" />
-<meta property="og:url" content="https://emiago.github.io/diago/docs/" />
+<meta property="og:title" content="Understading SIP with Call Scenarios" />
+<meta property="og:description" content="Every call starts with INVITE SIP Messages. Here is how to relate SIP message to PHONE actions
+Dialing = INVITE Answer = 200 OK response on INVITE Hangup = BYE Cancel = CANCEL Reject = 486 Busy INVITE is creating session which we call dialog.
+INVITE carries SDP (application/sdp) in body of message as offer to exlain media capabilites and connection setup. INVITE can have any other type in Body like HTTP, but SDP protocol is mainly used." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="http://localhost:1313/diago/docs/guides/_index-copy/" /><meta property="article:section" content="docs" />
+
+
 
   
-  <meta itemprop="name" content="Diago">
-  <meta itemprop="description" content="Why Diago? Development of VOIP services can be slow or it was full workarrounds. Diago try to offer more modern Stack and put you closer to network/media with less abstractions.
-Diago is built with GO language and we are keeping well optimized sip and media stack to have performance and low GC latency. Major win is Go offers fast development speed and memory safety, but also tooling to tweak best performance.">
-  <meta itemprop="wordCount" content="105">
+  <meta itemprop="name" content="Understading SIP with Call Scenarios">
+  <meta itemprop="description" content="Every call starts with INVITE SIP Messages. Here is how to relate SIP message to PHONE actions
+Dialing = INVITE Answer = 200 OK response on INVITE Hangup = BYE Cancel = CANCEL Reject = 486 Busy INVITE is creating session which we call dialog.
+INVITE carries SDP (application/sdp) in body of message as offer to exlain media capabilites and connection setup. INVITE can have any other type in Body like HTTP, but SDP protocol is mainly used.">
+  <meta itemprop="wordCount" content="398">
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Diago">
-  <meta name="twitter:description" content="Why Diago? Development of VOIP services can be slow or it was full workarrounds. Diago try to offer more modern Stack and put you closer to network/media with less abstractions.
-Diago is built with GO language and we are keeping well optimized sip and media stack to have performance and low GC latency. Major win is Go offers fast development speed and memory safety, but also tooling to tweak best performance.">
+  <meta name="twitter:title" content="Understading SIP with Call Scenarios">
+  <meta name="twitter:description" content="Every call starts with INVITE SIP Messages. Here is how to relate SIP message to PHONE actions
+Dialing = INVITE Answer = 200 OK response on INVITE Hangup = BYE Cancel = CANCEL Reject = 486 Busy INVITE is creating session which we call dialog.
+INVITE carries SDP (application/sdp) in body of message as offer to exlain media capabilites and connection setup. INVITE can have any other type in Body like HTTP, but SDP protocol is mainly used.">
 
-    <link rel="preload" href="/diago/css/compiled/main.min.c1fe2c80102c9dc9ddc66184191e646769052d36a21b38ac5ab5077713cf7a81.css" as="style" integrity="sha256-wf4sgBAsncndxmGEGR5kZ2kFLTaiGzisWrUHdxPPeoE=" />
-    <link href="/diago/css/compiled/main.min.c1fe2c80102c9dc9ddc66184191e646769052d36a21b38ac5ab5077713cf7a81.css" rel="stylesheet" integrity="sha256-wf4sgBAsncndxmGEGR5kZ2kFLTaiGzisWrUHdxPPeoE=" />
+    <link href="/diago/css/compiled/main.css" rel="stylesheet" />
 
 
 
-  <link href="/diago/css/custom.min.e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.css" rel="stylesheet" integrity="sha256-47DEQpj8HBSa&#43;/TImW&#43;5JCeuQeRkm5NMpJWZG3hSuFU=" />
+  <link href="/diago/css/custom.css" rel="stylesheet" />
 
 
 
@@ -170,54 +176,18 @@ Diago is built with GO language and we are keeping well optimized sip and media 
       
           <li class="open"><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      sidebar-active-item hx-bg-primary-100 hx-font-semibold hx-text-primary-800 contrast-more:hx-border contrast-more:hx-border-primary-500 dark:hx-bg-primary-400/10 dark:hx-text-primary-600 contrast-more:dark:hx-border-primary-500"
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
     href="/diago/docs/"
     
-  >Docs
+  >My Docs
         <span class="hextra-sidebar-collapsible-button"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="hx-h-[18px] hx-min-w-[18px] hx-rounded-sm hx-p-0.5 hover:hx-bg-gray-800/5 dark:hover:hx-bg-gray-100/5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" class="hx-origin-center hx-transition-transform rtl:-hx-rotate-180"></path></svg></span>
-    </a>
-  
-    <ul class='hx-flex hx-flex-col hx-gap-1 hx-relative before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] dark:before:hx-bg-neutral-800 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-pr-3 rtl:before:hx-right-0 ltr:hx-ml-3 rtl:hx-mr-3'><li>
-              <a
-                href="#why-diago"
-                class="hx-flex hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [word-break:break-word] hx-cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] contrast-more:hx-border hx-gap-2 before:hx-opacity-25 before:hx-content-['#'] hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:hx-text-gray-900 contrast-more:dark:hx-text-gray-50 contrast-more:hx-border-transparent contrast-more:hover:hx-border-gray-900 contrast-more:dark:hover:hx-border-gray-50"
-              >Why Diago?</a>
-            </li>
-          </ul>
-  <div class="ltr:hx-pr-0 hx-overflow-hidden">
+    </a><div class="ltr:hx-pr-0 hx-overflow-hidden">
         <ul class='hx-relative hx-flex hx-flex-col hx-gap-1 before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] ltr:hx-ml-3 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-mr-3 rtl:hx-pr-3 rtl:before:hx-right-0 dark:before:hx-bg-neutral-800'><li class="hx-flex hx-flex-col "><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
       hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/guides/"
+    href="/diago/docs/why_diago_exists/"
     
-  >Guides
-        <span class="hextra-sidebar-collapsible-button"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="hx-h-[18px] hx-min-w-[18px] hx-rounded-sm hx-p-0.5 hover:hx-bg-gray-800/5 dark:hover:hx-bg-gray-100/5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" class="hx-origin-center hx-transition-transform rtl:-hx-rotate-180"></path></svg></span>
-    </a>
-              <div class="ltr:hx-pr-0 hx-overflow-hidden">
-        <ul class='hx-relative hx-flex hx-flex-col hx-gap-1 before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] ltr:hx-ml-3 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-mr-3 rtl:hx-pr-3 rtl:before:hx-right-0 dark:before:hx-bg-neutral-800'><li class="hx-flex hx-flex-col "><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/guides/understanding_sip/"
-    
-  >Understading SIP with Call Scenarios
-    </a>
-              
-            </li><li class="hx-flex hx-flex-col "><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/guides/sip_and_media/"
-    
-  >SIP and Media
-    </a>
-              
-            </li></ul>
-      </div>
-            </li><li class="hx-flex hx-flex-col "><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/getting_started/"
-    
-  >Getting Started
+  >Why Diago Exists
     </a>
               
             </li><li class="hx-flex hx-flex-col "><a
@@ -228,6 +198,48 @@ Diago is built with GO language and we are keeping well optimized sip and media 
   >Examples
     </a>
               
+            </li><li class="hx-flex hx-flex-col "><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/docs/getting_started/"
+    
+  >Getting Started
+    </a>
+              
+            </li><li class="hx-flex hx-flex-col open"><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/docs/guides/"
+    
+  >Guides
+        <span class="hextra-sidebar-collapsible-button"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="hx-h-[18px] hx-min-w-[18px] hx-rounded-sm hx-p-0.5 hover:hx-bg-gray-800/5 dark:hover:hx-bg-gray-100/5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" class="hx-origin-center hx-transition-transform rtl:-hx-rotate-180"></path></svg></span>
+    </a>
+              <div class="ltr:hx-pr-0 hx-overflow-hidden">
+        <ul class='hx-relative hx-flex hx-flex-col hx-gap-1 before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] ltr:hx-ml-3 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-mr-3 rtl:hx-pr-3 rtl:before:hx-right-0 dark:before:hx-bg-neutral-800'><li class="hx-flex hx-flex-col open"><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      sidebar-active-item hx-bg-primary-100 hx-font-semibold hx-text-primary-800 contrast-more:hx-border contrast-more:hx-border-primary-500 dark:hx-bg-primary-400/10 dark:hx-text-primary-600 contrast-more:dark:hx-border-primary-500"
+    href="/diago/docs/guides/_index-copy/"
+    
+  >Understading SIP with Call Scenarios
+    </a>
+  
+    <ul class='hx-flex hx-flex-col hx-gap-1 hx-relative before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] dark:before:hx-bg-neutral-800 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-pr-3 rtl:before:hx-right-0 ltr:hx-ml-3 rtl:hx-mr-3'><li>
+              <a
+                href="#"
+                class="hx-flex hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [word-break:break-word] hx-cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] contrast-more:hx-border hx-gap-2 before:hx-opacity-25 before:hx-content-['#'] hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:hx-text-gray-900 contrast-more:dark:hx-text-gray-50 contrast-more:hx-border-transparent contrast-more:hover:hx-border-gray-900 contrast-more:dark:hover:hx-border-gray-50"
+              ></a>
+            </li>
+          <li>
+              <a
+                href="#undestanding-sip-and-media"
+                class="hx-flex hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [word-break:break-word] hx-cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] contrast-more:hx-border hx-gap-2 before:hx-opacity-25 before:hx-content-['#'] hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:hx-text-gray-900 contrast-more:dark:hx-text-gray-50 contrast-more:hx-border-transparent contrast-more:hover:hx-border-gray-900 contrast-more:dark:hover:hx-border-gray-50"
+              >Undestanding SIP and media</a>
+            </li>
+          </ul>
+  
+              
+            </li></ul>
+      </div>
             </li></ul>
       </div></li>
     </ul>
@@ -237,35 +249,9 @@ Diago is built with GO language and we are keeping well optimized sip and media 
           <li class=""><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
       hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/guides/"
+    href="/diago/docs/why_diago_exists/"
     
-  >Guides
-        <span class="hextra-sidebar-collapsible-button"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="hx-h-[18px] hx-min-w-[18px] hx-rounded-sm hx-p-0.5 hover:hx-bg-gray-800/5 dark:hover:hx-bg-gray-100/5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" class="hx-origin-center hx-transition-transform rtl:-hx-rotate-180"></path></svg></span>
-    </a><div class="ltr:hx-pr-0 hx-overflow-hidden">
-        <ul class='hx-relative hx-flex hx-flex-col hx-gap-1 before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] ltr:hx-ml-3 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-mr-3 rtl:hx-pr-3 rtl:before:hx-right-0 dark:before:hx-bg-neutral-800'><li class="hx-flex hx-flex-col "><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/guides/understanding_sip/"
-    
-  >Understading SIP with Call Scenarios
-    </a>
-              
-            </li><li class="hx-flex hx-flex-col "><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/guides/sip_and_media/"
-    
-  >SIP and Media
-    </a>
-              
-            </li></ul>
-      </div></li>
-          <li class=""><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/getting_started/"
-    
-  >Getting Started
+  >Why Diago Exists
     </a></li>
           <li class=""><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
@@ -274,6 +260,31 @@ Diago is built with GO language and we are keeping well optimized sip and media 
     
   >Examples
     </a></li>
+          <li class=""><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/docs/getting_started/"
+    
+  >Getting Started
+    </a></li>
+          <li class="open"><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/docs/guides/"
+    
+  >Guides
+        <span class="hextra-sidebar-collapsible-button"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="hx-h-[18px] hx-min-w-[18px] hx-rounded-sm hx-p-0.5 hover:hx-bg-gray-800/5 dark:hover:hx-bg-gray-100/5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" class="hx-origin-center hx-transition-transform rtl:-hx-rotate-180"></path></svg></span>
+    </a><div class="ltr:hx-pr-0 hx-overflow-hidden">
+        <ul class='hx-relative hx-flex hx-flex-col hx-gap-1 before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] ltr:hx-ml-3 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-mr-3 rtl:hx-pr-3 rtl:before:hx-right-0 dark:before:hx-bg-neutral-800'><li class="hx-flex hx-flex-col open"><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      sidebar-active-item hx-bg-primary-100 hx-font-semibold hx-text-primary-800 contrast-more:hx-border contrast-more:hx-border-primary-500 dark:hx-bg-primary-400/10 dark:hx-text-primary-600 contrast-more:dark:hx-border-primary-500"
+    href="/diago/docs/guides/_index-copy/"
+    
+  >Understading SIP with Call Scenarios
+    </a>
+              
+            </li></ul>
+      </div></li>
         
       </ul>
     </div>
@@ -293,7 +304,31 @@ Diago is built with GO language and we are keeping well optimized sip and media 
 <nav class="hextra-toc hx-order-last hx-hidden hx-w-64 hx-shrink-0 xl:hx-block print:hx-hidden hx-px-4" aria-label="table of contents">
     <div class="hextra-scrollbar hx-sticky hx-top-16 hx-overflow-y-auto hx-pr-4 hx-pt-6 hx-text-sm [hyphens:auto] hx-max-h-[calc(100vh-var(--navbar-height)-env(safe-area-inset-bottom))] ltr:hx--mr-4 rtl:hx--ml-4"><p class="hx-mb-4 hx-font-semibold hx-tracking-tight">On this page</p><ul>
       <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
-        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#why-diago">Why Diago?
+        <a class="ltr:hx-pl-4 rtl:hx-pr-4 hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#succesfull-call">Succesfull call
+        </a>
+      </li>
+      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
+        <a class="ltr:hx-pl-4 rtl:hx-pr-4 hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#succesfull-call-with-provisional-responses-more-realistic">Succesfull call with provisional responses (More realistic)
+        </a>
+      </li>
+      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
+        <a class="ltr:hx-pl-4 rtl:hx-pr-4 hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#canceling-call-with-sip-cancel">Canceling call with SIP CANCEL
+        </a>
+      </li>
+      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
+        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#undestanding-sip-and-media">Undestanding SIP and media
+        </a>
+      </li>
+      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
+        <a class="ltr:hx-pl-4 rtl:hx-pr-4 hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#call-with-media">Call with media
+        </a>
+      </li>
+      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
+        <a class="ltr:hx-pl-4 rtl:hx-pr-4 hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#codecs">Codecs
+        </a>
+      </li>
+      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
+        <a class="ltr:hx-pl-4 rtl:hx-pr-4 hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#listen-ip">Listen IP
         </a>
       </li></ul>
       <div class="hx-mt-8 hx-border-t hx-bg-white hx-pt-8 hx-shadow-[0_-12px_16px_white] dark:hx-bg-dark dark:hx-shadow-[0_-12px_16px_#111] hx-sticky hx-bottom-0 hx-flex hx-flex-col hx-items-start hx-gap-2 hx-pb-8 dark:hx-border-neutral-800 contrast-more:hx-border-t contrast-more:hx-border-neutral-400 contrast-more:hx-shadow-none contrast-more:dark:hx-border-neutral-400">
@@ -311,17 +346,83 @@ Diago is built with GO language and we are keeping well optimized sip and media 
     <article class="hx-w-full hx-break-words hx-flex hx-min-h-[calc(100vh-var(--navbar-height))] hx-min-w-0 hx-justify-center hx-pb-8 hx-pr-[calc(env(safe-area-inset-right)-1.5rem)]">
       <main class="hx-w-full hx-min-w-0 hx-max-w-6xl hx-px-6 hx-pt-4 md:hx-px-12">
         
-  <div class="hx-mt-1.5 hx-flex hx-items-center hx-gap-1 hx-overflow-hidden hx-text-sm hx-text-gray-500 dark:hx-text-gray-400 contrast-more:hx-text-current"><div class="hx-whitespace-nowrap hx-transition-colors hx-font-medium hx-text-gray-700 contrast-more:hx-font-bold contrast-more:hx-text-current dark:hx-text-gray-100 contrast-more:dark:hx-text-current">Docs</div>
+  <div class="hx-mt-1.5 hx-flex hx-items-center hx-gap-1 hx-overflow-hidden hx-text-sm hx-text-gray-500 dark:hx-text-gray-400 contrast-more:hx-text-current">
+        <div class="hx-whitespace-nowrap hx-transition-colors hx-min-w-[24px] hx-overflow-hidden hx-text-ellipsis hover:hx-text-gray-900 dark:hover:hx-text-gray-100">
+          <a href="/diago/docs/">My Docs</a>
+        </div><svg class="hx-w-3.5 hx-shrink-0 rtl:-hx-rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+        <div class="hx-whitespace-nowrap hx-transition-colors hx-min-w-[24px] hx-overflow-hidden hx-text-ellipsis hover:hx-text-gray-900 dark:hover:hx-text-gray-100">
+          <a href="/diago/docs/guides/">Guides</a>
+        </div><svg class="hx-w-3.5 hx-shrink-0 rtl:-hx-rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg><div class="hx-whitespace-nowrap hx-transition-colors hx-font-medium hx-text-gray-700 contrast-more:hx-font-bold contrast-more:hx-text-current dark:hx-text-gray-100 contrast-more:dark:hx-text-current">Understading SIP with Call Scenarios</div>
   </div>
 
         <div class="content">
-          <h1></h1>
-          <h2>Why Diago?<span class="hx-absolute -hx-mt-20" id="why-diago"></span>
-    <a href="#why-diago" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>Development of VOIP services can be slow or it was full workarrounds.
-Diago try to offer more modern Stack and put you closer to network/media with less abstractions.</p>
-<p>Diago is built with GO language and we are keeping well optimized sip and media stack to have performance and low GC latency. Major win is Go offers fast development speed and memory safety, but also tooling to tweak best performance.</p>
-<p>Diago will try to reduce complexity of dealing with call, but also be Low Level Library to give you more control and help you optimize.
-This is sometimes important when dealing with realtime media.</p>
+          <h1>Understading SIP with Call Scenarios</h1>
+          <p>Every call starts with <strong>INVITE</strong> SIP Messages. Here is how to relate SIP message to PHONE actions</p>
+<ul>
+<li>Dialing = INVITE</li>
+<li>Answer = 200 OK response on INVITE</li>
+<li>Hangup = BYE</li>
+<li>Cancel = CANCEL</li>
+<li>Reject = 486 Busy</li>
+</ul>
+<p>INVITE is creating <strong>session</strong> which we call <strong>dialog</strong>.<br>
+INVITE carries <strong>SDP</strong> (application/sdp) in body of message as <strong>offer</strong> to exlain media capabilites and connection setup. INVITE can have any other type in Body like HTTP, but SDP protocol is mainly used. More about this later</p>
+<p>Accepting(Answering) call is done by respondin with <strong>200 OK</strong><br>
+Response carries <strong>SDP</strong> in body as <strong>answer</strong> to explain callee&rsquo;s media capabilites and connection.</p>
+<p><em>Caller (Client)</em>: Sends one time ACK as confirmation</p>
+<h3>Succesfull call<span class="hx-absolute -hx-mt-20" id="succesfull-call"></span>
+    <a href="#succesfull-call" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>
+    <img src="../call_seq.png" alt="call_seq" loading="lazy" /></p>
+<!-- raw HTML omitted -->
+<p>SIP Trace TODO</p>
+<h3>Succesfull call with provisional responses (More realistic)<span class="hx-absolute -hx-mt-20" id="succesfull-call-with-provisional-responses-more-realistic"></span>
+    <a href="#succesfull-call-with-provisional-responses-more-realistic" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><!-- raw HTML omitted -->
+<p>Call establishment can take a while, so provisional responses help with this.</p>
+<p>Provisional responses = 1xx and mostly you will see 100 and 180.
+100 is used in HTTP as well, it just notifies client that request is accepted but it is in progress.</p>
+<p>After very quickly you may have Ringing, which indicates that end user device is reached and it is ringing.</p>
+<h3>Canceling call with SIP CANCEL<span class="hx-absolute -hx-mt-20" id="canceling-call-with-sip-cancel"></span>
+    <a href="#canceling-call-with-sip-cancel" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><!-- raw HTML omitted -->
+<p>Caller cancels call by sending CANCEL msg. It contains mainly same headers as INVITE</p>
+<p><strong>NOTE:</strong></p>
+<ul>
+<li>200 OK is for CANCEL</li>
+</ul>
+<h2>Undestanding SIP and media<span class="hx-absolute -hx-mt-20" id="undestanding-sip-and-media"></span>
+    <a href="#undestanding-sip-and-media" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><h3>Call with media<span class="hx-absolute -hx-mt-20" id="call-with-media"></span>
+    <a href="#call-with-media" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><!-- raw HTML omitted -->
+<p>Here we will just explain most important things for media.</p>
+<p>With SDP we explain our capabilites and protocol used for media and this mostly boils down to this 3 things:</p>
+<ul>
+<li>explaining which codecs are supported for decoding (alaw,ulaw, opus, g722, &hellip;),</li>
+<li>protocol (RTP)</li>
+<li>and Listen IP where we expect incoming media (UDP)</li>
+</ul>
+<p>Client (Caller) and Server (Callee) both exchange SDP to explain their capabilites and <strong>Listening</strong> IP</p>
+<h3>Codecs<span class="hx-absolute -hx-mt-20" id="codecs"></span>
+    <a href="#codecs" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>Codecs or in other words <strong>Formats</strong> are identified as numbers for audio. Ex:</p>
+<ul>
+<li>0 ulaw 8000Hz</li>
+<li>8 alaw 8000Hz</li>
+</ul>
+<p>In SDP this will be shown as <strong>m=desc</strong> key. Ex:<br>
+<code>m=audio 49170 RTP/AVP 0</code><br>
+Description:</p>
+<ul>
+<li>audio: type of stream</li>
+<li>49170: port on which is listening</li>
+<li>RTP/AVP: identifier for RTP protocol and AVP denotes as Audio Video</li>
+<li>0: is codec identifier</li>
+</ul>
+<h3>Listen IP<span class="hx-absolute -hx-mt-20" id="listen-ip"></span>
+    <a href="#listen-ip" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>Information and where device/use is listening for incoming media traffic
+<code>c=IN IP4 198.51.100.1</code></p>
+<ul>
+<li>IP4 denotes IP version 4 is used</li>
+</ul>
+<p><strong>NOTE</strong>:
+Publishing local IP like above is problem for NAT and there different approaches to solve this issue, but for now we will skip this part.</p>
+<p><strong>TO BE CONTINUED</strong></p>
 
         </div>
         <div class="hx-mt-16"></div>
@@ -341,11 +442,11 @@ This is sometimes important when dealing with realtime media.</p>
   </div>
 </footer>
     
-    <script defer src="/diago/js/main.min.998f7d6b2520d6d9875145cbe14b35964b365b44b3b1bfa6b797a74a9c173b07.js" integrity="sha256-mY99ayUg1tmHUUXL4Us1lks2W0Szsb&#43;mt5enSpwXOwc="></script>
+    <script defer src="/diago/js/main.js" integrity=""></script>
 
 
 <script defer src="/diago/lib/flexsearch/flexsearch.bundle.min.0425860527cc9968f9f049421c7a56b39327d475e2e3a8f550416be3a9134327.js" integrity="sha256-BCWGBSfMmWj58ElCHHpWs5Mn1HXi46j1UEFr46kTQyc="></script>
-    <script defer src="/diago/en.search.min.00be893ae7283ef250b83069710b8608724b33a24cfcf573cb59d8b716baa772.js" integrity="sha256-AL6JOucoPvJQuDBpcQuGCHJLM6JM/PVzy1nYtxa6p3I="></script>
+    <script defer src="/diago/en.search.js" integrity=""></script>
 
 
   </body>

@@ -1,0 +1,136 @@
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Diago – Guides</title>
+    <link>https://emiago.github.io/diago/docs/guides/</link>
+    <description>Recent content in Guides on Diago</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    
+	  <atom:link href="https://emiago.github.io/diago/docs/guides/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+      
+        
+      
+    
+    
+    <item>
+      <title>Understading SIP with Call Scenarios</title>
+      <link>https://emiago.github.io/diago/docs/guides/understanding_sip/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>https://emiago.github.io/diago/docs/guides/understanding_sip/</guid>
+      <description>
+        
+        
+        &lt;p&gt;Every call starts with &lt;strong&gt;INVITE&lt;/strong&gt; SIP Messages. Here is how to relate SIP message to PHONE actions&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Dialing = INVITE&lt;/li&gt;
+&lt;li&gt;Answer = 200 OK response on INVITE&lt;/li&gt;
+&lt;li&gt;Hangup = BYE&lt;/li&gt;
+&lt;li&gt;Cancel = CANCEL&lt;/li&gt;
+&lt;li&gt;Reject = 486 Busy&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;INVITE is creating &lt;strong&gt;session&lt;/strong&gt; which we call &lt;strong&gt;dialog&lt;/strong&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;Caller (Client)&lt;/em&gt;: Sends one time ACK as confirmation&lt;/p&gt;
+&lt;h3&gt;Succesfull call&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;succesfull-call&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#succesfull-call&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;
+    &lt;img src=&#34;../call_seq.png&#34; alt=&#34;call_seq&#34; loading=&#34;lazy&#34; /&gt;&lt;/p&gt;
+&lt;!-- raw HTML omitted --&gt;
+&lt;p&gt;Example of &lt;code&gt;alice&lt;/code&gt; inviting &lt;code&gt;bob&lt;/code&gt;&lt;/p&gt;
+&lt;div class=&#34;hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code&#34;&gt;
+  
+
+&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;INVITE sip:bob@127.0.0.1:5060 SIP/2.0
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;Via: SIP/2.0/udp 127.0.0.99:50725;branch&lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt;z9hG4bK.pgb382qZ312tyXIP
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;Content-Type: application/sdp
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;Content-Length: &lt;span style=&#34;color:#ae81ff&#34;&gt;235&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;Contact: &amp;lt;sip:alice@127.0.0.99:50725&amp;gt;;transport&lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt;udp
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;From: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;alice&amp;#34;&lt;/span&gt; &amp;lt;sip:alice@127.0.0.99&amp;gt;;tag&lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt;hImscoj6Jew8y6da
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;To: &amp;lt;sip:bob@127.0.0.1&amp;gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;Call-ID: 729cd7dd-96dc-419b-b339-327c60dfc2d7
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;CSeq: &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt; INVITE
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;Max-Forwards: &lt;span style=&#34;color:#ae81ff&#34;&gt;70&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0&#34;&gt;
+  &lt;button
+    class=&#34;hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50&#34;
+    title=&#34;Copy code&#34;
+  &gt;
+    &lt;div class=&#34;copy-icon group-[.copied]/copybtn:hx-hidden hx-pointer-events-none hx-h-4 hx-w-4&#34;&gt;&lt;/div&gt;
+    &lt;div class=&#34;success-icon hx-hidden group-[.copied]/copybtn:hx-block hx-pointer-events-none hx-h-4 hx-w-4&#34;&gt;&lt;/div&gt;
+  &lt;/button&gt;
+&lt;/div&gt;
+
+  
+&lt;/div&gt;
+&lt;h3&gt;Succesfull call with provisional responses (More realistic)&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;succesfull-call-with-provisional-responses-more-realistic&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#succesfull-call-with-provisional-responses-more-realistic&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;
+    &lt;img src=&#34;../call_provisional_seq.png&#34; alt=&#34;call_seq&#34; loading=&#34;lazy&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;Call establishment can take a while, so provisional responses help with this.&lt;/p&gt;
+&lt;p&gt;Provisional responses = 1xx and mostly you will see 100 and 180.
+100 is used in HTTP as well, it just notifies client that request is accepted but it is in progress.&lt;/p&gt;
+&lt;p&gt;After very quickly you may have Ringing, which indicates that end user device is reached and it is ringing.&lt;/p&gt;
+&lt;h3&gt;Canceling call with SIP CANCEL&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;canceling-call-with-sip-cancel&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#canceling-call-with-sip-cancel&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;
+    &lt;img src=&#34;../call_cancel_seq.png&#34; alt=&#34;call_seq&#34; loading=&#34;lazy&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;Caller cancels call by sending CANCEL msg. It contains mainly same headers as INVITE&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;NOTE:&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;200 OK is for CANCEL&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;TO BE CONTINUED&lt;/strong&gt;&lt;/p&gt;
+
+      </description>
+    </item>
+    
+    <item>
+      <title>SIP and Media</title>
+      <link>https://emiago.github.io/diago/docs/guides/sip_and_media/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>https://emiago.github.io/diago/docs/guides/sip_and_media/</guid>
+      <description>
+        
+        
+        &lt;h2&gt;Undestanding SIP and media&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;undestanding-sip-and-media&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#undestanding-sip-and-media&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;INVITE carries &lt;strong&gt;SDP&lt;/strong&gt; (application/sdp) in body of message as &lt;strong&gt;offer&lt;/strong&gt; to exlain media capabilites and connection setup. INVITE can have any other type in Body like HTTP, but SDP protocol is mainly used. More about this later&lt;/p&gt;
+&lt;p&gt;Accepting(Answering) call is done by respondin with &lt;strong&gt;200 OK&lt;/strong&gt;&lt;br&gt;
+Response carries &lt;strong&gt;SDP&lt;/strong&gt; in body as &lt;strong&gt;answer&lt;/strong&gt; to explain callee&amp;rsquo;s media capabilites and connection.&lt;/p&gt;
+&lt;h3&gt;Call with media&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;call-with-media&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#call-with-media&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;!-- raw HTML omitted --&gt;
+&lt;p&gt;Here we will just explain most important things for media.&lt;/p&gt;
+&lt;p&gt;With SDP we explain our capabilites and protocol used for media and this mostly boils down to this 3 things:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;explaining which codecs are supported for decoding (alaw,ulaw, opus, g722, &amp;hellip;),&lt;/li&gt;
+&lt;li&gt;protocol (RTP)&lt;/li&gt;
+&lt;li&gt;and Listen IP where we expect incoming media (UDP)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Client (Caller) and Server (Callee) both exchange SDP to explain their capabilites and &lt;strong&gt;Listening&lt;/strong&gt; IP&lt;/p&gt;
+&lt;h3&gt;Codecs&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;codecs&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#codecs&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Codecs or in other words &lt;strong&gt;Formats&lt;/strong&gt; are identified as numbers for audio. Ex:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;0 ulaw 8000Hz&lt;/li&gt;
+&lt;li&gt;8 alaw 8000Hz&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;In SDP this will be shown as &lt;strong&gt;m=desc&lt;/strong&gt; key. Ex:&lt;br&gt;
+&lt;code&gt;m=audio 49170 RTP/AVP 0&lt;/code&gt;&lt;br&gt;
+Description:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;audio: type of stream&lt;/li&gt;
+&lt;li&gt;49170: port on which is listening&lt;/li&gt;
+&lt;li&gt;RTP/AVP: identifier for RTP protocol and AVP denotes as Audio Video&lt;/li&gt;
+&lt;li&gt;0: is codec identifier&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Listen IP&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;listen-ip&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#listen-ip&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Information and where device/use is listening for incoming media traffic
+&lt;code&gt;c=IN IP4 198.51.100.1&lt;/code&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;IP4 denotes IP version 4 is used&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;NOTE&lt;/strong&gt;:
+Publishing local IP like above is problem for NAT and there different approaches to solve this issue, but for now we will skip this part.&lt;/p&gt;
+
+      </description>
+    </item>
+    
+  </channel>
+</rss>

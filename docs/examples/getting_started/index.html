@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en"><head>
+<html lang="en"><head><script src="/diago/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=diago/livereload" data-no-instant defer></script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="robots" content="index, follow" />
+  <meta name="robots" content="noindex, nofollow" />
   <link rel="icon shortcut" href="/diago/favicon.ico" sizes="32x32" />
 <link rel="icon" href="/diago/favicon.svg" type="image/svg+xml" />
 <link rel="icon" href="/diago/favicon-dark.svg" type="image/svg+xml" media="(prefers-color-scheme: dark)" />
@@ -12,43 +12,42 @@
 <link fetchpriority="low" href="/diago/site.webmanifest" rel="manifest" />
 
   <title>Diago</title>
-  <meta name="description" content="Getting starteddiago can act as UAS(User Agent Server) and UAC(User Agent Client), and on top it adds bridging to build B2BUA services.
-To keep abstractions low it intentionally distincts dialog received (Acting as server) and dialog created (Acting as client) Therefore it distincts your dialog/session control with this structs:
-DialogServerSession when receving incoming dialog (SIP INVITE) and setups session (media) DialogClientSession when it creates outgoing dialog (SIP INVITE) and setups session (media) Further it is explicit which media stack it uses" />
+  <meta name="description" content="Getting starteddiago acts as UAS(User Agent Server) and UAC(User Agent Client). For now it keeps abstractions only where it needs. Therefore it distincts your dialog control by:
+It receives DialogServerSession for serving incoming sessions(Call leg) It creates DialogClientSession when it Dials outgoing session(Call leg) Further it is explicit which media stack it uses
+Answer -&gt; RTP/UDP AnswerWebrtc -&gt; Webrtc stack SRTP/DTLS Setup diago: ua, _ := sipgo.NewUA() transportUDP := diago.Transport{ Transport: &#34;udp&#34;, BindHost: &#34;127." />
 
   
-    <link rel="canonical" href="https://emiago.github.io/diago/docs/getting_started/" itemprop="url" />
+    <link rel="canonical" href="http://localhost:1313/diago/docs/examples/getting_started/" itemprop="url" />
   
 
   
 
 <meta property="og:title" content="" />
-<meta property="og:description" content="Getting starteddiago can act as UAS(User Agent Server) and UAC(User Agent Client), and on top it adds bridging to build B2BUA services.
-To keep abstractions low it intentionally distincts dialog received (Acting as server) and dialog created (Acting as client) Therefore it distincts your dialog/session control with this structs:
-DialogServerSession when receving incoming dialog (SIP INVITE) and setups session (media) DialogClientSession when it creates outgoing dialog (SIP INVITE) and setups session (media) Further it is explicit which media stack it uses" />
+<meta property="og:description" content="Getting starteddiago acts as UAS(User Agent Server) and UAC(User Agent Client). For now it keeps abstractions only where it needs. Therefore it distincts your dialog control by:
+It receives DialogServerSession for serving incoming sessions(Call leg) It creates DialogClientSession when it Dials outgoing session(Call leg) Further it is explicit which media stack it uses
+Answer -&gt; RTP/UDP AnswerWebrtc -&gt; Webrtc stack SRTP/DTLS Setup diago: ua, _ := sipgo.NewUA() transportUDP := diago.Transport{ Transport: &#34;udp&#34;, BindHost: &#34;127." />
 <meta property="og:type" content="article" />
-<meta property="og:url" content="https://emiago.github.io/diago/docs/getting_started/" /><meta property="article:section" content="docs" />
+<meta property="og:url" content="http://localhost:1313/diago/docs/examples/getting_started/" /><meta property="article:section" content="docs" />
 
 
 
   
   <meta itemprop="name" content="Diago">
-  <meta itemprop="description" content="Getting starteddiago can act as UAS(User Agent Server) and UAC(User Agent Client), and on top it adds bridging to build B2BUA services.
-To keep abstractions low it intentionally distincts dialog received (Acting as server) and dialog created (Acting as client) Therefore it distincts your dialog/session control with this structs:
-DialogServerSession when receving incoming dialog (SIP INVITE) and setups session (media) DialogClientSession when it creates outgoing dialog (SIP INVITE) and setups session (media) Further it is explicit which media stack it uses">
-  <meta itemprop="wordCount" content="290">
+  <meta itemprop="description" content="Getting starteddiago acts as UAS(User Agent Server) and UAC(User Agent Client). For now it keeps abstractions only where it needs. Therefore it distincts your dialog control by:
+It receives DialogServerSession for serving incoming sessions(Call leg) It creates DialogClientSession when it Dials outgoing session(Call leg) Further it is explicit which media stack it uses
+Answer -&gt; RTP/UDP AnswerWebrtc -&gt; Webrtc stack SRTP/DTLS Setup diago: ua, _ := sipgo.NewUA() transportUDP := diago.Transport{ Transport: &#34;udp&#34;, BindHost: &#34;127.">
+  <meta itemprop="wordCount" content="250">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Diago">
-  <meta name="twitter:description" content="Getting starteddiago can act as UAS(User Agent Server) and UAC(User Agent Client), and on top it adds bridging to build B2BUA services.
-To keep abstractions low it intentionally distincts dialog received (Acting as server) and dialog created (Acting as client) Therefore it distincts your dialog/session control with this structs:
-DialogServerSession when receving incoming dialog (SIP INVITE) and setups session (media) DialogClientSession when it creates outgoing dialog (SIP INVITE) and setups session (media) Further it is explicit which media stack it uses">
+  <meta name="twitter:description" content="Getting starteddiago acts as UAS(User Agent Server) and UAC(User Agent Client). For now it keeps abstractions only where it needs. Therefore it distincts your dialog control by:
+It receives DialogServerSession for serving incoming sessions(Call leg) It creates DialogClientSession when it Dials outgoing session(Call leg) Further it is explicit which media stack it uses
+Answer -&gt; RTP/UDP AnswerWebrtc -&gt; Webrtc stack SRTP/DTLS Setup diago: ua, _ := sipgo.NewUA() transportUDP := diago.Transport{ Transport: &#34;udp&#34;, BindHost: &#34;127.">
 
-    <link rel="preload" href="/diago/css/compiled/main.min.c1fe2c80102c9dc9ddc66184191e646769052d36a21b38ac5ab5077713cf7a81.css" as="style" integrity="sha256-wf4sgBAsncndxmGEGR5kZ2kFLTaiGzisWrUHdxPPeoE=" />
-    <link href="/diago/css/compiled/main.min.c1fe2c80102c9dc9ddc66184191e646769052d36a21b38ac5ab5077713cf7a81.css" rel="stylesheet" integrity="sha256-wf4sgBAsncndxmGEGR5kZ2kFLTaiGzisWrUHdxPPeoE=" />
-
+    <link href="/diago/css/compiled/main.css" rel="stylesheet" />
 
 
-  <link href="/diago/css/custom.min.e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.css" rel="stylesheet" integrity="sha256-47DEQpj8HBSa&#43;/TImW&#43;5JCeuQeRkm5NMpJWZG3hSuFU=" />
+
+  <link href="/diago/css/custom.css" rel="stylesheet" />
 
 
 
@@ -180,40 +179,22 @@ DialogServerSession when receving incoming dialog (SIP INVITE) and setups sessio
       hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
     href="/diago/docs/"
     
-  >Docs
+  >My Docs
         <span class="hextra-sidebar-collapsible-button"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="hx-h-[18px] hx-min-w-[18px] hx-rounded-sm hx-p-0.5 hover:hx-bg-gray-800/5 dark:hover:hx-bg-gray-100/5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" class="hx-origin-center hx-transition-transform rtl:-hx-rotate-180"></path></svg></span>
     </a><div class="ltr:hx-pr-0 hx-overflow-hidden">
-        <ul class='hx-relative hx-flex hx-flex-col hx-gap-1 before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] ltr:hx-ml-3 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-mr-3 rtl:hx-pr-3 rtl:before:hx-right-0 dark:before:hx-bg-neutral-800'><li class="hx-flex hx-flex-col "><a
+        <ul class='hx-relative hx-flex hx-flex-col hx-gap-1 before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] ltr:hx-ml-3 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-mr-3 rtl:hx-pr-3 rtl:before:hx-right-0 dark:before:hx-bg-neutral-800'><li class="hx-flex hx-flex-col open"><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
       hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/guides/"
+    href="/diago/docs/examples/"
     
-  >Guides
+  >Examples
         <span class="hextra-sidebar-collapsible-button"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="hx-h-[18px] hx-min-w-[18px] hx-rounded-sm hx-p-0.5 hover:hx-bg-gray-800/5 dark:hover:hx-bg-gray-100/5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" class="hx-origin-center hx-transition-transform rtl:-hx-rotate-180"></path></svg></span>
     </a>
               <div class="ltr:hx-pr-0 hx-overflow-hidden">
-        <ul class='hx-relative hx-flex hx-flex-col hx-gap-1 before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] ltr:hx-ml-3 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-mr-3 rtl:hx-pr-3 rtl:before:hx-right-0 dark:before:hx-bg-neutral-800'><li class="hx-flex hx-flex-col "><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/guides/understanding_sip/"
-    
-  >Understading SIP with Call Scenarios
-    </a>
-              
-            </li><li class="hx-flex hx-flex-col "><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/guides/sip_and_media/"
-    
-  >SIP and Media
-    </a>
-              
-            </li></ul>
-      </div>
-            </li><li class="hx-flex hx-flex-col open"><a
+        <ul class='hx-relative hx-flex hx-flex-col hx-gap-1 before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] ltr:hx-ml-3 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-mr-3 rtl:hx-pr-3 rtl:before:hx-right-0 dark:before:hx-bg-neutral-800'><li class="hx-flex hx-flex-col open"><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
       sidebar-active-item hx-bg-primary-100 hx-font-semibold hx-text-primary-800 contrast-more:hx-border contrast-more:hx-border-primary-500 dark:hx-bg-primary-400/10 dark:hx-text-primary-600 contrast-more:dark:hx-border-primary-500"
-    href="/diago/docs/getting_started/"
+    href="/diago/docs/examples/getting_started/"
     
   >Getting Started
     </a>
@@ -239,12 +220,22 @@ DialogServerSession when receving incoming dialog (SIP INVITE) and setups sessio
           </ul>
   
               
+            </li></ul>
+      </div>
             </li><li class="hx-flex hx-flex-col "><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
       hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/examples/"
+    href="/diago/docs/guide/"
     
-  >Examples
+  >Guide
+    </a>
+              
+            </li><li class="hx-flex hx-flex-col "><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/docs/getting_started/"
+    
+  >Getting Started
     </a>
               
             </li></ul>
@@ -253,45 +244,37 @@ DialogServerSession when receving incoming dialog (SIP INVITE) and setups sessio
 
     <ul class="hx-flex hx-flex-col hx-gap-1 max-md:hx-hidden">
         
-          <li class=""><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/guides/"
-    
-  >Guides
-        <span class="hextra-sidebar-collapsible-button"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="hx-h-[18px] hx-min-w-[18px] hx-rounded-sm hx-p-0.5 hover:hx-bg-gray-800/5 dark:hover:hx-bg-gray-100/5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" class="hx-origin-center hx-transition-transform rtl:-hx-rotate-180"></path></svg></span>
-    </a><div class="ltr:hx-pr-0 hx-overflow-hidden">
-        <ul class='hx-relative hx-flex hx-flex-col hx-gap-1 before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] ltr:hx-ml-3 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-mr-3 rtl:hx-pr-3 rtl:before:hx-right-0 dark:before:hx-bg-neutral-800'><li class="hx-flex hx-flex-col "><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/guides/understanding_sip/"
-    
-  >Understading SIP with Call Scenarios
-    </a>
-              
-            </li><li class="hx-flex hx-flex-col "><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/guides/sip_and_media/"
-    
-  >SIP and Media
-    </a>
-              
-            </li></ul>
-      </div></li>
           <li class="open"><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      sidebar-active-item hx-bg-primary-100 hx-font-semibold hx-text-primary-800 contrast-more:hx-border contrast-more:hx-border-primary-500 dark:hx-bg-primary-400/10 dark:hx-text-primary-600 contrast-more:dark:hx-border-primary-500"
-    href="/diago/docs/getting_started/"
-    
-  >Getting Started
-    </a></li>
-          <li class=""><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
       hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
     href="/diago/docs/examples/"
     
   >Examples
+        <span class="hextra-sidebar-collapsible-button"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="hx-h-[18px] hx-min-w-[18px] hx-rounded-sm hx-p-0.5 hover:hx-bg-gray-800/5 dark:hover:hx-bg-gray-100/5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" class="hx-origin-center hx-transition-transform rtl:-hx-rotate-180"></path></svg></span>
+    </a><div class="ltr:hx-pr-0 hx-overflow-hidden">
+        <ul class='hx-relative hx-flex hx-flex-col hx-gap-1 before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] ltr:hx-ml-3 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-mr-3 rtl:hx-pr-3 rtl:before:hx-right-0 dark:before:hx-bg-neutral-800'><li class="hx-flex hx-flex-col open"><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      sidebar-active-item hx-bg-primary-100 hx-font-semibold hx-text-primary-800 contrast-more:hx-border contrast-more:hx-border-primary-500 dark:hx-bg-primary-400/10 dark:hx-text-primary-600 contrast-more:dark:hx-border-primary-500"
+    href="/diago/docs/examples/getting_started/"
+    
+  >Getting Started
+    </a>
+              
+            </li></ul>
+      </div></li>
+          <li class=""><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/docs/guide/"
+    
+  >Guide
+    </a></li>
+          <li class=""><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/docs/getting_started/"
+    
+  >Getting Started
     </a></li>
         
       </ul>
@@ -348,25 +331,26 @@ DialogServerSession when receving incoming dialog (SIP INVITE) and setups sessio
         
   <div class="hx-mt-1.5 hx-flex hx-items-center hx-gap-1 hx-overflow-hidden hx-text-sm hx-text-gray-500 dark:hx-text-gray-400 contrast-more:hx-text-current">
         <div class="hx-whitespace-nowrap hx-transition-colors hx-min-w-[24px] hx-overflow-hidden hx-text-ellipsis hover:hx-text-gray-900 dark:hover:hx-text-gray-100">
-          <a href="/diago/docs/">Docs</a>
+          <a href="/diago/docs/">My Docs</a>
+        </div><svg class="hx-w-3.5 hx-shrink-0 rtl:-hx-rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+        <div class="hx-whitespace-nowrap hx-transition-colors hx-min-w-[24px] hx-overflow-hidden hx-text-ellipsis hover:hx-text-gray-900 dark:hover:hx-text-gray-100">
+          <a href="/diago/docs/examples/">Examples</a>
         </div><svg class="hx-w-3.5 hx-shrink-0 rtl:-hx-rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg><div class="hx-whitespace-nowrap hx-transition-colors hx-font-medium hx-text-gray-700 contrast-more:hx-font-bold contrast-more:hx-text-current dark:hx-text-gray-100 contrast-more:dark:hx-text-current">Getting Started</div>
   </div>
 
         <div class="content">
           <h1></h1>
-          <h1>Getting started</h1><p>diago can act as <strong>UAS</strong>(User Agent Server) and <strong>UAC</strong>(User Agent Client), and on top it adds <strong>bridging</strong> to build B2BUA services.</p>
-<p>To keep abstractions low it intentionally <strong>distincts</strong> dialog received (<strong>Acting as server</strong>) and dialog created (<strong>Acting as client</strong>)
-Therefore it distincts your dialog/session control with this structs:</p>
+          <h1>Getting started</h1><p>diago acts as UAS(User Agent Server) and UAC(User Agent Client). For now it keeps abstractions only where it needs.
+Therefore it distincts your dialog control by:</p>
 <ul>
-<li><code>DialogServerSession</code> when receving incoming dialog (SIP INVITE) and setups session (media)</li>
-<li><code>DialogClientSession</code> when it creates outgoing dialog (SIP INVITE) and setups session (media)</li>
+<li>It receives <code>DialogServerSession</code> for serving incoming sessions(Call leg)</li>
+<li>It creates <code>DialogClientSession</code> when it Dials outgoing session(Call leg)</li>
 </ul>
 <p>Further it is explicit which media stack it uses</p>
 <ul>
 <li><code>Answer</code> -&gt; RTP/UDP</li>
-<li><code>AnswerWebrtc</code> -&gt; Webrtc stack SRTP/DTLS (Experimental)</li>
+<li><code>AnswerWebrtc</code> -&gt; Webrtc stack SRTP/DTLS</li>
 </ul>
-<p>NOTE: webrtc stack is experimental and not on full focus currently</p>
 <h4>Setup diago:<span class="hx-absolute -hx-mt-20" id="setup-diago"></span>
     <a href="#setup-diago" class="subheading-anchor" aria-label="Permalink for this section"></a></h4><div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
   
@@ -531,11 +515,11 @@ Therefore it distincts your dialog/session control with this structs:</p>
   </div>
 </footer>
     
-    <script defer src="/diago/js/main.min.998f7d6b2520d6d9875145cbe14b35964b365b44b3b1bfa6b797a74a9c173b07.js" integrity="sha256-mY99ayUg1tmHUUXL4Us1lks2W0Szsb&#43;mt5enSpwXOwc="></script>
+    <script defer src="/diago/js/main.js" integrity=""></script>
 
 
 <script defer src="/diago/lib/flexsearch/flexsearch.bundle.min.0425860527cc9968f9f049421c7a56b39327d475e2e3a8f550416be3a9134327.js" integrity="sha256-BCWGBSfMmWj58ElCHHpWs5Mn1HXi46j1UEFr46kTQyc="></script>
-    <script defer src="/diago/en.search.min.00be893ae7283ef250b83069710b8608724b33a24cfcf573cb59d8b716baa772.js" integrity="sha256-AL6JOucoPvJQuDBpcQuGCHJLM6JM/PVzy1nYtxa6p3I="></script>
+    <script defer src="/diago/en.search.js" integrity=""></script>
 
 
   </body>
