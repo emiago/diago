@@ -57,8 +57,8 @@ func Playback(inDialog *diago.DialogServerSession) error {
 	inDialog.Ringing()  // Ringing -> 180 Response
 	inDialog.Answer()   // Answer -> 200 Response
 
-	playfile, _ := testdata.OpenFile("demo-instruct.wav")
-	log.Info().Str("file", "demo-instruct.wav").Msg("Playing a file")
+	playfile, _ := testdata.OpenFile("demo-echotest.wav")
+	log.Info().Str("file", "demo-echotest.wav").Msg("Playing a file")
 
 	pb, err := inDialog.PlaybackCreate()
 	if err != nil {

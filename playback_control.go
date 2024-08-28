@@ -8,17 +8,17 @@ import (
 	"sync/atomic"
 )
 
-type PlaybackControl struct {
+type AudioPlaybackControl struct {
 	AudioPlayback
 
 	control *audioControl
 }
 
-func (p *PlaybackControl) Mute(mute bool) {
+func (p *AudioPlaybackControl) Mute(mute bool) {
 	p.control.Mute(mute)
 }
 
-func (p *PlaybackControl) Pause() {
+func (p *AudioPlaybackControl) Pause() {
 	p.control.Stop()
 }
 

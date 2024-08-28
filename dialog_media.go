@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/emiago/diago/audio"
 	"github.com/emiago/diago/media"
 	"github.com/emiago/diago/media/sdp"
 	"github.com/rs/zerolog/log"
@@ -44,7 +43,7 @@ type DialogMedia struct {
 	mediaSession *media.MediaSession
 
 	// Packet readers are default readers for RTP audio stream
-	// Use AudioReader if you are only interested in stream
+	// Use always AudioReader to get current Audio reader
 	RTPPacketWriter *media.RTPPacketWriter
 	RTPPacketReader *media.RTPPacketReader
 
@@ -122,43 +121,35 @@ func (d *DialogMedia) Media() *DialogMedia {
 	return d
 }
 
-// PlaybackCreate creates playback for PCM audio
+// PlaybackCreate creates playback for audio
 func (d *DialogMedia) PlaybackCreate() (AudioPlayback, error) {
-	// NOTE we should avoid returning pointers for any IN dialplan to avoid heap
 	rtpPacketWriter := d.RTPPacketWriter
 	pt := rtpPacketWriter.PayloadType
-	enc, err := audio.NewPCMEncoder(pt, rtpPacketWriter)
-	if err != nil {
-		return AudioPlayback{}, err
-	}
-
 	codec := media.CodecFromPayloadType(pt)
-	p := NewAudioPlayback(enc, codec)
+
+	w := d.AudioWriter()
+	p := NewAudioPlayback(w, codec)
 	return p, nil
 }
 
-func (d *DialogMedia) PlaybackControlCreate() (PlaybackControl, error) {
+// PlaybackControlCreate creates playback for audio with controls like mute unmute
+func (d *DialogMedia) PlaybackControlCreate() (AudioPlaybackControl, error) {
 	// NOTE we should avoid returning pointers for any IN dialplan to avoid heap
 	rtpPacketWriter := d.RTPPacketWriter
 	if rtpPacketWriter == nil {
-		return PlaybackControl{}, fmt.Errorf("no media setup")
+		return AudioPlaybackControl{}, fmt.Errorf("no media setup")
 	}
-
 	pt := rtpPacketWriter.PayloadType
-	enc, err := audio.NewPCMEncoder(pt, rtpPacketWriter)
-	if err != nil {
-		return PlaybackControl{}, err
-	}
 
 	// Audio is controled via audio reader/writer
+	w := d.AudioWriter()
 	control := &audioControl{
-		Writer: enc,
+		Writer: w,
 	}
 
 	codec := media.CodecFromPayloadType(pt)
-
-	p := PlaybackControl{
-		AudioPlayback: NewAudioPlayback(enc, codec),
+	p := AudioPlaybackControl{
+		AudioPlayback: NewAudioPlayback(control, codec),
 		control:       control,
 	}
 	return p, nil
@@ -185,6 +176,8 @@ func (m *DialogMedia) Listen() error {
 		}
 	}
 }
+
+// TODO Listen With Control. Same as Audio playback control we may want to mute/unmute incoming stream
 
 type loggingTransport struct{}
 
