@@ -12,10 +12,12 @@
 <link fetchpriority="low" href="/diago/site.webmanifest" rel="manifest" />
 
   <title>Examples – Diago</title>
-  <meta name="description" content="CLI Softphone for testing For testing below scenarios, gophone as CLI softphone is used. Visit the page and install:
+  <meta name="description" content="CLI Softphone for testing For testing below scenarios, gophone as CLI softphone is used, but you can use any softphone you like Visit the page and install:
 https://github.com/emiago/gophone
-Audio playback Download: download
-./example gophone dial sip:112@127.0.0.1 Bridge media TODO" />
+Source code of examples can be found in library. You will need go compiler installed
+Audio playback Run playback as server
+go run ./examples/playback Dial in and you should hear audio on your speakers
+gophone dial -media=speaker sip:112@127.0.0.1 Output sample Bridge media Run bridge app that always bridges with bob on port 5090" />
 
   
     <link rel="canonical" href="https://emiago.github.io/diago/docs/examples/" itemprop="url" />
@@ -30,17 +32,21 @@ Audio playback Download: download
 
   
   <meta itemprop="name" content="Examples">
-  <meta itemprop="description" content="CLI Softphone for testing For testing below scenarios, gophone as CLI softphone is used. Visit the page and install:
+  <meta itemprop="description" content="CLI Softphone for testing For testing below scenarios, gophone as CLI softphone is used, but you can use any softphone you like Visit the page and install:
 https://github.com/emiago/gophone
-Audio playback Download: download
-./example gophone dial sip:112@127.0.0.1 Bridge media TODO">
-  <meta itemprop="wordCount" content="31">
+Source code of examples can be found in library. You will need go compiler installed
+Audio playback Run playback as server
+go run ./examples/playback Dial in and you should hear audio on your speakers
+gophone dial -media=speaker sip:112@127.0.0.1 Output sample Bridge media Run bridge app that always bridges with bob on port 5090">
+  <meta itemprop="wordCount" content="113">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Examples">
-  <meta name="twitter:description" content="CLI Softphone for testing For testing below scenarios, gophone as CLI softphone is used. Visit the page and install:
+  <meta name="twitter:description" content="CLI Softphone for testing For testing below scenarios, gophone as CLI softphone is used, but you can use any softphone you like Visit the page and install:
 https://github.com/emiago/gophone
-Audio playback Download: download
-./example gophone dial sip:112@127.0.0.1 Bridge media TODO">
+Source code of examples can be found in library. You will need go compiler installed
+Audio playback Run playback as server
+go run ./examples/playback Dial in and you should hear audio on your speakers
+gophone dial -media=speaker sip:112@127.0.0.1 Output sample Bridge media Run bridge app that always bridges with bob on port 5090">
 
     <link rel="preload" href="/diago/css/compiled/main.min.c1fe2c80102c9dc9ddc66184191e646769052d36a21b38ac5ab5077713cf7a81.css" as="style" integrity="sha256-wf4sgBAsncndxmGEGR5kZ2kFLTaiGzisWrUHdxPPeoE=" />
     <link href="/diago/css/compiled/main.min.c1fe2c80102c9dc9ddc66184191e646769052d36a21b38ac5ab5077713cf7a81.css" rel="stylesheet" integrity="sha256-wf4sgBAsncndxmGEGR5kZ2kFLTaiGzisWrUHdxPPeoE=" />
@@ -231,9 +237,9 @@ Audio playback Download: download
             </li>
           <li>
               <a
-                href="#heading"
+                href="#upcomming"
                 class="hx-flex hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [word-break:break-word] hx-cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] contrast-more:hx-border hx-gap-2 before:hx-opacity-25 before:hx-content-['#'] hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:hx-text-gray-900 contrast-more:dark:hx-text-gray-50 contrast-more:hx-border-transparent contrast-more:hover:hx-border-gray-900 contrast-more:dark:hover:hx-border-gray-50"
-              ></a>
+              >Upcomming!</a>
             </li>
           </ul>
   
@@ -313,6 +319,10 @@ Audio playback Download: download
       <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
         <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#bridge-media">Bridge media
         </a>
+      </li>
+      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
+        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#upcomming">Upcomming!
+        </a>
       </li></ul>
       <div class="hx-mt-8 hx-border-t hx-bg-white hx-pt-8 hx-shadow-[0_-12px_16px_white] dark:hx-bg-dark dark:hx-shadow-[0_-12px_16px_#111] hx-sticky hx-bottom-0 hx-flex hx-flex-col hx-items-start hx-gap-2 hx-pb-8 dark:hx-border-neutral-800 contrast-more:hx-border-t contrast-more:hx-border-neutral-400 contrast-more:hx-shadow-none contrast-more:dark:hx-border-neutral-400">
         <button aria-hidden="true" id="backToTop" onClick="scrollUp();" class="hx-transition-all hx-duration-75 hx-opacity-0 hx-text-xs hx-font-medium hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-100 contrast-more:hx-text-gray-800 contrast-more:dark:hx-text-gray-50">
@@ -338,14 +348,17 @@ Audio playback Download: download
         <div class="content">
           <h1>Examples</h1>
           <h2>CLI Softphone for testing<span class="hx-absolute -hx-mt-20" id="cli-softphone-for-testing"></span>
-    <a href="#cli-softphone-for-testing" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>For testing below scenarios, <strong>gophone</strong> as CLI softphone is used. Visit the page and install:</p>
+    <a href="#cli-softphone-for-testing" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>For testing below scenarios, <strong>gophone</strong> as CLI softphone is used, but you can use any softphone you like
+Visit the page and install:</p>
 <p><a href="https://github.com/emiago/gophone" target="_blank" rel="noopener">https://github.com/emiago/gophone</a></p>
+<p>Source code of examples can be found in library.
+You will need go compiler installed</p>
 <h2>Audio playback<span class="hx-absolute -hx-mt-20" id="audio-playback"></span>
-    <a href="#audio-playback" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>Download: <a href="https://change.me" target="_blank" rel="noopener">download</a></p>
+    <a href="#audio-playback" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>Run playback as server</p>
 <div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
   
 
-<pre><code>./example</code></pre><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
+<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>go run ./examples/playback</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
   <button
     class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
     title="Copy code"
@@ -357,10 +370,11 @@ Audio playback Download: download
 
   
 </div>
+<p>Dial in and you should hear audio on your speakers</p>
 <div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
   
 
-<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-sh" data-lang="sh"><span style="display:flex;"><span>gophone dial sip:112@127.0.0.1</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
+<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-sh" data-lang="sh"><span style="display:flex;"><span>gophone dial -media<span style="color:#f92672">=</span>speaker sip:112@127.0.0.1</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
   <button
     class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
     title="Copy code"
@@ -372,10 +386,64 @@ Audio playback Download: download
 
   
 </div>
+<p>Output sample
+<img src="example_out_playback.png" alt="example_out" loading="lazy" /></p>
 <h2>Bridge media<span class="hx-absolute -hx-mt-20" id="bridge-media"></span>
-    <a href="#bridge-media" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>TODO</p>
-<h2><span class="hx-absolute -hx-mt-20" id="heading"></span>
-    <a href="#heading" class="subheading-anchor" aria-label="Permalink for this section"></a></h2>
+    <a href="#bridge-media" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>Run bridge app that always bridges with bob on port <code>5090</code></p>
+<div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
+  
+
+<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>go run ./examples/bridge sip:bob@127.0.0.1:5090</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
+  <button
+    class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
+    title="Copy code"
+  >
+    <div class="copy-icon group-[.copied]/copybtn:hx-hidden hx-pointer-events-none hx-h-4 hx-w-4"></div>
+    <div class="success-icon hx-hidden group-[.copied]/copybtn:hx-block hx-pointer-events-none hx-h-4 hx-w-4"></div>
+  </button>
+</div>
+
+  
+</div>
+<p>Run receiver:</p>
+<div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
+  
+
+<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>gophone answer -ua bob -l 127.0.0.1:5090</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
+  <button
+    class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
+    title="Copy code"
+  >
+    <div class="copy-icon group-[.copied]/copybtn:hx-hidden hx-pointer-events-none hx-h-4 hx-w-4"></div>
+    <div class="success-icon hx-hidden group-[.copied]/copybtn:hx-block hx-pointer-events-none hx-h-4 hx-w-4"></div>
+  </button>
+</div>
+
+  
+</div>
+<p>Dial server on <code>5060</code> be bridged with bob on <code>5090</code></p>
+<div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
+  
+
+<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-sh" data-lang="sh"><span style="display:flex;"><span>gophone dial -ua alice sip:bob@127.0.0.1:5060</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
+  <button
+    class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
+    title="Copy code"
+  >
+    <div class="copy-icon group-[.copied]/copybtn:hx-hidden hx-pointer-events-none hx-h-4 hx-w-4"></div>
+    <div class="success-icon hx-hidden group-[.copied]/copybtn:hx-block hx-pointer-events-none hx-h-4 hx-w-4"></div>
+  </button>
+</div>
+
+  
+</div>
+<p><img src="example_out_bridge.png" alt="example_out" loading="lazy" /></p>
+<h2>Upcomming!<span class="hx-absolute -hx-mt-20" id="upcomming"></span>
+    <a href="#upcomming" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><ul>
+<li>Read media directly</li>
+<li>Recording</li>
+</ul>
+
         </div>
         <div class="hx-mt-16"></div>
         
