@@ -12,7 +12,6 @@ import (
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/pion/webrtc/v3"
 )
 
 // DialogServerSession represents inbound channel
@@ -27,7 +26,7 @@ type DialogServerSession struct {
 	// We do not use sipgo as this needs mutex but also keeping original invite
 	lastInvite *sip.Request
 
-	webrtPeer  *webrtc.PeerConnection
+	onClose    func()
 	contactHDR sip.ContactHeader
 }
 
@@ -40,11 +39,26 @@ func (d *DialogServerSession) Close() {
 		d.mediaSession.Close()
 	}
 
-	if d.webrtPeer != nil {
-		d.webrtPeer.Close()
+	// Any hook attached
+	if d.onClose != nil {
+		d.onClose()
 	}
 
 	d.DialogServerSession.Close()
+}
+
+func (d *DialogServerSession) OnClose(f func()) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.onClose == nil {
+		prev := d.onClose
+		d.onClose = func() {
+			prev()
+			f()
+		}
+		return
+	}
+	d.onClose = f
 }
 
 func (d *DialogServerSession) FromUser() string {

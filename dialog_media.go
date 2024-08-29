@@ -53,6 +53,15 @@ type DialogMedia struct {
 	formats sdp.Formats
 }
 
+func (d *DialogMedia) SetSession(m *media.MediaSession, r *media.RTPPacketReader, w *media.RTPPacketWriter) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.mediaSession = m
+	d.RTPPacketReader = r
+	d.RTPPacketWriter = w
+}
+
 // Must be protected with lock
 func (d *DialogMedia) sdpReInvite(sdp []byte) error {
 	d.mu.Lock()
