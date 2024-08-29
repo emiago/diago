@@ -28,21 +28,25 @@
 
   
   <meta itemprop="name" content="Diago">
-  <meta itemprop="description" content="Diago is short of dialog &#43; GO.
+  <meta itemprop="description" content="DiagoDiago is short of dialog &#43; GO.
 Framework for building comunication (VOIP) solutions in GO.
 It is providing more developer friendly solution on top of SIPgo with full media stack integration.
 Stack:
-Signaling: SIP Media: RTP/UDP, Webrtc(Experimental) Visit Documentation to find out more!
-NOTE: This API design is WIP and may have changes">
-  <meta itemprop="wordCount" content="53">
+SIP as signaling Media: RTP/UDP Webrtc (Experimental) Visit Documentation to find out more!
+NOTE: This API design is WIP and may have changes
+Core (Roadmap): WIP = Work in progress (Expect soon to be part of lib)
+Full dialog control and High Level API alaw,ulaw codecs (opus as third is planned as well) Audio package for streaming: WAV reader/writer, PCM transcoding to alaw/ulaw Playbacks as buffers,files(wav),url Playback URL streaming Playback with control mute/unmute Audio Reader/Writer stream exposed for manual processing like sending to third party Bridging as proxy media for 2 parties B2BUA Bridging as proxy for conferencing Handling Reinvites with media updates Handling transfers (Refers) [/] DTMF with RTP (No wrappers yet) (WIP) DTMF with SIP INFO (Needed more in case webrtc) Writing Unit Test on Server with SIP and Media Recorder (WIP) And plenty more … Some things that will be kept simple:">
+  <meta itemprop="wordCount" content="239">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Diago">
-  <meta name="twitter:description" content="Diago is short of dialog &#43; GO.
+  <meta name="twitter:description" content="DiagoDiago is short of dialog &#43; GO.
 Framework for building comunication (VOIP) solutions in GO.
 It is providing more developer friendly solution on top of SIPgo with full media stack integration.
 Stack:
-Signaling: SIP Media: RTP/UDP, Webrtc(Experimental) Visit Documentation to find out more!
-NOTE: This API design is WIP and may have changes">
+SIP as signaling Media: RTP/UDP Webrtc (Experimental) Visit Documentation to find out more!
+NOTE: This API design is WIP and may have changes
+Core (Roadmap): WIP = Work in progress (Expect soon to be part of lib)
+Full dialog control and High Level API alaw,ulaw codecs (opus as third is planned as well) Audio package for streaming: WAV reader/writer, PCM transcoding to alaw/ulaw Playbacks as buffers,files(wav),url Playback URL streaming Playback with control mute/unmute Audio Reader/Writer stream exposed for manual processing like sending to third party Bridging as proxy media for 2 parties B2BUA Bridging as proxy for conferencing Handling Reinvites with media updates Handling transfers (Refers) [/] DTMF with RTP (No wrappers yet) (WIP) DTMF with SIP INFO (Needed more in case webrtc) Writing Unit Test on Server with SIP and Media Recorder (WIP) And plenty more … Some things that will be kept simple:">
 
     <link rel="preload" href="/diago/css/compiled/main.min.c1fe2c80102c9dc9ddc66184191e646769052d36a21b38ac5ab5077713cf7a81.css" as="style" integrity="sha256-wf4sgBAsncndxmGEGR5kZ2kFLTaiGzisWrUHdxPPeoE=" />
     <link href="/diago/css/compiled/main.min.c1fe2c80102c9dc9ddc66184191e646769052d36a21b38ac5ab5077713cf7a81.css" rel="stylesheet" integrity="sha256-wf4sgBAsncndxmGEGR5kZ2kFLTaiGzisWrUHdxPPeoE=" />
@@ -96,20 +100,6 @@ NOTE: This API design is WIP and may have changes">
             class="hx-text-sm contrast-more:hx-text-gray-700 contrast-more:dark:hx-text-gray-100 hx-relative -hx-ml-2 hx-hidden hx-whitespace-nowrap hx-p-2 md:hx-inline-block hx-text-gray-600 hover:hx-text-gray-800 dark:hx-text-gray-400 dark:hover:hx-text-gray-200"
           >
             <span class="hx-text-center">Documentation</span>
-          </a><a
-            title="Blog"
-            href="/diago/blog"
-            
-            class="hx-text-sm contrast-more:hx-text-gray-700 contrast-more:dark:hx-text-gray-100 hx-relative -hx-ml-2 hx-hidden hx-whitespace-nowrap hx-p-2 md:hx-inline-block hx-text-gray-600 hover:hx-text-gray-800 dark:hx-text-gray-400 dark:hover:hx-text-gray-200"
-          >
-            <span class="hx-text-center">Blog</span>
-          </a><a
-            title="About"
-            href="/diago/about"
-            
-            class="hx-text-sm contrast-more:hx-text-gray-700 contrast-more:dark:hx-text-gray-100 hx-relative -hx-ml-2 hx-hidden hx-whitespace-nowrap hx-p-2 md:hx-inline-block hx-text-gray-600 hover:hx-text-gray-800 dark:hx-text-gray-400 dark:hover:hx-text-gray-200"
-          >
-            <span class="hx-text-center">About</span>
           </a><div class="search-wrapper hx-relative md:hx-w-64">
   <div class="hx-relative hx-flex hx-items-center hx-text-gray-900 contrast-more:hx-text-gray-800 dark:hx-text-gray-300 contrast-more:dark:hx-text-gray-300">
     <input
@@ -246,8 +236,16 @@ NOTE: This API design is WIP and may have changes">
 </div></div></aside>
     
 <nav class="hextra-toc hx-order-last hx-hidden hx-w-64 hx-shrink-0 xl:hx-block print:hx-hidden hx-px-4" aria-label="table of contents">
-    <div class="hextra-scrollbar hx-sticky hx-top-16 hx-overflow-y-auto hx-pr-4 hx-pt-6 hx-text-sm [hyphens:auto] hx-max-h-[calc(100vh-var(--navbar-height)-env(safe-area-inset-bottom))] ltr:hx--mr-4 rtl:hx--ml-4">
-      <div class=" hx-sticky hx-bottom-0 hx-flex hx-flex-col hx-items-start hx-gap-2 hx-pb-8 dark:hx-border-neutral-800 contrast-more:hx-border-t contrast-more:hx-border-neutral-400 contrast-more:hx-shadow-none contrast-more:dark:hx-border-neutral-400">
+    <div class="hextra-scrollbar hx-sticky hx-top-16 hx-overflow-y-auto hx-pr-4 hx-pt-6 hx-text-sm [hyphens:auto] hx-max-h-[calc(100vh-var(--navbar-height)-env(safe-area-inset-bottom))] ltr:hx--mr-4 rtl:hx--ml-4"><p class="hx-mb-4 hx-font-semibold hx-tracking-tight">On this page</p><ul>
+      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
+        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#core-roadmap">Core (Roadmap):
+        </a>
+      </li>
+      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
+        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#diagox">diagox
+        </a>
+      </li></ul>
+      <div class="hx-mt-8 hx-border-t hx-bg-white hx-pt-8 hx-shadow-[0_-12px_16px_white] dark:hx-bg-dark dark:hx-shadow-[0_-12px_16px_#111] hx-sticky hx-bottom-0 hx-flex hx-flex-col hx-items-start hx-gap-2 hx-pb-8 dark:hx-border-neutral-800 contrast-more:hx-border-t contrast-more:hx-border-neutral-400 contrast-more:hx-shadow-none contrast-more:dark:hx-border-neutral-400">
         <button aria-hidden="true" id="backToTop" onClick="scrollUp();" class="hx-transition-all hx-duration-75 hx-opacity-0 hx-text-xs hx-font-medium hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-100 contrast-more:hx-text-gray-800 contrast-more:dark:hx-text-gray-50">
           <span>Scroll to top</span>
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="hx-inline ltr:hx-ml-1 rtl:hx-mr-1 hx-h-3.5 hx-w-3.5 hx-border hx-rounded-full hx-border-gray-500 hover:hx-border-gray-900 dark:hx-border-gray-400 dark:hover:hx-border-gray-100 contrast-more:hx-border-gray-800 contrast-more:dark:hx-border-gray-50">
@@ -263,16 +261,46 @@ NOTE: This API design is WIP and may have changes">
       <main class="hx-w-full hx-min-w-0 hx-max-w-6xl hx-px-6 hx-pt-4 md:hx-px-12">
         <h1 class="hx-text-center hx-mt-2 hx-text-4xl hx-font-bold hx-tracking-tight hx-text-slate-900 dark:hx-text-slate-100"></h1>
         <div class="content">
-          <p><strong>Diago</strong> is short of <strong>dialog + GO</strong>.<br>
+          <h1><em><strong>Diago</strong></em></h1><p><strong>Diago</strong> is short of <strong>dialog + GO</strong>.<br>
 Framework for building comunication (VOIP) solutions in <em>GO</em>.</p>
 <p>It is providing more developer friendly solution on top of <a href="https://github.com/emiago/sipgo" target="_blank" rel="noopener">SIPgo</a> with full <strong>media</strong> stack integration.</p>
 <p>Stack:</p>
 <ul>
-<li>Signaling: SIP</li>
-<li>Media: RTP/UDP, Webrtc(Experimental)</li>
+<li>SIP as signaling</li>
+<li>Media: RTP/UDP</li>
+<li>Webrtc (Experimental)</li>
 </ul>
 <p>Visit <a href="docs/" >Documentation</a> to find out more!</p>
 <p><strong>NOTE: This API design is WIP and may have changes</strong></p>
+<h2>Core (Roadmap):<span class="hx-absolute -hx-mt-20" id="core-roadmap"></span>
+    <a href="#core-roadmap" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p><em><strong>WIP</strong></em> = Work in progress (Expect soon to be part of lib)</p>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> Full dialog control and High Level API</li>
+<li><input checked="" disabled="" type="checkbox"> alaw,ulaw codecs (opus as third is planned as well)</li>
+<li><input checked="" disabled="" type="checkbox"> Audio package for streaming: WAV reader/writer, PCM transcoding to alaw/ulaw</li>
+<li><input checked="" disabled="" type="checkbox"> Playbacks as buffers,files(wav),url</li>
+<li><input checked="" disabled="" type="checkbox"> Playback URL streaming</li>
+<li><input checked="" disabled="" type="checkbox"> Playback with control mute/unmute</li>
+<li><input checked="" disabled="" type="checkbox"> Audio Reader/Writer stream exposed for manual processing like sending to third party</li>
+<li><input checked="" disabled="" type="checkbox"> Bridging as proxy media for 2 parties B2BUA</li>
+<li><input disabled="" type="checkbox"> Bridging as proxy for conferencing</li>
+<li><input checked="" disabled="" type="checkbox"> Handling Reinvites with media updates</li>
+<li><input disabled="" type="checkbox"> Handling transfers (Refers)</li>
+<li>[/] DTMF with RTP (No wrappers yet) (<em><strong>WIP</strong></em>)</li>
+<li><input disabled="" type="checkbox"> DTMF with SIP INFO (Needed more in case webrtc)</li>
+<li><input disabled="" type="checkbox"> Writing Unit Test on Server with SIP and Media Recorder (<em><strong>WIP</strong></em>)</li>
+<li><input disabled="" type="checkbox"> And plenty more &hellip;</li>
+</ul>
+<p>Some things that will be kept simple:</p>
+<ul>
+<li>bridge with transcoding is never good, instead return error when detected.</li>
+<li>offering always Low level to high level which allows optimizations</li>
+<li></li>
+</ul>
+<h2>diagox<span class="hx-absolute -hx-mt-20" id="diagox"></span>
+    <a href="#diagox" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p><strong>Diago extra modules</strong></p>
+<p>Some of modules are not yet considered to be part of lib and they are developed as seperate package. To mention few is like Recording, Webrtc stack, Complex modules etc&hellip;
+To find out more please contact me.</p>
 
         </div>
       </main>

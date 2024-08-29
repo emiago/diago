@@ -23,19 +23,13 @@
       <description>
         
         
-        &lt;h1&gt;Getting started&lt;/h1&gt;&lt;p&gt;diago can act as &lt;strong&gt;UAS&lt;/strong&gt;(User Agent Server) and &lt;strong&gt;UAC&lt;/strong&gt;(User Agent Client), and on top it adds &lt;strong&gt;bridging&lt;/strong&gt; to build B2BUA services.&lt;/p&gt;
+        &lt;h1&gt;Getting started&lt;/h1&gt;&lt;p&gt;diago can act as &lt;strong&gt;UAS&lt;/strong&gt;(User Agent Server) and &lt;strong&gt;UAC&lt;/strong&gt;(User Agent Client), and ofcourse adds &lt;strong&gt;bridging&lt;/strong&gt; capability to build B2BUA services.&lt;/p&gt;
 &lt;p&gt;To keep abstractions low it intentionally &lt;strong&gt;distincts&lt;/strong&gt; dialog received (&lt;strong&gt;Acting as server&lt;/strong&gt;) and dialog created (&lt;strong&gt;Acting as client&lt;/strong&gt;)
 Therefore it distincts your dialog/session control with this structs:&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;code&gt;DialogServerSession&lt;/code&gt; when receving incoming dialog (SIP INVITE) and setups session (media)&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;DialogClientSession&lt;/code&gt; when it creates outgoing dialog (SIP INVITE) and setups session (media)&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;Further it is explicit which media stack it uses&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;Answer&lt;/code&gt; -&amp;gt; RTP/UDP&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;AnswerWebrtc&lt;/code&gt; -&amp;gt; Webrtc stack SRTP/DTLS (Experimental)&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;NOTE: webrtc stack is experimental and not on full focus currently&lt;/p&gt;
 &lt;h4&gt;Setup diago:&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;setup-diago&#34;&gt;&lt;/span&gt;
     &lt;a href=&#34;#setup-diago&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h4&gt;&lt;div class=&#34;hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code&#34;&gt;
   
@@ -94,7 +88,7 @@ Therefore it distincts your dialog/session control with this structs:&lt;/p&gt;
     &lt;a href=&#34;#outgoing&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h4&gt;&lt;div class=&#34;hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code&#34;&gt;
   
 
-&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;dialog&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;d&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Dial&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;ctx&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;recipient&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;sip&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Uri&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;bridge&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;Bridge&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;sipgo&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;AnswerOptions&lt;/span&gt;)
+&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;dialog&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;d&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Invite&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;ctx&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;recipient&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;sip&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Uri&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;diago&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;InviteOptions&lt;/span&gt;)
 &lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;dialog&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Hangup&lt;/span&gt;()&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0&#34;&gt;
   &lt;button
     class=&#34;hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50&#34;
