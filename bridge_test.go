@@ -5,24 +5,29 @@ import (
 	"io"
 	"testing"
 
+	"github.com/emiago/diago/media"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBridgeProxy(t *testing.T) {
 	b := NewBridge()
-	b.minDialogsNumber = 99 // Do not start proxy
+	b.waitDialogsNum = 99 // Do not start proxy
 
 	incoming := &DialogServerSession{
 		DialogMedia: DialogMedia{
-			audioReader: bytes.NewBuffer(make([]byte, 100)),
-			audioWriter: bytes.NewBuffer(make([]byte, 0)),
+			audioReader:     bytes.NewBuffer(make([]byte, 9999)),
+			audioWriter:     bytes.NewBuffer(make([]byte, 0)),
+			RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioAlaw),
+			RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioAlaw),
 		},
 	}
 	outgoing := &DialogClientSession{
 		DialogMedia: DialogMedia{
-			audioReader: bytes.NewBuffer(make([]byte, 100)),
-			audioWriter: bytes.NewBuffer(make([]byte, 0)),
+			audioReader:     bytes.NewBuffer(make([]byte, 9999)),
+			audioWriter:     bytes.NewBuffer(make([]byte, 0)),
+			RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioAlaw),
+			RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioAlaw),
 		},
 	}
 
@@ -35,6 +40,29 @@ func TestBridgeProxy(t *testing.T) {
 	require.ErrorIs(t, err, io.EOF)
 
 	// Confirm all data is proxied
-	assert.Equal(t, 100, incoming.audioWriter.(*bytes.Buffer).Len())
-	assert.Equal(t, 100, outgoing.audioWriter.(*bytes.Buffer).Len())
+	assert.Equal(t, 9999, incoming.audioWriter.(*bytes.Buffer).Len())
+	assert.Equal(t, 9999, outgoing.audioWriter.(*bytes.Buffer).Len())
+}
+
+func TestBridgeNoTranscodingAllowed(t *testing.T) {
+	b := NewBridge()
+	// b.waitDialogsNum = 99 // Do not start proxy
+
+	incoming := &DialogServerSession{
+		DialogMedia: DialogMedia{
+			RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioAlaw),
+			RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioAlaw),
+		},
+	}
+	outgoing := &DialogClientSession{
+		DialogMedia: DialogMedia{
+			RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioUlaw),
+			RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioUlaw),
+		},
+	}
+
+	err := b.AddDialogSession(incoming)
+	require.NoError(t, err)
+	err = b.AddDialogSession(outgoing)
+	require.Error(t, err)
 }

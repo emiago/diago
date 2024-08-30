@@ -32,13 +32,13 @@ type Bridge struct {
 
 	log zerolog.Logger
 	// minDialogs is just helper flag when to start proxy
-	minDialogsNumber int
+	waitDialogsNum int
 }
 
 func NewBridge() Bridge {
 	return Bridge{
-		log:              log.Logger,
-		minDialogsNumber: 2, // For now only p2p bridge
+		log:            log.Logger,
+		waitDialogsNum: 2, // For now only p2p bridge
 	}
 }
 
@@ -47,12 +47,35 @@ func (b *Bridge) GetDialogs() []DialogSession {
 }
 
 func (b *Bridge) AddDialogSession(d DialogSession) error {
+	// Check can this dialog be added to bridge. NO TRANSCODING
+	if b.Originator != nil {
+		m := d.Media()
+		origM := b.Originator.Media()
+		err := func() error {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			origM.mu.Lock()
+			defer origM.mu.Unlock()
+			if origM.RTPPacketReader.PayloadType != m.RTPPacketWriter.PayloadType {
+				return fmt.Errorf("codec mismatch to originator p1=%d p2=%d", origM.RTPPacketReader.PayloadType, m.RTPPacketWriter.PayloadType)
+			}
+
+			if origM.RTPPacketWriter.PayloadType != m.RTPPacketReader.PayloadType {
+				return fmt.Errorf("codec mismatch to originator p1=%d p2=%d", origM.RTPPacketWriter.PayloadType, m.RTPPacketReader.PayloadType)
+			}
+			return nil
+		}()
+		if err != nil {
+			return err
+		}
+	}
+
 	b.dialogs = append(b.dialogs, d)
 	if len(b.dialogs) == 1 {
 		b.Originator = d
 	}
 
-	if len(b.dialogs) < b.minDialogsNumber {
+	if len(b.dialogs) < b.waitDialogsNum {
 		return nil
 	}
 
@@ -79,38 +102,39 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 }
 
 func (b *Bridge) proxyMedia() error {
-	b.log.Info().Msg("Starting proxy media")
+	var err error
+	log := b.log
+
+	log.Info().Msg("Starting proxy media")
 	defer func(start time.Time) {
-		b.log.Info().Dur("dur", time.Since(start)).Msg("Proxy media setup")
+		log.Info().Dur("dur", time.Since(start)).Msg("Proxy media setup")
 	}(time.Now())
 
-	dlg1 := b.dialogs[0]
-	dlg2 := b.dialogs[1]
+	m1 := b.dialogs[0].Media()
+	m2 := b.dialogs[1].Media()
 
 	// Lets for now simplify proxy and later optimize
 	errCh := make(chan error, 2)
-	// TODO:
-	// For now bridge must not have transcoding
-	{
-		r := dlg1.Media().AudioReader()
-		w := dlg2.Media().AudioWriter()
-		buf := playBufPool.Get()
-		defer playBufPool.Put(buf)
 
-		go proxyMediaBackground(b.log, r, w, buf.([]byte), errCh)
-	}
+	func() {
+		r := m1.AudioReader()
+		w := m2.AudioWriter()
+		buf := rtpBufPool.Get()
+		defer rtpBufPool.Put(buf)
+
+		go proxyMediaBackground(log, r, w, buf.([]byte), errCh)
+	}()
 
 	// Second
-	{
-		r := dlg2.Media().AudioReader()
-		w := dlg1.Media().AudioWriter()
-		buf := playBufPool.Get()
-		defer playBufPool.Put(buf)
+	func() {
+		r := m2.AudioReader()
+		w := m1.AudioWriter()
+		buf := rtpBufPool.Get()
+		defer rtpBufPool.Put(buf)
 
-		go proxyMediaBackground(b.log, r, w, buf.([]byte), errCh)
-	}
+		go proxyMediaBackground(log, r, w, buf.([]byte), errCh)
+	}()
 
-	var err error
 	// Wait for all to finish
 	for i := 0; i < len(b.dialogs); i++ {
 		err = errors.Join(err, <-errCh)
@@ -118,43 +142,18 @@ func (b *Bridge) proxyMedia() error {
 	return err
 	// For webrtc we have no session for our packet readers
 	// TODO find better distiction
-	if dlg1.Media().RTPPacketReader.Sess == nil || dlg2.Media().RTPPacketReader.Sess == nil {
-		b.log.Info().Msg("Starting proxy media no session")
-		r1 := dlg1.Media().RTPPacketReader.Reader().(media.RTPReaderRaw)
-		r2 := dlg2.Media().RTPPacketReader.Reader().(media.RTPReaderRaw)
-		w1 := dlg1.Media().RTPPacketWriter.Writer().(media.RTPWriterRaw)
-		w2 := dlg2.Media().RTPPacketWriter.Writer().(media.RTPWriterRaw)
+	// if dlg1.Media().RTPPacketReader.Sess == nil || dlg2.Media().RTPPacketReader.Sess == nil {
+	// 	b.log.Info().Msg("Starting proxy media no session")
+	// 	r1 := dlg1.Media().RTPPacketReader.Reader().(media.RTPReaderRaw)
+	// 	r2 := dlg2.Media().RTPPacketReader.Reader().(media.RTPReaderRaw)
+	// 	w1 := dlg1.Media().RTPPacketWriter.Writer().(media.RTPWriterRaw)
+	// 	w2 := dlg2.Media().RTPPacketWriter.Writer().(media.RTPWriterRaw)
 
-		go b.proxyMediaRTPRaw(r1, w2)
-		go b.proxyMediaRTPRaw(r2, w1)
+	// 	go b.proxyMediaRTPRaw(r1, w2)
+	// 	go b.proxyMediaRTPRaw(r2, w1)
 
-		// r1 := dlg1.Media().RTPPacketReader
-		// r2 := dlg2.Media().RTPPacketReader
-		// w1 := dlg1.Media().RTPPacketWriter
-		// w2 := dlg2.Media().RTPPacketWriter
-
-		// go b.proxyMediaIO(r1, w2)
-		// go b.proxyMediaIO(r2, w1)
-		// return nil
-
-		// This is questionable.
-		// Normally we should not stream RTCP. Instead this should be us monitoring both sides
-		// go proxyMediaRTCPRaw()
-
-		return nil
-	}
-
-	m1 := dlg1.Media().mediaSession
-	m2 := dlg2.Media().mediaSession
-
-	if m1 == nil || m2 == nil {
-		return fmt.Errorf("no media setup")
-	}
-
-	// For now just as proxy media
-	go b.proxyMediaSessions(m1, m2)
-	go b.proxyMediaSessions(m2, m1)
-	return nil
+	// 	return nil
+	// }
 }
 
 func (b *Bridge) proxyMediaSessions(m1 *media.MediaSession, m2 *media.MediaSession) {
