@@ -26,7 +26,8 @@ type DialogServerSession struct {
 	// We do not use sipgo as this needs mutex but also keeping original invite
 	lastInvite *sip.Request
 
-	onClose    func()
+	onClose func()
+
 	contactHDR sip.ContactHeader
 }
 
@@ -50,7 +51,7 @@ func (d *DialogServerSession) Close() {
 func (d *DialogServerSession) OnClose(f func()) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.onClose == nil {
+	if d.onClose != nil {
 		prev := d.onClose
 		d.onClose = func() {
 			prev()
@@ -211,4 +212,20 @@ func (d *DialogServerSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 	}
 
 	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusOK, "OK", nil))
+}
+
+func (d *DialogServerSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTransaction) {
+	// if err := d.ReadRequest(req, tx); err != nil {
+	// 	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil))
+	// 	return
+	// }
+
+	// Parse this
+	//Signal=1
+	// Duration=160
+	// reader := bytes.NewReader(req.Body())
+
+	// for {
+
+	// }
 }

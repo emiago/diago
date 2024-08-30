@@ -101,3 +101,7 @@ func (d *DialogClientSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 
 	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusOK, "OK", nil))
 }
+
+func (d *DialogClientSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTransaction) {
+
+}

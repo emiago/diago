@@ -43,6 +43,8 @@ func main() {
 
 	flag.Parse()
 	recipientUri := flag.Arg(0)
+	sip.SIPDebug = true
+	sip.TransactionFSMDebug = true
 
 	err = start(ctx, recipientUri)
 	if err != nil {
@@ -68,7 +70,6 @@ func start(ctx context.Context, recipientUri string) error {
 func BridgeCall(d *diago.Diago, inDialog *diago.DialogServerSession, recipient sip.Uri) error {
 	inDialog.Progress() // Progress -> 100 Trying
 	inDialog.Ringing()  // Ringing -> 180 Response
-	inDialog.Answer()   // Answer -> 200 Response
 
 	inCtx := inDialog.Context()
 	ctx, cancel := context.WithTimeout(inCtx, 5*time.Second)

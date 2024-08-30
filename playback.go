@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"sync"
 	"time"
 
 	"github.com/emiago/diago/audio"
@@ -90,13 +89,6 @@ func (p *AudioPlayback) PlayFile(ctx context.Context, filename string) (err erro
 	case e := <-errCh:
 		return e
 	}
-}
-
-var playBufPool = sync.Pool{
-	New: func() any {
-		// Increase this size if there will be support for larger pools
-		return make([]byte, PlaybackBufferSize)
-	},
 }
 
 func (p *AudioPlayback) stream(body io.Reader, playWriter io.Writer) (int64, error) {
