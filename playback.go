@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"sync"
 	"time"
 
 	"github.com/emiago/diago/audio"
@@ -20,6 +21,13 @@ import (
 var (
 	PlaybackBufferSize = 320
 )
+
+var playBufPool = sync.Pool{
+	New: func() any {
+		// Increase this size if there will be support for larger pools
+		return make([]byte, PlaybackBufferSize)
+	},
+}
 
 type AudioPlayback struct {
 	writer io.Writer
