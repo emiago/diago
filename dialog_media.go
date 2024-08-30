@@ -42,10 +42,15 @@ type DialogMedia struct {
 
 	mediaSession *media.MediaSession
 
-	// Packet readers are default readers for RTP audio stream
+	// Packet reader is default reader for RTP audio stream
 	// Use always AudioReader to get current Audio reader
-	RTPPacketWriter *media.RTPPacketWriter
+	// This is not thread safe! Use AudioReaderWithProps to get media safely
 	RTPPacketReader *media.RTPPacketReader
+
+	// Packet writer is default writer for RTP audio stream
+	// Use always AudioWriter to get current Audio reader
+	// This is not thread safe! Use AudioWriterWithProps to get media safely
+	RTPPacketWriter *media.RTPPacketWriter
 
 	// In case we are chaining audio readers
 	audioReader io.Reader
@@ -54,7 +59,7 @@ type DialogMedia struct {
 	formats sdp.Formats
 }
 
-func (d *DialogMedia) SetSession(m *media.MediaSession, r *media.RTPPacketReader, w *media.RTPPacketWriter) {
+func (d *DialogMedia) InitMediaSession(m *media.MediaSession, r *media.RTPPacketReader, w *media.RTPPacketWriter) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -104,6 +109,24 @@ func (d *DialogMedia) AudioReader() io.Reader {
 	return d.RTPPacketReader
 }
 
+type MediaProps struct {
+	Codec media.Codec
+}
+
+// AudioReaderWithProps Parses MediaProps with current reader
+func (d *DialogMedia) AudioReaderWithProps(p *MediaProps) io.Reader {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p.Codec = media.CodecFromSession(d.mediaSession)
+	if d.audioReader != nil {
+		return d.audioReader
+	}
+	return d.RTPPacketReader
+}
+
+// SetAudioReader adds/changes audio reader.
+// Use this when you want to have interceptors of your audio
 func (d *DialogMedia) SetAudioReader(r io.Reader) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -120,46 +143,56 @@ func (d *DialogMedia) AudioWriter() io.Writer {
 	return d.RTPPacketWriter
 }
 
+func (d *DialogMedia) AudioWriterWithProps(p *MediaProps) io.Writer {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p.Codec = media.CodecFromSession(d.mediaSession)
+	if d.audioReader != nil {
+		return d.audioWriter
+	}
+	return d.RTPPacketWriter
+}
+
+// SetAudioWriter adds/changes audio reader.
+// Use this when you want to have interceptors of your audio
 func (d *DialogMedia) SetAudioWriter(r io.Writer) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.audioWriter = r
 }
 
-// DialogSession interface
 func (d *DialogMedia) Media() *DialogMedia {
 	return d
 }
 
 // PlaybackCreate creates playback for audio
 func (d *DialogMedia) PlaybackCreate() (AudioPlayback, error) {
-	rtpPacketWriter := d.RTPPacketWriter
-	pt := rtpPacketWriter.PayloadType
-	codec := media.CodecFromPayloadType(pt)
-
-	w := d.AudioWriter()
-	p := NewAudioPlayback(w, codec)
+	mprops := MediaProps{}
+	w := d.AudioWriterWithProps(&mprops)
+	if w == nil {
+		return AudioPlayback{}, fmt.Errorf("no media setup")
+	}
+	p := NewAudioPlayback(w, mprops.Codec)
 	return p, nil
 }
 
 // PlaybackControlCreate creates playback for audio with controls like mute unmute
 func (d *DialogMedia) PlaybackControlCreate() (AudioPlaybackControl, error) {
 	// NOTE we should avoid returning pointers for any IN dialplan to avoid heap
-	rtpPacketWriter := d.RTPPacketWriter
-	if rtpPacketWriter == nil {
+	mprops := MediaProps{}
+	w := d.AudioWriterWithProps(&mprops)
+
+	if w == nil {
 		return AudioPlaybackControl{}, fmt.Errorf("no media setup")
 	}
-	pt := rtpPacketWriter.PayloadType
-
 	// Audio is controled via audio reader/writer
-	w := d.AudioWriter()
 	control := &audioControl{
 		Writer: w,
 	}
 
-	codec := media.CodecFromPayloadType(pt)
 	p := AudioPlaybackControl{
-		AudioPlayback: NewAudioPlayback(control, codec),
+		AudioPlayback: NewAudioPlayback(control, mprops.Codec),
 		control:       control,
 	}
 	return p, nil

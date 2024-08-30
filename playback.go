@@ -156,15 +156,15 @@ func (p *AudioPlayback) calcPlayoutSize() int {
 	return int(bitsPerSample) / 8 * int(numChannels) * int(sampleRate) / 1000 * sampleDurMS
 }
 
-func streamWavRTP(body io.Reader, rtpWriter *media.RTPPacketWriter) (int64, error) {
-	pt := rtpWriter.PayloadType
+func streamWavRTP(body io.Reader, rtpWriter *media.RTPPacketWriter, codec media.Codec) (int64, error) {
+	pt := codec.PayloadType
 	enc, err := audio.NewPCMEncoder(pt, rtpWriter)
 	if err != nil {
 		return 0, err
 	}
 
 	p := NewAudioPlayback(enc, media.Codec{
-		SampleRate: rtpWriter.SampleRate,
+		SampleRate: codec.SampleRate,
 		SampleDur:  20 * time.Millisecond,
 	})
 	return p.streamWav(body, enc)

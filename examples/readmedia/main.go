@@ -5,11 +5,14 @@ package main
 
 import (
 	"context"
+	"errors"
+	"io"
 	"os"
 	"os/signal"
 	"time"
 
 	"github.com/emiago/diago"
+	"github.com/emiago/diago/audio"
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/rs/zerolog"
@@ -47,7 +50,7 @@ func start(ctx context.Context) error {
 	})
 }
 
-func ReadMedia(inDialog *diago.DialogServerSession) {
+func ReadMedia(inDialog *diago.DialogServerSession) error {
 	inDialog.Progress() // Progress -> 100 Trying
 	inDialog.Ringing()  // Ringing -> 180 Response
 	inDialog.Answer()   // Answqer -> 200 Response
@@ -56,13 +59,24 @@ func ReadMedia(inDialog *diago.DialogServerSession) {
 	pktsCount := 0
 	buf := make([]byte, media.RTPBufSize)
 
+	// After answer we can access audio reader and read props
+	m := diago.MediaProps{}
+	audioReader := inDialog.AudioReaderWithProps(&m)
+
+	decoder, err := audio.NewPCMDecoder(m.Codec.PayloadType, audioReader)
+	if err != nil {
+		return err
+	}
 	for {
-		_, err := inDialog.Media().AudioReader().Read(buf)
+		_, err := decoder.Read(buf)
 		if err != nil {
-			return
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
 		}
 
-		pkt := inDialog.Media().RTPPacketReader.PacketHeader
+		pkt := inDialog.RTPPacketReader.PacketHeader
 		if time.Since(lastPrint) > 3*time.Second {
 			lastPrint = time.Now()
 			log.Info().Uint8("PayloadType", pkt.PayloadType).Int("pkts", pktsCount).Msg("Received packets")
