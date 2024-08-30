@@ -258,26 +258,67 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	server.OnBye(func(req *sip.Request, tx sip.ServerTransaction) {
 		d, err := MatchDialogServer(req)
 		if err != nil {
-			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
-				cd, err := MatchDialogClient(req)
-				if err != nil {
-					// Security? When to answer this?
-					tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
-					return
-				}
-
-				if err := cd.ReadBye(req, tx); err != nil {
-					tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
-				}
+			if !errors.Is(err, sipgo.ErrDialogDoesNotExists) {
+				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+				return
 			}
 
-			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+			cd, err := MatchDialogClient(req)
+			if err != nil {
+				// Security? When to answer this?
+				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
+				return
+			}
+
+			if err := cd.ReadBye(req, tx); err != nil {
+				dg.log.Error().Err(err).Msg("failed to read bye")
+			}
 			return
 		}
 
 		if err := d.ReadBye(req, tx); err != nil {
-			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+			dg.log.Error().Err(err).Msg("failed to read bye")
 		}
+	})
+
+	server.OnInfo(func(req *sip.Request, tx sip.ServerTransaction) {
+		// Handle DTMF out of band
+		if req.ContentType().Value() != "application/dtmf-relay" {
+			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
+			return
+		}
+
+		d, err := MatchDialogServer(req)
+		if err != nil {
+			if !errors.Is(err, sipgo.ErrDialogDoesNotExists) {
+				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+				return
+			}
+
+			cd, err := MatchDialogClient(req)
+			if err != nil {
+				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, "Call/Transaction Does Not Exist", nil))
+			}
+			cd.readSIPInfoDTMF(req, tx)
+			return
+		}
+		d.readSIPInfoDTMF(req, tx)
+
+		// 		INFO sips:sipgo@127.0.0.1:5443 SIP/2.0
+		// Via: SIP/2.0/WSS df7jal23ls0d.invalid;branch=z9hG4bKhzJuRuWp4pLmTAbrIg7MUGofWdV1u577;rport
+		// From: "IVR Webrtc"<sips:ivr.699c4b45-c800-4891-8133-fded5b26f942.579938@localhost:6060>;tag=foSxtEhHq9QOSeSdgJCC
+		// To: <sip:playback@localhost>;tag=f814097f-467a-46ad-be0a-76c2a1225378
+		// Contact: "IVR Webrtc"<sips:ivr.699c4b45-c800-4891-8133-fded5b26f942.579938@df7jal23ls0d.invalid;rtcweb-breaker=no;click2call=no;transport=wss>;+g.oma.sip-im;language="en,fr"
+		// Call-ID: 047c3631-e85a-27d2-8f69-4de6e0391253
+		// CSeq: 29586 INFO
+		// Content-Type: application/dtmf-relay
+		// Content-Length: 22
+		// Max-Forwards: 70
+		// User-Agent: IM-client/OMA1.0 sipML5-v1.2016.03.04
+
+		// Signal=8
+		// Duration=120
+
 	})
 
 	// server.OnRefer(func(req *sip.Request, tx sip.ServerTransaction) {
@@ -593,10 +634,4 @@ func (d *Diago) Register(ctx context.Context, req RegisterRequest) error {
 	}
 
 	return registerCtx.QualifyLoop(ctx)
-}
-
-// InviteWebrtc dials endpoint with webrtc stack
-func (dg *Diago) InviteWebrtc(ctx context.Context, recipient sip.Uri, opts sipgo.AnswerOptions) (d *DialogClientSession, err error) {
-
-	return nil, fmt.Errorf("not implemented yet")
 }

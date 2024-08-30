@@ -47,6 +47,7 @@ type DialogMedia struct {
 	RTPPacketWriter *media.RTPPacketWriter
 	RTPPacketReader *media.RTPPacketReader
 
+	// In case we are chaining audio readers
 	audioReader io.Reader
 	audioWriter io.Writer
 
