@@ -38,16 +38,12 @@ type RTPPacketReader struct {
 	RTPSession *RTPSession   // TODO remove this
 	reader     RTPReader
 
-	// Deprecated
-	//
-	// Should not be used
-	OnRTP func(pkt *rtp.Packet)
-
-	// PacketHeader is stored after calling Read this will be stored before returning
+	// PacketHeader is stored after calling Read
+	// Safe to read only in same goroutine as Read
 	PacketHeader rtp.Header
-	PayloadType  uint8
 
-	seqReader RTPExtendedSequenceNumber
+	payloadType uint8
+	seqReader   RTPExtendedSequenceNumber
 
 	unreadPayload []byte
 	unread        int
@@ -86,10 +82,8 @@ func NewRTPPacketReaderMedia(sess *MediaSession) *RTPPacketReader {
 
 func NewRTPPacketReader(reader RTPReader, codec Codec) *RTPPacketReader {
 	w := RTPPacketReader{
-		reader:      reader,
-		PayloadType: codec.PayloadType,
-		OnRTP:       func(pkt *rtp.Packet) {},
-
+		reader:        reader,
+		payloadType:   codec.PayloadType,
 		seqReader:     RTPExtendedSequenceNumber{},
 		unreadPayload: make([]byte, RTPBufSize),
 	}
@@ -123,7 +117,7 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 	pkt := rtp.Packet{}
 
 	r.mu.RLock()
-	pt := r.PayloadType
+	pt := r.payloadType
 	reader := r.reader
 	r.mu.RUnlock()
 
@@ -184,7 +178,6 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 
 	r.lastSSRC = pkt.SSRC
 	r.PacketHeader = pkt.Header
-	r.OnRTP(&pkt)
 
 	size := min(len(b), len(buf))
 	n = r.readPayload(buf[:size], pkt.Payload)
@@ -215,7 +208,7 @@ func (r *RTPPacketReader) UpdateRTPSession(rtpSess *RTPSession) {
 	codec := CodecFromSession(rtpSess.Sess)
 	r.mu.Lock()
 	r.RTPSession = rtpSess
-	r.PayloadType = codec.PayloadType
+	r.payloadType = codec.PayloadType
 	r.reader = rtpSess
 	r.mu.Unlock()
 }

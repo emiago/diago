@@ -38,12 +38,11 @@ type RTPPacketWriter struct {
 
 	// After each write this is set as packet.
 	LastPacket rtp.Packet
-	OnRTP      func(pkt *rtp.Packet)
+	// SSRC is readOnly and it is not changed
+	SSRC uint32
 
-	// This properties are read only or can be changed only after creating writer
-	PayloadType uint8
-	SampleRate  uint32
-	SSRC        uint32
+	payloadType uint8
+	sampleRate  uint32
 
 	// Internals
 	// clock rate is decided based on media
@@ -67,7 +66,7 @@ func NewRTPPacketWriterSession(sess *RTPSession) *RTPPacketWriter {
 	// We need to add our SSRC due to sender report, which can be empty until data comes
 	// It is expected that nothing travels yet through rtp session
 	sess.writeStats.SSRC = w.SSRC
-	sess.writeStats.sampleRate = w.SampleRate
+	sess.writeStats.sampleRate = w.sampleRate
 	w.RTPSession = sess
 	w.writer = sess
 	return w
@@ -105,8 +104,8 @@ func NewRTPPacketWriter(writer RTPWriter, codec Codec) *RTPPacketWriter {
 	w := RTPPacketWriter{
 		writer:      writer,
 		seqWriter:   NewRTPSequencer(),
-		PayloadType: codec.PayloadType,
-		SampleRate:  codec.SampleRate,
+		payloadType: codec.PayloadType,
+		sampleRate:  codec.SampleRate,
 		SSRC:        rand.Uint32(),
 		// initTimestamp: rand.Uint32(), // TODO random start timestamp
 		// MTU:         1500,
@@ -140,7 +139,7 @@ func (w *RTPPacketWriter) updateClockRate(cod Codec) {
 // - RTCP generating
 func (p *RTPPacketWriter) Write(b []byte) (int, error) {
 	p.mu.RLock()
-	n, err := p.WriteSamples(p.writer, b, p.sampleRateTimestamp, p.nextTimestamp == p.initTimestamp, p.PayloadType)
+	n, err := p.WriteSamples(p.writer, b, p.sampleRateTimestamp, p.nextTimestamp == p.initTimestamp, p.payloadType)
 	p.mu.RUnlock()
 	<-p.clockTicker.C
 	return n, err
@@ -163,10 +162,6 @@ func (p *RTPPacketWriter) WriteSamples(writer RTPWriter, payload []byte, sampleR
 			CSRC:           []uint32{},
 		},
 		Payload: payload,
-	}
-
-	if p.OnRTP != nil {
-		p.OnRTP(&pkt)
 	}
 
 	p.LastPacket = pkt
@@ -196,12 +191,12 @@ func (w *RTPPacketWriter) UpdateRTPSession(rtpSess *RTPSession) {
 	codec := CodecFromSession(rtpSess.Sess)
 	w.Sess = rtpSess.Sess
 	w.RTPSession = rtpSess
-	w.PayloadType = codec.PayloadType
-	w.SampleRate = codec.SampleRate
+	w.payloadType = codec.PayloadType
+	w.sampleRate = codec.SampleRate
 	w.updateClockRate(codec)
 
 	rtpSess.writeStats.SSRC = w.SSRC
-	rtpSess.writeStats.sampleRate = w.SampleRate
+	rtpSess.writeStats.sampleRate = w.sampleRate
 }
 
 // func (w *RTPPacketWriter) SetRTPWriter(rtpWriter *RTPPacketWriter) {

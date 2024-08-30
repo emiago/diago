@@ -43,19 +43,17 @@ func (b *Bridge) GetDialogs() []DialogSession {
 func (b *Bridge) AddDialogSession(d DialogSession) error {
 	// Check can this dialog be added to bridge. NO TRANSCODING
 	if b.Originator != nil {
+		// This may look ugly but it is safe way of reading
 		m := d.Media()
-		origM := b.Originator.Media()
-		err := func() error {
-			m.mu.Lock()
-			defer m.mu.Unlock()
-			origM.mu.Lock()
-			defer origM.mu.Unlock()
-			if origM.RTPPacketReader.PayloadType != m.RTPPacketWriter.PayloadType {
-				return fmt.Errorf("codec mismatch to originator p1=%d p2=%d", origM.RTPPacketReader.PayloadType, m.RTPPacketWriter.PayloadType)
-			}
+		mprops := MediaProps{}
+		_ = m.AudioWriterWithProps(&mprops)
 
-			if origM.RTPPacketWriter.PayloadType != m.RTPPacketReader.PayloadType {
-				return fmt.Errorf("codec mismatch to originator p1=%d p2=%d", origM.RTPPacketWriter.PayloadType, m.RTPPacketReader.PayloadType)
+		origM := b.Originator.Media()
+		origProps := MediaProps{}
+		_ = origM.AudioWriterWithProps(&mprops)
+		err := func() error {
+			if origProps.Codec != mprops.Codec {
+				return fmt.Errorf("codec mismatch in bridge")
 			}
 			return nil
 		}()
