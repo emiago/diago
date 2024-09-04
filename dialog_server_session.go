@@ -36,15 +36,12 @@ func (d *DialogServerSession) Id() string {
 }
 
 func (d *DialogServerSession) Close() {
-	if d.mediaSession != nil {
-		d.mediaSession.Close()
-	}
-
 	// Any hook attached
 	if d.onClose != nil {
 		d.onClose()
 	}
 
+	d.DialogMedia.Close()
 	d.DialogServerSession.Close()
 }
 
@@ -150,10 +147,12 @@ func (d *DialogServerSession) AnswerWithMedia(rtpSess *media.RTPSession) error {
 
 	d.mu.Lock()
 	d.mediaSession = sess
-	rtpSess.MonitorBackground()
 	d.RTPPacketReader = media.NewRTPPacketReaderSession(rtpSess)
 	d.RTPPacketWriter = media.NewRTPPacketWriterSession(rtpSess)
 	d.mu.Unlock()
+
+	// Must be called after media and reader writer is setup
+	rtpSess.MonitorBackground()
 
 	if err := d.RespondSDP(sess.LocalSDP()); err != nil {
 		return err
@@ -206,7 +205,7 @@ func (d *DialogServerSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 	defer d.mu.Unlock()
 	d.lastInvite = req
 
-	if err := d.sdpReInvite(req.Body()); err != nil {
+	if err := d.sdpReInviteUnsafe(req.Body()); err != nil {
 		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestTerminated, err.Error(), nil))
 		return
 	}

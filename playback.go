@@ -170,18 +170,22 @@ func streamWavRTP(body io.Reader, rtpWriter *media.RTPPacketWriter, codec media.
 	return p.streamWav(body, enc)
 }
 
-func copyWithBuf(body io.Reader, playWriter io.Writer, payloadBuf []byte) (int64, error) {
+func copyWithBuf(reader io.Reader, writer io.Writer, payloadBuf []byte) (int64, error) {
 	var totalWritten int64
 	for {
-		n, err := body.Read(payloadBuf)
+		n, err := reader.Read(payloadBuf)
 		if err != nil {
 			return totalWritten, err
 		}
-		n, err = playWriter.Write(payloadBuf[:n])
+		nn, err := writer.Write(payloadBuf[:n])
 		if err != nil {
 			return totalWritten, err
 		}
-		totalWritten += int64(n)
+		if n < nn {
+			return totalWritten, io.ErrShortWrite
+		}
+
+		totalWritten += int64(nn)
 	}
 }
 

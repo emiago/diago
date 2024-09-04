@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/emiago/diago/media"
+	"github.com/emiago/diago/media/sdp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,6 +17,9 @@ func TestBridgeProxy(t *testing.T) {
 
 	incoming := &DialogServerSession{
 		DialogMedia: DialogMedia{
+			mediaSession: &media.MediaSession{
+				Formats: sdp.NewFormats(sdp.FORMAT_TYPE_ALAW),
+			},
 			audioReader:     bytes.NewBuffer(make([]byte, 9999)),
 			audioWriter:     bytes.NewBuffer(make([]byte, 0)),
 			RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioAlaw),
@@ -24,6 +28,9 @@ func TestBridgeProxy(t *testing.T) {
 	}
 	outgoing := &DialogClientSession{
 		DialogMedia: DialogMedia{
+			mediaSession: &media.MediaSession{
+				Formats: sdp.NewFormats(sdp.FORMAT_TYPE_ALAW),
+			},
 			audioReader:     bytes.NewBuffer(make([]byte, 9999)),
 			audioWriter:     bytes.NewBuffer(make([]byte, 0)),
 			RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioAlaw),
@@ -50,14 +57,20 @@ func TestBridgeNoTranscodingAllowed(t *testing.T) {
 
 	incoming := &DialogServerSession{
 		DialogMedia: DialogMedia{
-			RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioAlaw),
-			RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioAlaw),
+			mediaSession: &media.MediaSession{
+				Formats: sdp.NewFormats(sdp.FORMAT_TYPE_ALAW),
+			},
+			// RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioAlaw),
+			// RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioAlaw),
 		},
 	}
 	outgoing := &DialogClientSession{
 		DialogMedia: DialogMedia{
-			RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioUlaw),
-			RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioUlaw),
+			mediaSession: &media.MediaSession{
+				Formats: sdp.NewFormats(sdp.FORMAT_TYPE_ULAW),
+			},
+			// RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioUlaw),
+			// RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioUlaw),
 		},
 	}
 

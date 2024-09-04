@@ -5,6 +5,7 @@ package media
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -28,7 +29,7 @@ import (
 // Now:
 // - Designed for UNICAST sessions
 // - Acts as RTP Reader Writer
-// - Only makes sense for Reporting Quality mediaw
+// - Only makes sense for Reporting Quality media
 // Roadmap:
 // - Can handle multiple SSRC from Reader
 // - Multiple RTCP Recever Blocks
@@ -95,6 +96,7 @@ func NewRTPSession(sess *MediaSession) *RTPSession {
 	return &RTPSession{
 		Sess:       sess,
 		rtcpTicker: time.NewTicker(5 * time.Second),
+		log:        sess.log,
 	}
 }
 
@@ -115,9 +117,11 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) error {
 
 		// Validate pkt. Check is it keep alive
 		if readPkt.Version == 0 {
+			s.log.Warn().Msg("Received RTP with invalid version. Skipping")
 			continue
 		}
 		if len(readPkt.Payload) == 0 {
+			s.log.Warn().Msg("Received RTP with empty Payload. Skipping")
 			continue
 		}
 
@@ -230,6 +234,10 @@ func (s *RTPSession) WriteRTPRaw(buf []byte) (int, error) {
 
 // Monitor starts reading RTCP and monitoring media quality
 func (s *RTPSession) Monitor() error {
+	if s.Sess.Raddr == nil || s.Sess.rtcpRaddr == nil {
+		return fmt.Errorf("raddr of RTP is not present. You must call this after RemoteSDP is parsed")
+	}
+
 	errchan := make(chan error)
 	go func() {
 		errchan <- s.readRTCP()
@@ -246,10 +254,15 @@ func (s *RTPSession) Monitor() error {
 }
 
 // MonitorBackground is helper to keep monitoring in background
+// MUST Be called after session REMOTE SDP is parsed
 func (s *RTPSession) MonitorBackground() {
+	if s.Sess.Raddr == nil || s.Sess.rtcpRaddr == nil {
+		panic("raddr of RTP is not present. You must call this after RemoteSDP is parsed")
+	}
+
 	go func() {
 		sess := s.Sess
-		sess.log.Debug().Msg("RTCP reader started")
+		sess.log.Debug().Str("laddr", sess.rtcpConn.LocalAddr().String()).Msg("RTCP reader started")
 		if err := s.readRTCP(); err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
 				sess.log.Debug().Msg("RTP session RTCP reader exit")
@@ -267,7 +280,7 @@ func (s *RTPSession) MonitorBackground() {
 
 	go func() {
 		sess := s.Sess
-		sess.log.Debug().Msg("RTCP writer started")
+		sess.log.Debug().Str("raddr", sess.rtcpRaddr.String()).Msg("RTCP writer started")
 		for {
 			now, open := <-s.rtcpTicker.C
 			if !open {

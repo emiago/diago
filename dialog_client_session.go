@@ -26,10 +26,7 @@ type DialogClientSession struct {
 }
 
 func (d *DialogClientSession) Close() {
-	if d.mediaSession != nil {
-		d.mediaSession.Close()
-	}
-
+	d.DialogMedia.Close()
 	d.DialogClientSession.Close()
 }
 
@@ -56,7 +53,10 @@ func (d *DialogClientSession) DialogSIP() *sipgo.Dialog {
 func (d *DialogClientSession) RemoteContact() *sip.ContactHeader {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	return d.remoteContactUnsafe()
+}
 
+func (d *DialogClientSession) remoteContactUnsafe() *sip.ContactHeader {
 	if d.lastInvite != nil {
 		// Invite update can change contact
 		return d.lastInvite.Contact()
@@ -66,9 +66,12 @@ func (d *DialogClientSession) RemoteContact() *sip.ContactHeader {
 
 // ReInvite sends new invite based on current media session
 func (d *DialogClientSession) ReInvite(ctx context.Context) error {
+	d.mu.Lock()
 	sdp := d.mediaSession.LocalSDP()
-	contact := d.RemoteContact()
+	contact := d.remoteContactUnsafe()
+	d.mu.Unlock()
 	req := sip.NewRequest(sip.INVITE, contact.Address)
+	req.AppendHeader(d.InviteRequest.Contact())
 	req.SetBody(sdp)
 
 	res, err := d.Do(ctx, req)
@@ -94,7 +97,7 @@ func (d *DialogClientSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 	defer d.mu.Unlock()
 	d.lastInvite = req
 
-	if err := d.sdpReInvite(req.Body()); err != nil {
+	if err := d.sdpReInviteUnsafe(req.Body()); err != nil {
 		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestTerminated, err.Error(), nil))
 		return
 	}

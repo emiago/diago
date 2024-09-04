@@ -13,7 +13,6 @@ import (
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/emiago/sipgox"
-	"github.com/pion/rtp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
@@ -33,6 +32,8 @@ func TestMain(m *testing.M) {
 	}).With().Timestamp().Logger().Level(lev)
 
 	sip.SIPDebug = os.Getenv("SIP_DEBUG") != ""
+	media.RTPDebug = os.Getenv("RTP_DEBUG") != ""
+	sip.TransactionFSMDebug = os.Getenv("SIP_TRANSACTIONS_DEBUG") != ""
 
 	m.Run()
 }
@@ -142,59 +143,51 @@ func TestIntegrationBridging(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	// Transaction User is basically driving dialog session
-	// It can be inbound/UAS or outbound/UAC behavior
-
-	// TU can ReceiveCall and it will create a DialogSessionServer
-	// TU can Dial endpoint and create a DialogSessionClient (Channel)
-	// DialogSessionClient can be bridged with other sessions
-	ready := make(chan struct{})
-	go func() {
+	{
 		ua, _ := sipgo.NewUA()
-		phone := sipgox.NewPhone(ua, sipgox.WithPhoneListenAddr(
-			sipgox.ListenAddr{
-				Network: "udp",
-				Addr:    "127.0.0.200:5090",
+
+		dg := NewDiago(ua, WithTransport(
+			Transport{
+				Transport: "udp",
+				BindHost:  "127.0.0.200",
+				BindPort:  5090,
 			},
 		))
 
-		ansCtx := context.WithValue(context.Background(), sipgox.AnswerReadyCtxKey, sipgox.AnswerReadyCtxValue(ready))
+		err := dg.ServeBackground(context.Background(), func(d *DialogServerSession) {
+			ctx := d.Context()
+			err = d.Answer()
+			require.NoError(t, err)
 
-		dialog, err := phone.Answer(ansCtx, sipgox.AnswerOptions{})
+			// ms := d.mediaSession
+			buf := make([]byte, media.RTPBufSize)
+
+			n, err := d.AudioReader().Read(buf)
+			require.NoError(t, err)
+
+			d.AudioWriter().Write(buf[:n])
+			require.NoError(t, err)
+
+			<-ctx.Done()
+		})
 		require.NoError(t, err)
-		defer dialog.Close()
-
-		buf := make([]byte, media.RTPBufSize)
-		err = dialog.ReadRTP(buf, &rtp.Packet{})
-		require.NoError(t, err)
-
-		err = dialog.WriteRTP(&rtp.Packet{})
-		require.NoError(t, err)
-
-		dialog.Hangup(ctx)
-	}()
-	<-ready
+	}
 
 	{
 		ua, _ := sipgo.NewUA()
-		phone := sipgox.NewPhone(ua, sipgox.WithPhoneListenAddr(
-			sipgox.ListenAddr{
-				Network: "udp",
-				Addr:    "127.0.0.100:5090",
-			},
-		))
-		dialog, err := phone.Dial(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, sipgox.DialOptions{})
+		dg := NewDiago(ua)
+		dialog, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
 		require.NoError(t, err)
 		defer dialog.Close()
 
-		err = dialog.WriteRTP(&rtp.Packet{})
+		_, err = dialog.AudioWriter().Write([]byte("1234"))
 		require.NoError(t, err)
 
 		buf := make([]byte, media.RTPBufSize)
-		err = dialog.ReadRTP(buf, &rtp.Packet{})
+		dialog.AudioReader().Read(buf)
 		require.NoError(t, err)
 
-		time.Sleep(1 * time.Second)
+		t.Log("Hanguping")
 		dialog.Hangup(ctx)
 	}
 }

@@ -59,6 +59,12 @@ type DialogMedia struct {
 	formats sdp.Formats
 }
 
+func (d *DialogMedia) Close() {
+	if d.mediaSession != nil {
+		d.mediaSession.Close()
+	}
+}
+
 func (d *DialogMedia) InitMediaSession(m *media.MediaSession, r *media.RTPPacketReader, w *media.RTPPacketWriter) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -69,9 +75,7 @@ func (d *DialogMedia) InitMediaSession(m *media.MediaSession, r *media.RTPPacket
 }
 
 // Must be protected with lock
-func (d *DialogMedia) sdpReInvite(sdp []byte) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
+func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 	msess := d.mediaSession.Fork()
 	if err := msess.RemoteSDP(sdp); err != nil {
 		log.Error().Err(err).Msg("reinvite media remote SDP applying failed")
@@ -93,12 +97,6 @@ func (d *DialogMedia) sdpReInvite(sdp []byte) error {
 	return nil
 }
 
-func (d *DialogMedia) MediaSession() *media.MediaSession {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return d.mediaSession
-}
-
 func (d *DialogMedia) AudioReader() io.Reader {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -111,6 +109,8 @@ func (d *DialogMedia) AudioReader() io.Reader {
 
 type MediaProps struct {
 	Codec media.Codec
+	Laddr string
+	Raddr string
 }
 
 // AudioReaderWithProps Parses MediaProps with current reader
@@ -119,6 +119,8 @@ func (d *DialogMedia) AudioReaderWithProps(p *MediaProps) io.Reader {
 	defer d.mu.Unlock()
 
 	p.Codec = media.CodecFromSession(d.mediaSession)
+	p.Laddr = d.mediaSession.Laddr.String()
+	p.Raddr = d.mediaSession.Raddr.String()
 	if d.audioReader != nil {
 		return d.audioReader
 	}
@@ -148,6 +150,8 @@ func (d *DialogMedia) AudioWriterWithProps(p *MediaProps) io.Writer {
 	defer d.mu.Unlock()
 
 	p.Codec = media.CodecFromSession(d.mediaSession)
+	p.Laddr = d.mediaSession.Laddr.String()
+	p.Raddr = d.mediaSession.Raddr.String()
 	if d.audioReader != nil {
 		return d.audioWriter
 	}

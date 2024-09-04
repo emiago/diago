@@ -128,6 +128,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		},
 		transports: []Transport{},
 		mediaConf: MediaConfig{
+			// TODO add DTMF once we have DTMF reader/writer
 			Formats: sdp.NewFormats(sdp.FORMAT_TYPE_ULAW, sdp.FORMAT_TYPE_ALAW),
 		},
 	}
@@ -518,9 +519,6 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		}
 	}
 
-	rtpSess := media.NewRTPSession(sess)
-	rtpSess.MonitorBackground()
-
 	dialog, err := dialogCli.Invite(ctx, recipient, sess.LocalSDP(), dialHDRS...)
 	if err != nil {
 		sess.Close()
@@ -530,13 +528,6 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 	d = &DialogClientSession{
 		DialogClientSession: dialog,
 	}
-
-	// Set media Session
-	d.mu.Lock()
-	d.mediaSession = sess
-	d.RTPPacketReader = media.NewRTPPacketReaderSession(rtpSess)
-	d.RTPPacketWriter = media.NewRTPPacketWriterSession(rtpSess)
-	d.mu.Unlock()
 
 	waitCall := func() error {
 		log.Info().Msg("Waiting answer")
@@ -557,6 +548,19 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		if err := sess.RemoteSDP(remoteSDP); err != nil {
 			return err
 		}
+
+		// Start RTP session
+		rtpSess := media.NewRTPSession(sess)
+		log.Debug().Str("laddr", sess.Laddr.String()).Str("raddr", sess.Raddr.String()).Msg("RTP Session setuped")
+
+		d.mu.Lock()
+		d.mediaSession = sess
+		d.RTPPacketReader = media.NewRTPPacketReaderSession(rtpSess)
+		d.RTPPacketWriter = media.NewRTPPacketWriterSession(rtpSess)
+		d.mu.Unlock()
+
+		// Must be called after reader and writer setup due to race
+		rtpSess.MonitorBackground()
 
 		// Add to bridge as early media
 		if bridge != nil {

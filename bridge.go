@@ -44,16 +44,17 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 	// Check can this dialog be added to bridge. NO TRANSCODING
 	if b.Originator != nil {
 		// This may look ugly but it is safe way of reading
+		origM := b.Originator.Media()
+		origProps := MediaProps{}
+		_ = origM.AudioWriterWithProps(&origProps)
+
 		m := d.Media()
 		mprops := MediaProps{}
 		_ = m.AudioWriterWithProps(&mprops)
 
-		origM := b.Originator.Media()
-		origProps := MediaProps{}
-		_ = origM.AudioWriterWithProps(&mprops)
 		err := func() error {
 			if origProps.Codec != mprops.Codec {
-				return fmt.Errorf("codec mismatch in bridge")
+				return fmt.Errorf("no transcoding supported in bridge codec1=%+v codec2=%+v", origProps.Codec, mprops.Codec)
 			}
 			return nil
 		}()
@@ -97,7 +98,6 @@ func (b *Bridge) proxyMedia() error {
 	var err error
 	log := b.log
 
-	log.Info().Msg("Starting proxy media")
 	defer func(start time.Time) {
 		log.Info().Dur("dur", time.Since(start)).Msg("Proxy media setup")
 	}(time.Now())
@@ -109,22 +109,21 @@ func (b *Bridge) proxyMedia() error {
 	errCh := make(chan error, 2)
 
 	func() {
-		r := m1.AudioReader()
-		w := m2.AudioWriter()
-		buf := rtpBufPool.Get()
-		defer rtpBufPool.Put(buf)
+		p1, p2 := MediaProps{}, MediaProps{}
+		r := m1.AudioReaderWithProps(&p1)
+		w := m2.AudioWriterWithProps(&p2)
 
-		go proxyMediaBackground(log, r, w, buf.([]byte), errCh)
+		log.Info().Str("from", p1.Raddr+" > "+p1.Laddr).Str("to", p2.Laddr+" > "+p2.Raddr).Msg("Starting proxy media routine")
+		go proxyMediaBackground(log, r, w, errCh)
 	}()
 
 	// Second
 	func() {
-		r := m2.AudioReader()
-		w := m1.AudioWriter()
-		buf := rtpBufPool.Get()
-		defer rtpBufPool.Put(buf)
-
-		go proxyMediaBackground(log, r, w, buf.([]byte), errCh)
+		p1, p2 := MediaProps{}, MediaProps{}
+		r := m2.AudioReaderWithProps(&p1)
+		w := m1.AudioWriterWithProps(&p2)
+		log.Info().Str("from", p1.Raddr+" > "+p1.Laddr).Str("to", p2.Laddr+" > "+p2.Raddr).Msg("Starting proxy media routine")
+		go proxyMediaBackground(log, r, w, errCh)
 	}()
 
 	// Wait for all to finish
@@ -148,8 +147,11 @@ func (b *Bridge) proxyMedia() error {
 	// }
 }
 
-func proxyMediaBackground(log zerolog.Logger, reader io.Reader, writer io.Writer, buf []byte, ch chan error) {
-	written, err := copyWithBuf(reader, writer, buf)
+func proxyMediaBackground(log zerolog.Logger, reader io.Reader, writer io.Writer, ch chan error) {
+	buf := rtpBufPool.Get()
+	defer rtpBufPool.Put(buf)
+
+	written, err := copyWithBuf(reader, writer, buf.([]byte))
 	log.Debug().Int64("bytes", written).Msg("Bridge proxy stream finished")
 	ch <- err
 }
