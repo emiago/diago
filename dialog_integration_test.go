@@ -33,6 +33,7 @@ func TestMain(m *testing.M) {
 
 	sip.SIPDebug = os.Getenv("SIP_DEBUG") != ""
 	media.RTPDebug = os.Getenv("RTP_DEBUG") != ""
+	media.RTCPDebug = os.Getenv("RTCP_DEBUG") != ""
 	sip.TransactionFSMDebug = os.Getenv("SIP_TRANSACTIONS_DEBUG") != ""
 
 	m.Run()

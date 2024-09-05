@@ -4,6 +4,7 @@
 package media
 
 import (
+	"io"
 	"net"
 	"time"
 
@@ -102,4 +103,24 @@ func generateSilentAudioFrame() []byte {
 	}
 
 	return frame
+}
+
+// CopyWithBuf is simple and strict compared to io.CopyBuffer. ReadFrom and WriteTo is not considered
+// and due to RTP buf requirement it can lead to different buffer size passing
+func CopyWithBuf(reader io.Reader, writer io.Writer, payloadBuf []byte) (int64, error) {
+	var totalWritten int64
+	for {
+		n, err := reader.Read(payloadBuf)
+		if err != nil {
+			return totalWritten, err
+		}
+		nn, err := writer.Write(payloadBuf[:n])
+		if err != nil {
+			return totalWritten, err
+		}
+		totalWritten += int64(nn)
+		if n < nn {
+			return totalWritten, io.ErrShortWrite
+		}
+	}
 }

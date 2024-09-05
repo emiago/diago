@@ -15,25 +15,24 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
-func (p *AudioPlayback) PlayURL(ctx context.Context, urlStr string) error {
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- p.playURL(ctx, urlStr)
-	}()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case e := <-errCh:
-		return e
+func (p *AudioPlayback) PlayURL(urlStr string) (int64, error) {
+	var written int64
+	err := p.playURL(urlStr, &written)
+	if errors.Is(err, io.EOF) {
+		return written, nil
 	}
+	return written, err
 }
 
-func (p *AudioPlayback) playURL(ctx context.Context, urlStr string) error {
+func (p *AudioPlayback) playURL(urlStr string, written *int64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
 	if err != nil {
 		return err
@@ -145,19 +144,13 @@ func (p *AudioPlayback) playURL(ctx context.Context, urlStr string) error {
 			httpErr <- err
 		}()
 
-		written, err := p.streamWav(reader, p.writer)
+		n, err := p.streamWav(reader, p.writer)
+		*written = n
+		p.totalWritten += n
 
 		// There is no reason having http goroutine still running
 		// First make sure http goroutine exited and join errors
 		err = errors.Join(<-httpErr, err)
-		if err != nil {
-			return err
-		}
-
-		if written == 0 {
-			return fmt.Errorf("nothing written")
-		}
-		p.totalWritten += written
 		return err
 	}
 
@@ -170,10 +163,8 @@ func (p *AudioPlayback) playURL(ctx context.Context, urlStr string) error {
 	defer res.Body.Close()
 
 	wavBuf := bytes.NewReader(samples)
-	written, err := p.streamWav(wavBuf, p.writer)
-	if written == 0 {
-		return fmt.Errorf("nothing written")
-	}
-	p.totalWritten += written
+	n, err := p.streamWav(wavBuf, p.writer)
+	*written = n
+	p.totalWritten += n
 	return err
 }

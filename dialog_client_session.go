@@ -5,7 +5,6 @@ package diago
 
 import (
 	"context"
-	"sync"
 
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
@@ -15,14 +14,10 @@ import (
 type DialogClientSession struct {
 	*sipgo.DialogClientSession
 
-	// MediaSession *media.MediaSession // For normal media
-	mu sync.Mutex
-
+	DialogMedia
 	// lastInvite is actual last invite sent by remote REINVITE
 	// We do not use sipgo as this needs mutex but also keeping original invite
 	lastInvite *sip.Request
-
-	DialogMedia
 }
 
 func (d *DialogClientSession) Close() {
@@ -106,5 +101,5 @@ func (d *DialogClientSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 }
 
 func (d *DialogClientSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTransaction) {
-
+	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
 }

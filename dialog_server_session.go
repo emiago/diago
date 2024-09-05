@@ -6,7 +6,6 @@ package diago
 import (
 	"context"
 	"fmt"
-	"net"
 	"time"
 
 	"github.com/emiago/diago/media"
@@ -26,8 +25,6 @@ type DialogServerSession struct {
 	// We do not use sipgo as this needs mutex but also keeping original invite
 	lastInvite *sip.Request
 
-	onClose func()
-
 	contactHDR sip.ContactHeader
 }
 
@@ -36,27 +33,8 @@ func (d *DialogServerSession) Id() string {
 }
 
 func (d *DialogServerSession) Close() {
-	// Any hook attached
-	if d.onClose != nil {
-		d.onClose()
-	}
-
 	d.DialogMedia.Close()
 	d.DialogServerSession.Close()
-}
-
-func (d *DialogServerSession) OnClose(f func()) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.onClose != nil {
-		prev := d.onClose
-		d.onClose = func() {
-			prev()
-			f()
-		}
-		return
-	}
-	d.onClose = f
 }
 
 func (d *DialogServerSession) FromUser() string {
@@ -118,24 +96,17 @@ func (d *DialogServerSession) Answer() error {
 	// 	return err
 	// }
 
-	ip, _, err := sip.ResolveInterfacesIP("ip4", nil)
-	if err != nil {
-		return err
-	}
-
-	laddr := &net.UDPAddr{IP: ip, Port: 0}
-	sess, err := media.NewMediaSession(laddr)
-	sess.Formats = d.formats
+	sess, err := d.createMediaSession()
 	if err != nil {
 		return err
 	}
 
 	rtpSess := media.NewRTPSession(sess)
-	return d.AnswerWithMedia(rtpSess)
+	return d.AnswerWithSession(sess, rtpSess)
 }
 
-func (d *DialogServerSession) AnswerWithMedia(rtpSess *media.RTPSession) error {
-	sess := rtpSess.Sess
+// AnswerWithSession. Not final API. It allows answering with custom media and rtpSess
+func (d *DialogServerSession) AnswerWithSession(sess *media.MediaSession, rtpSess *media.RTPSession) error {
 	sdp := d.InviteRequest.Body()
 	if sdp == nil {
 		return fmt.Errorf("no sdp present in INVITE")
@@ -145,12 +116,11 @@ func (d *DialogServerSession) AnswerWithMedia(rtpSess *media.RTPSession) error {
 		return err
 	}
 
-	d.mu.Lock()
-	d.mediaSession = sess
-	d.RTPPacketReader = media.NewRTPPacketReaderSession(rtpSess)
-	d.RTPPacketWriter = media.NewRTPPacketWriterSession(rtpSess)
-	d.mu.Unlock()
-
+	d.InitMediaSession(
+		sess,
+		media.NewRTPPacketReaderSession(rtpSess),
+		media.NewRTPPacketWriterSession(rtpSess),
+	)
 	// Must be called after media and reader writer is setup
 	rtpSess.MonitorBackground()
 
@@ -214,6 +184,7 @@ func (d *DialogServerSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 }
 
 func (d *DialogServerSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTransaction) {
+	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
 	// if err := d.ReadRequest(req, tx); err != nil {
 	// 	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil))
 	// 	return

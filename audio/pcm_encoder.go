@@ -150,7 +150,7 @@ func (d *PCMEncoder) Write(b []byte) (n int, err error) {
 	for nn < len(lpcm) {
 		n, err = d.Destination.Write(lpcm)
 		if err != nil {
-			return 0, err
+			return nn, err
 		}
 		nn += n
 	}

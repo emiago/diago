@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"os"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/emiago/diago/media"
 	"github.com/emiago/diago/media/sdp"
+	"github.com/emiago/sipgo/sip"
 	"github.com/rs/zerolog/log"
 )
 
@@ -32,8 +34,8 @@ func init() {
 	}
 }
 
-// DialogMedia is io.ReaderWriter for RTP. By default it exposes RTP Read and Write.
-// Not thread safe and must be protected by lock
+// DialogMedia is common struct for server and client session and it shares same functionality
+// which is mostly arround media
 type DialogMedia struct {
 	// media session is RTP local and remote
 	// it is forked on media changes and updated on writer and reader
@@ -44,12 +46,12 @@ type DialogMedia struct {
 
 	// Packet reader is default reader for RTP audio stream
 	// Use always AudioReader to get current Audio reader
-	// This is not thread safe! Use AudioReaderWithProps to get media safely
+	// Use this only as read only
 	RTPPacketReader *media.RTPPacketReader
 
 	// Packet writer is default writer for RTP audio stream
 	// Use always AudioWriter to get current Audio reader
-	// This is not thread safe! Use AudioWriterWithProps to get media safely
+	// Use this only as read only
 	RTPPacketWriter *media.RTPPacketWriter
 
 	// In case we are chaining audio readers
@@ -57,12 +59,33 @@ type DialogMedia struct {
 	audioWriter io.Writer
 
 	formats sdp.Formats
+
+	onClose func()
 }
 
 func (d *DialogMedia) Close() {
+	// Any hook attached
+	if d.onClose != nil {
+		d.onClose()
+	}
+
 	if d.mediaSession != nil {
 		d.mediaSession.Close()
 	}
+}
+
+func (d *DialogMedia) OnClose(f func()) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.onClose != nil {
+		prev := d.onClose
+		d.onClose = func() {
+			prev()
+			f()
+		}
+		return
+	}
+	d.onClose = f
 }
 
 func (d *DialogMedia) InitMediaSession(m *media.MediaSession, r *media.RTPPacketReader, w *media.RTPPacketWriter) {
@@ -72,6 +95,18 @@ func (d *DialogMedia) InitMediaSession(m *media.MediaSession, r *media.RTPPacket
 	d.mediaSession = m
 	d.RTPPacketReader = r
 	d.RTPPacketWriter = w
+}
+
+func (d *DialogMedia) createMediaSession() (*media.MediaSession, error) {
+	ip, _, err := sip.ResolveInterfacesIP("ip4", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	laddr := &net.UDPAddr{IP: ip, Port: 0}
+	sess, err := media.NewMediaSession(laddr)
+	sess.Formats = d.formats
+	return sess, err
 }
 
 // Must be protected with lock
@@ -152,7 +187,7 @@ func (d *DialogMedia) AudioWriterWithProps(p *MediaProps) io.Writer {
 	p.Codec = media.CodecFromSession(d.mediaSession)
 	p.Laddr = d.mediaSession.Laddr.String()
 	p.Raddr = d.mediaSession.Raddr.String()
-	if d.audioReader != nil {
+	if d.audioWriter != nil {
 		return d.audioWriter
 	}
 	return d.RTPPacketWriter

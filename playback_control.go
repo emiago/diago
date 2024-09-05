@@ -18,7 +18,7 @@ func (p *AudioPlaybackControl) Mute(mute bool) {
 	p.control.Mute(mute)
 }
 
-func (p *AudioPlaybackControl) Pause() {
+func (p *AudioPlaybackControl) Stop() {
 	p.control.Stop()
 }
 
@@ -35,13 +35,13 @@ type audioControl struct {
 }
 
 func (c *audioControl) Read(b []byte) (n int, err error) {
+	if c.stop.Load() {
+		return 0, io.EOF
+	}
+
 	n, err = c.Reader.Read(b)
 	if err != nil {
 		return n, err
-	}
-
-	if c.stop.Load() {
-		return 0, io.EOF
 	}
 
 	if c.muted.Load() {

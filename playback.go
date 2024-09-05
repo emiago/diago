@@ -4,7 +4,6 @@
 package diago
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -54,7 +53,7 @@ func NewAudioPlayback(writer io.Writer, codec media.Codec) AudioPlayback {
 
 // Play is generic approach to play supported audio contents
 // Empty mimeType will stream reader as buffer. Make sure that bitdepth and numchannels is set correctly
-func (p *AudioPlayback) Play(reader io.Reader, mimeType string) error {
+func (p *AudioPlayback) Play(reader io.Reader, mimeType string) (int64, error) {
 	var written int64
 	var err error
 	switch mimeType {
@@ -63,40 +62,30 @@ func (p *AudioPlayback) Play(reader io.Reader, mimeType string) error {
 	case "audio/wav", "audio/x-wav", "audio/wav-x", "audio/vnd.wave":
 		written, err = p.streamWav(reader, p.writer)
 	default:
-		return fmt.Errorf("unsuported content type %q", mimeType)
-	}
-	if err != nil {
-		return err
+		return 0, fmt.Errorf("unsuported content type %q", mimeType)
 	}
 
-	if written == 0 {
-		return fmt.Errorf("nothing written")
-	}
 	p.totalWritten += written
-	return nil
+	if errors.Is(err, io.EOF) {
+		return written, nil
+	}
+	return written, err
 }
 
-func (p *AudioPlayback) PlayFile(ctx context.Context, filename string) (err error) {
+// PlayFile will play file and close file when finished playing
+// If you need to play same file multiple times, that use generic Play function
+func (p *AudioPlayback) PlayFile(filename string) (int64, error) {
 	file, err := os.Open(filename)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer file.Close()
 
 	if ext := path.Ext(file.Name()); ext != ".wav" {
-		return fmt.Errorf("only playing wav file is now supported, but detected=%s", ext)
+		return 0, fmt.Errorf("only playing wav file is now supported, but detected=%s", ext)
 	}
 
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- p.Play(file, "audio/wav")
-	}()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case e := <-errCh:
-		return e
-	}
+	return p.Play(file, "audio/wav")
 }
 
 func (p *AudioPlayback) stream(body io.Reader, playWriter io.Writer) (int64, error) {
@@ -106,10 +95,7 @@ func (p *AudioPlayback) stream(body io.Reader, playWriter io.Writer) (int64, err
 	payloadBuf := buf.([]byte)[:payloadSize] // 20 ms
 
 	written, err := copyWithBuf(body, playWriter, payloadBuf)
-	if !errors.Is(err, io.EOF) {
-		return written, err
-	}
-	return written, nil
+	return written, err
 }
 
 func (p *AudioPlayback) streamWav(body io.Reader, playWriter io.Writer) (int64, error) {
@@ -140,10 +126,7 @@ func (p *AudioPlayback) streamWav(body io.Reader, playWriter io.Writer) (int64, 
 	}
 
 	written, err := wavCopy(dec, enc, payloadBuf)
-	if !errors.Is(err, io.EOF) {
-		return written, err
-	}
-	return written, nil
+	return written, err
 }
 
 func (p *AudioPlayback) calcPlayoutSize() int {
@@ -167,26 +150,8 @@ func streamWavRTP(body io.Reader, rtpWriter *media.RTPPacketWriter, codec media.
 		SampleRate: codec.SampleRate,
 		SampleDur:  20 * time.Millisecond,
 	})
+	return p.Play(body, "audio/wav")
 	return p.streamWav(body, enc)
-}
-
-func copyWithBuf(reader io.Reader, writer io.Writer, payloadBuf []byte) (int64, error) {
-	var totalWritten int64
-	for {
-		n, err := reader.Read(payloadBuf)
-		if err != nil {
-			return totalWritten, err
-		}
-		nn, err := writer.Write(payloadBuf[:n])
-		if err != nil {
-			return totalWritten, err
-		}
-		if n < nn {
-			return totalWritten, io.ErrShortWrite
-		}
-
-		totalWritten += int64(nn)
-	}
 }
 
 func wavCopy(dec *audio.WavReader, playWriter io.Writer, payloadBuf []byte) (int64, error) {

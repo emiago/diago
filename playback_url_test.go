@@ -4,46 +4,55 @@
 package diago
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/stretchr/testify/require"
 )
 
-func TestIntegrationDialogMediaPlaybackURL(t *testing.T) {
+func TestIntegrationPlaybackURL(t *testing.T) {
 	// Create transaction users, as many as needed.
 	ua, _ := sipgo.NewUA(
 		sipgo.WithUserAgent("inbound"),
 	)
+	defer ua.Close()
 	tu := NewDiago(ua, WithTransport(
 		Transport{
 			Transport: "udp",
 			BindHost:  "127.0.0.1",
-			BindPort:  5090,
+			BindPort:  15060,
 		},
 	))
 
-	ctx := context.TODO()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	// media.RTPDebug = true
 
 	urlStr := testStartAudioStreamServer(t)
 
+	var errServer error
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 	err := tu.ServeBackground(ctx, func(in *DialogServerSession) {
+		defer wg.Done()
 		in.Progress()
 		in.Ringing()
 		in.Answer()
 		t.Log("Playing url ", urlStr)
-		ctx := in.Context()
 		pb, _ := in.PlaybackCreate()
-		if err := pb.PlayURL(ctx, urlStr); err != nil {
-			t.Error(err)
+		if _, err := pb.PlayURL(urlStr); err != nil {
+			errServer = errors.Join(errServer, err)
 		}
 
 		t.Log("Done playing", urlStr)
@@ -56,17 +65,17 @@ func TestIntegrationDialogMediaPlaybackURL(t *testing.T) {
 		// phone := sipgox.NewPhone(ua, sipgox.WithPhoneListenAddr(
 		// 	sipgox.ListenAddr{
 		// 		Network: "udp",
-		// 		Addr:    "127.0.0.100:5090",
+		// 		Addr:    "127.0.0.100:15060",
 		// 	},
 		// ))
 
 		phone := NewDiago(ua, WithTransport(Transport{
 			Transport: "udp",
 			BindHost:  "127.0.0.100",
-			BindPort:  5090,
+			BindPort:  15060,
 		}))
 
-		dialog, err := phone.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
+		dialog, err := phone.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 15060}, InviteOptions{})
 		require.NoError(t, err)
 		defer dialog.Close()
 
@@ -77,11 +86,15 @@ func TestIntegrationDialogMediaPlaybackURL(t *testing.T) {
 			time.Sleep(10 * time.Second)
 			dialog.Hangup(ctx)
 		}()
-
-		buf, err := io.ReadAll(rtpReader)
-		require.NoError(t, err)
-		require.Greater(t, len(buf), 10000)
+		b := bytes.NewBuffer([]byte{})
+		_, err = media.CopyWithBuf(rtpReader, b, make([]byte, media.RTPBufSize))
+		// buf, err := io.ReadAll(rtpReader)
+		require.ErrorIs(t, err, io.EOF)
+		require.Greater(t, b.Len(), 10000)
 	}
+
+	wg.Wait()
+	require.NoError(t, errServer)
 }
 
 func testStartAudioStreamServer(t *testing.T) string {
@@ -90,7 +103,7 @@ func testStartAudioStreamServer(t *testing.T) string {
 		writer.WriteHeader(200)
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-		fh, err := os.Open("testdata/demo-thanks.wav")
+		fh, err := os.Open("testdata/files/demo-echodone.wav")
 		if err != nil {
 			return
 		}
@@ -115,7 +128,7 @@ func testStartAudioStreamServer(t *testing.T) string {
 	})
 
 	srv := http.Server{
-		Addr:    "127.0.0.1:8080",
+		Addr:    "127.0.0.1:18080",
 		Handler: mux,
 	}
 

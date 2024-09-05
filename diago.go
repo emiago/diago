@@ -158,9 +158,6 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	// Create our default contact hdr
 	contactHDR := dg.getContactHDR("")
 
-	// dg.dialogServer = sipgo.NewDialogServer(dg.client, contactHDR)
-	// dg.dialogClient = sipgo.NewDialogClient(dg.client, contactHDR)
-
 	server := dg.server
 	server.OnInvite(func(req *sip.Request, tx sip.ServerTransaction) {
 		// What if multiple server transports?
@@ -182,30 +179,19 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			return
 		}
 
-		// Check is this dialog in cache
-		DialogsServerCache.Load(dialog.ID)
-
-		// if dialog.LoadState() == sip.DialogStateConfirmed {
-		// 	// This is probably REINVITE for media path update
-		// }
-
-		// dialog.Close
-		// We will close dialog with our wrapper below
-
 		// TODO authentication
-		// TODO media and SDP
 		dWrap := &DialogServerSession{
 			DialogServerSession: dialog,
 			DialogMedia:         DialogMedia{},
-
-			// contactHDR: dg.getContactHDR(req.Transport()),
-			// formats:    dg.mediaConf.Formats,
 		}
 		dg.initServerSession(dWrap)
 		defer dWrap.Close()
 
-		DialogsServerCache.Store(dWrap.ID, dWrap)
-		defer DialogsServerCache.Delete(dWrap.ID)
+		dialogsServerCache.DialogStore(dWrap.Context(), dWrap.ID, dWrap)
+		defer func() {
+			// TODO: have better context
+			dialogsServerCache.DialogDelete(context.Background(), dWrap.ID)
+		}()
 
 		dg.serveHandler(dWrap)
 
@@ -335,9 +321,10 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 }
 
 func (dg *Diago) handleReInvite(req *sip.Request, tx sip.ServerTransaction, id string) {
+	ctx := context.TODO()
 	// No Error means we have ID
-	val, ok := DialogsServerCache.Load(id)
-	if !ok {
+	val, err := dialogsServerCache.DialogLoad(ctx, id)
+	if err != nil {
 		id, err := sip.UACReadRequestDialogID(req)
 		if err != nil {
 			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil))
@@ -345,8 +332,8 @@ func (dg *Diago) handleReInvite(req *sip.Request, tx sip.ServerTransaction, id s
 
 		}
 		// No Error means we have ID
-		val, ok := DialogsClientCache.Load(id)
-		if !ok {
+		val, err := dialogsClientCache.DialogLoad(ctx, id)
+		if err != nil {
 			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, "Call/Transaction Does Not Exist", nil))
 			return
 		}
@@ -552,13 +539,11 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		// Start RTP session
 		rtpSess := media.NewRTPSession(sess)
 		log.Debug().Str("laddr", sess.Laddr.String()).Str("raddr", sess.Raddr.String()).Msg("RTP Session setuped")
-
-		d.mu.Lock()
-		d.mediaSession = sess
-		d.RTPPacketReader = media.NewRTPPacketReaderSession(rtpSess)
-		d.RTPPacketWriter = media.NewRTPPacketWriterSession(rtpSess)
-		d.mu.Unlock()
-
+		d.InitMediaSession(
+			sess,
+			media.NewRTPPacketReaderSession(rtpSess),
+			media.NewRTPPacketWriterSession(rtpSess),
+		)
 		// Must be called after reader and writer setup due to race
 		rtpSess.MonitorBackground()
 
@@ -569,7 +554,17 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 			}
 		}
 
-		return dialog.Ack(ctx)
+		if err := dialog.Ack(ctx); err != nil {
+			return err
+		}
+
+		if err := dialogsClientCache.DialogStore(ctx, d.ID, d); err != nil {
+			return err
+		}
+		d.OnClose(func() {
+			dialogsClientCache.Delete(d.ID)
+		})
+		return nil
 	}
 
 	if err := waitCall(); err != nil {
