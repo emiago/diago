@@ -6,6 +6,7 @@ package diago
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/emiago/diago/media"
@@ -26,6 +27,8 @@ type DialogServerSession struct {
 	lastInvite *sip.Request
 
 	contactHDR sip.ContactHeader
+
+	closed atomic.Uint32
 }
 
 func (d *DialogServerSession) Id() string {
@@ -33,6 +36,9 @@ func (d *DialogServerSession) Id() string {
 }
 
 func (d *DialogServerSession) Close() {
+	if !d.closed.CompareAndSwap(0, 1) {
+		return
+	}
 	d.DialogMedia.Close()
 	d.DialogServerSession.Close()
 }

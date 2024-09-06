@@ -5,6 +5,7 @@ package diago
 
 import (
 	"context"
+	"sync/atomic"
 
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
@@ -18,9 +19,14 @@ type DialogClientSession struct {
 	// lastInvite is actual last invite sent by remote REINVITE
 	// We do not use sipgo as this needs mutex but also keeping original invite
 	lastInvite *sip.Request
+
+	closed atomic.Uint32
 }
 
 func (d *DialogClientSession) Close() {
+	if !d.closed.CompareAndSwap(0, 1) {
+		return
+	}
 	d.DialogMedia.Close()
 	d.DialogClientSession.Close()
 }

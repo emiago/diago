@@ -12,7 +12,6 @@ import (
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/emiago/sipgox"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
@@ -74,14 +73,15 @@ func TestIntegrationInbound(t *testing.T) {
 
 	{
 		ua, _ := sipgo.NewUA()
-		phone := sipgox.NewPhone(ua)
+		phone := NewDiago(ua)
+		// phone := sipgox.NewPhone(ua)
 
 		// Forbiddden
-		_, err := phone.Dial(context.TODO(), sip.Uri{User: "noroute", Host: "127.0.0.1", Port: 5060}, sipgox.DialOptions{})
+		_, err := phone.Invite(context.TODO(), sip.Uri{User: "noroute", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
 		require.Error(t, err)
 
 		// Answered call
-		dialog, err := phone.Dial(context.TODO(), sip.Uri{User: "alice", Host: "127.0.0.1", Port: 5060}, sipgox.DialOptions{})
+		dialog, err := phone.Invite(context.TODO(), sip.Uri{User: "alice", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
 		require.NoError(t, err)
 		defer dialog.Close()
 
@@ -275,4 +275,39 @@ func TestDialogServerReinvite(t *testing.T) {
 	require.NoError(t, err)
 
 	d.Hangup(context.TODO())
+}
+
+func TestIntegrationDialogCancel(t *testing.T) {
+	ua, _ := sipgo.NewUA()
+	dg := NewDiago(ua, WithTransport(
+		Transport{
+			Transport: "udp",
+			BindHost:  "127.0.0.1",
+			BindPort:  15060,
+		},
+	))
+
+	dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {
+		ctx := d.Context()
+		d.Progress()
+		d.Ringing()
+
+		<-ctx.Done()
+	})
+
+	{
+		ua, _ := sipgo.NewUA()
+		dg := NewDiago(ua)
+		ctx, cancel := context.WithCancel(context.Background())
+		_, err := dg.Invite(ctx, sip.Uri{User: "test", Host: "127.0.0.1", Port: 15060}, InviteOptions{
+			OnResponse: func(res *sip.Response) error {
+				if res.StatusCode == sip.StatusRinging {
+					cancel()
+				}
+				return nil
+			},
+		})
+		require.ErrorIs(t, err, context.Canceled)
+	}
+
 }

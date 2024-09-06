@@ -16,7 +16,6 @@ import (
 	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/emiago/sipgox"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -210,6 +209,12 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			dg.log.Error().Err(err).Msg("Hanguping call failed")
 			return
 		}
+	})
+
+	server.OnCancel(func(req *sip.Request, tx sip.ServerTransaction) {
+		// INVITE transaction should be terminated by transaction layer and 200 response will be sent
+		// In case of stateless proxy this we would need to forward
+		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, "Call/Transaction Does Not Exist", nil))
 	})
 
 	server.OnAck(func(req *sip.Request, tx sip.ServerTransaction) {
@@ -430,11 +435,12 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 
 	// Now media SEdgP
 	// TODO this probably needs take in account Contact header or listen addr
-	ip, port, err := sipgox.FindFreeInterfaceHostPort(transport, "")
+	// ip, port, err := sipgox.FindFreeInterfaceHostPort(transport, "")
+	ip, _, err := sip.ResolveInterfacesIP("ip4", nil)
 	if err != nil {
 		return nil, err
 	}
-	laddr := &net.UDPAddr{IP: ip, Port: port}
+	laddr := &net.UDPAddr{IP: ip, Port: 0}
 	sess, err := media.NewMediaSession(laddr)
 	if err != nil {
 		return nil, err
@@ -602,35 +608,35 @@ func (dg *Diago) getContactHDR(transport string) sip.ContactHeader {
 	}
 }
 
-type RegisterRequest struct {
-	RegisterURI sip.Uri
-	sipgox.RegisterOptions
-}
+// type RegisterRequest struct {
+// 	RegisterURI sip.Uri
+// 	sipgox.RegisterOptions
+// }
 
-func (d *Diago) Register(ctx context.Context, req RegisterRequest) error {
-	if len(d.transports) == 0 {
-		return fmt.Errorf("No transports defined")
-	}
-	t := d.transports[0]
-	contHDR := sip.ContactHeader{
-		Address: sip.Uri{
-			Host: t.ExternalHost,
-			Port: t.ExternalPort,
-		},
-	}
+// func (d *Diago) Register(ctx context.Context, req RegisterRequest) error {
+// 	if len(d.transports) == 0 {
+// 		return fmt.Errorf("No transports defined")
+// 	}
+// 	t := d.transports[0]
+// 	contHDR := sip.ContactHeader{
+// 		Address: sip.Uri{
+// 			Host: t.ExternalHost,
+// 			Port: t.ExternalPort,
+// 		},
+// 	}
 
-	// client := d.client
-	registerCtx := sipgox.NewRegisterTransaction(
-		d.log,
-		d.client,
-		req.RegisterURI,
-		contHDR,
-		req.RegisterOptions,
-	)
+// 	// client := d.client
+// 	registerCtx := sipgox.NewRegisterTransaction(
+// 		d.log,
+// 		d.client,
+// 		req.RegisterURI,
+// 		contHDR,
+// 		req.RegisterOptions,
+// 	)
 
-	if err := registerCtx.Register(ctx); err != nil {
-		return err
-	}
+// 	if err := registerCtx.Register(ctx); err != nil {
+// 		return err
+// 	}
 
-	return registerCtx.QualifyLoop(ctx)
-}
+// 	return registerCtx.QualifyLoop(ctx)
+// }

@@ -3,8 +3,7 @@ module github.com/emiago/diago
 go 1.22.1
 
 require (
-	github.com/emiago/sipgo v0.22.2-0.20240803100330-cdeb0ceb3a95
-	github.com/emiago/sipgox v0.8.1
+	github.com/emiago/sipgo v0.22.2-0.20240906212527-ebf26a4c6a3b
 	github.com/go-audio/riff v1.0.0
 	github.com/go-audio/wav v1.1.0
 	github.com/pion/rtcp v1.2.14
@@ -22,6 +21,7 @@ require (
 	github.com/gobwas/ws v1.3.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/icholy/digest v0.1.22 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/pion/randutil v0.1.0 // indirect

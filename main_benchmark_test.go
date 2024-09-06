@@ -19,7 +19,6 @@ import (
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/emiago/sipgox"
 	"github.com/pion/rtp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -124,7 +123,7 @@ func BenchmarkIntegrationClientServer(t *testing.B) {
 				defer ua.Close()
 				// client, err := sipgo.NewClient(ua)
 				// require.NoError(t, err)
-				phone := sipgox.NewPhone(ua)
+				phone := NewDiago(ua)
 				id, _ := rand.Int(rand.Reader, big.NewInt(int64(runtime.GOMAXPROCS(0))))
 				for p.Next() {
 					t.Log("Making call goroutine=", id)
@@ -133,7 +132,7 @@ func BenchmarkIntegrationClientServer(t *testing.B) {
 						maxInvitesPerSec <- struct{}{}
 					}
 					dialCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					dialog, err := phone.Dial(dialCtx, sip.Uri{Host: tran.BindHost, Port: tran.BindPort, User: "dialer"}, sipgox.DialOptions{})
+					dialog, err := phone.Invite(dialCtx, sip.Uri{Host: tran.BindHost, Port: tran.BindPort, User: "dialer"}, InviteOptions{})
 					cancel()
 
 					require.NoError(t, err)
@@ -146,9 +145,10 @@ func BenchmarkIntegrationClientServer(t *testing.B) {
 
 						buf := make([]byte, media.RTPBufSize)
 						var prevSeq uint16
+						reader := dialog.mediaSession
 						for {
 							p := rtp.Packet{}
-							err := dialog.ReadRTP(buf, &p)
+							err := reader.ReadRTP(buf, &p)
 							if err != nil {
 								return
 							}
