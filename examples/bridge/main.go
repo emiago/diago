@@ -32,7 +32,7 @@ func main() {
 
 	lev, err := zerolog.ParseLevel(os.Getenv("LOG_LEVEL"))
 	if err != nil || lev == zerolog.NoLevel {
-		lev = zerolog.DebugLevel
+		lev = zerolog.InfoLevel
 	}
 
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMicro

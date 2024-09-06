@@ -89,7 +89,6 @@ func (p *AudioPlayback) playURL(urlStr string, written *int64) error {
 		defer writer.Close()
 
 		// BETTER DESIGN needed
-
 		httpPartial := func(log zerolog.Logger, res *http.Response, writer io.Writer) error {
 			chunk, err := io.ReadAll(res.Body)
 			if err != nil {

@@ -37,11 +37,11 @@ func init() {
 // DialogMedia is common struct for server and client session and it shares same functionality
 // which is mostly arround media
 type DialogMedia struct {
+	mu sync.Mutex
+
 	// media session is RTP local and remote
 	// it is forked on media changes and updated on writer and reader
 	// must be mutex protected
-	mu sync.Mutex
-
 	mediaSession *media.MediaSession
 
 	// Packet reader is default reader for RTP audio stream
@@ -238,12 +238,7 @@ func (d *DialogMedia) PlaybackControlCreate() (AudioPlaybackControl, error) {
 }
 
 // Listen is main function to be called when we want to listen stream on this dialog.
-// Example:
-// - you attach your media reader/writer. ex Recording
-// - Once ready you start to listen on stream
-//
-// This approach gives caller control when to listen stream but also it removes
-// need to
+// If session is not bridged you need to call this if you want to have your data flowing
 func (m *DialogMedia) Listen() error {
 	buf := make([]byte, media.RTPBufSize)
 	r := m.AudioReader()
