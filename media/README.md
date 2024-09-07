@@ -1,19 +1,13 @@
 # media
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/emiago/sipgo)](https://goreportcard.com/report/github.com/emiago/sipgo)
-![Coverage](https://img.shields.io/badge/coverage-38.1%25-blue)
-[![License](https://img.shields.io/badge/License-BSD_2--Clause-orange.svg)](https://github.com/emiago/sipgo/LICENCE) 
-![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/emiago/media)
+Everything is `io.Reader` and `io.Writer`
 
-is GO library designed handling real time media for usage with [sipgo](https://github.com/emiago/sipgo)
-It has APIs for creating and running protocols like SDP, RTP, RTCP.
+We follow GO std lib and providing interface for Reader/Writer when it comes reading and writing media.   
+This optimized and made easier usage of RTP framework, by providing end user standard library `io.Reader` `io.Writer`
+to pass his media.
 
-Library is currently focused only to provide VOIP needs and removing complexity. 
-As with [sipgo](https://github.com/emiago/sipgo) focus is to provide minimal GC hits and latency.
-
-
-### Tools using this
-- [gophone](https://github.com/emiago/gophone)
+In other words chaining reader or writer allows to build interceptors, encoders, decoders without introducing 
+overhead of contention or many memory allocations
 
 Features:
 - [x] Simple SDP build with formats alaw,ulaw,dtmf
@@ -21,11 +15,17 @@ Features:
 - [x] Extendable MediaSession handling for RTP/RTCP handling (ex microphone,speaker)
 - [x] DTMF encoder, decoder via RFC4733
 - [x] Minimal SDP package for audio
-- [ ] Media Session, RTP Session handling
-- [ ] RTCP monitoring
+- [x] Media Session, RTP Session handling
+- [x] RTCP monitoring
 - [ ] SDP codec fields manipulating
 - [ ] ... who knows
 
+## Concepts
+
+- **Media Session** represents mapping between SDP media description and creates session based on local/remote addr
+- **RTP Session** is creating RTP/RTCP session. It is using media session underneath to add networking layer.
+- **RTP Packet Reader** is depackatizing RTP packets and providing payload as `io.Reader`. Normally it should be chained to RTP Session 
+- **RTP Packet Writer** is packatizing payload to RTP packets as `io.Writer`. Normally it should be chained to RTP Session
 
 ## IO flow
 
