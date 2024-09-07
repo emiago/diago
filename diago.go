@@ -366,6 +366,7 @@ func (dg *Diago) Serve(ctx context.Context, f ServeDialogFunc) error {
 		errCh := make(chan error, len(dg.transports))
 		for _, tran := range dg.transports {
 			hostport := net.JoinHostPort(tran.BindHost, strconv.Itoa(tran.BindPort))
+			log.Info().Str("addr", hostport).Str("protocol", tran.Transport).Msg("Listening on transport")
 			go func(tran Transport) {
 				if tran.TLSConf != nil {
 					errCh <- server.ListenAndServeTLS(ctx, tran.Transport, hostport, tran.TLSConf)
@@ -380,6 +381,7 @@ func (dg *Diago) Serve(ctx context.Context, f ServeDialogFunc) error {
 
 	tran := dg.transports[0]
 	hostport := net.JoinHostPort(tran.BindHost, strconv.Itoa(tran.BindPort))
+	log.Info().Str("addr", hostport).Str("protocol", tran.Transport).Msg("Listening on transport")
 	return server.ListenAndServe(ctx, tran.Transport, hostport)
 }
 

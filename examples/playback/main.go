@@ -17,7 +17,7 @@ import (
 )
 
 // Dial this app with
-// gophone dial -media=audio "sip:123@127.0.0.1"
+// gophone dial -media=speaker "sip:123@127.0.0.1"
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -25,7 +25,7 @@ func main() {
 
 	lev, err := zerolog.ParseLevel(os.Getenv("LOG_LEVEL"))
 	if err != nil || lev == zerolog.NoLevel {
-		lev = zerolog.DebugLevel
+		lev = zerolog.InfoLevel
 	}
 
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMicro
@@ -57,8 +57,8 @@ func Playback(inDialog *diago.DialogServerSession) error {
 	inDialog.Ringing()  // Ringing -> 180 Response
 	inDialog.Answer()   // Answer -> 200 Response
 
-	playfile, _ := testdata.OpenFile("demo-echotest.wav")
-	log.Info().Str("file", "demo-echotest.wav").Msg("Playing a file")
+	playfile, _ := testdata.OpenFile("demo-echodone.wav")
+	log.Info().Str("file", "demo-echodone.wav").Msg("Playing a file")
 
 	pb, err := inDialog.PlaybackCreate()
 	if err != nil {
