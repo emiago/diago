@@ -6,11 +6,16 @@ package diago
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
+)
+
+var (
+	// TODO, replace with typed versions
+	dialogsClientCache DialogCache = &dialogCacheMap{sync.Map{}}
+	dialogsServerCache DialogCache = &dialogCacheMap{sync.Map{}}
 )
 
 type DialogCache interface {
@@ -35,7 +40,7 @@ func (m *dialogCacheMap) DialogDelete(ctx context.Context, id string) error {
 func (m *dialogCacheMap) DialogLoad(ctx context.Context, id string) (DialogSession, error) {
 	d, ok := m.Load(id)
 	if !ok {
-		return nil, fmt.Errorf("not exists")
+		return nil, sipgo.ErrDialogDoesNotExists
 	}
 	// interface to interface conversion is slow
 	return d.(DialogSession), nil
@@ -51,12 +56,6 @@ func (m *dialogCacheMap) DialogRange(ctx context.Context, f func(id string, v Di
 	return nil
 }
 
-var (
-	// TODO, replace with typed versions
-	dialogsClientCache = dialogCacheMap{sync.Map{}}
-	dialogsServerCache = dialogCacheMap{sync.Map{}}
-)
-
 type DialogData struct {
 	InviteRequest sip.Request
 	State         sip.DialogState
@@ -68,9 +67,9 @@ func MatchDialogClient(req *sip.Request) (*DialogClientSession, error) {
 		return nil, errors.Join(err, sipgo.ErrDialogOutsideDialog)
 	}
 
-	val, ok := dialogsClientCache.Load(id)
-	if !ok || val == nil {
-		return nil, sipgo.ErrDialogDoesNotExists
+	val, err := dialogsClientCache.DialogLoad(context.Background(), id)
+	if err != nil {
+		return nil, err
 	}
 
 	d := val.(*DialogClientSession)
@@ -83,9 +82,9 @@ func MatchDialogServer(req *sip.Request) (*DialogServerSession, error) {
 		return nil, errors.Join(err, sipgo.ErrDialogOutsideDialog)
 	}
 
-	val, ok := dialogsServerCache.Load(id)
-	if !ok || val == nil {
-		return nil, sipgo.ErrDialogDoesNotExists
+	val, err := dialogsServerCache.DialogLoad(context.Background(), id)
+	if err != nil {
+		return nil, err
 	}
 
 	d := val.(*DialogServerSession)

@@ -559,7 +559,7 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 			return err
 		}
 		d.OnClose(func() {
-			dialogsClientCache.Delete(d.ID)
+			dialogsClientCache.DialogDelete(context.Background(), d.ID)
 		})
 		return nil
 	}
