@@ -185,10 +185,10 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		dg.initServerSession(dWrap)
 		defer dWrap.Close()
 
-		dialogsServerCache.DialogStore(dWrap.Context(), dWrap.ID, dWrap)
+		DialogsServerCache.DialogStore(dWrap.Context(), dWrap.ID, dWrap)
 		defer func() {
 			// TODO: have better context
-			dialogsServerCache.DialogDelete(context.Background(), dWrap.ID)
+			DialogsServerCache.DialogDelete(context.Background(), dWrap.ID)
 		}()
 
 		dg.serveHandler(dWrap)
@@ -317,7 +317,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 func (dg *Diago) handleReInvite(req *sip.Request, tx sip.ServerTransaction, id string) {
 	ctx := context.TODO()
 	// No Error means we have ID
-	val, err := dialogsServerCache.DialogLoad(ctx, id)
+	val, err := DialogsServerCache.DialogLoad(ctx, id)
 	if err != nil {
 		id, err := sip.UACReadRequestDialogID(req)
 		if err != nil {
@@ -326,7 +326,7 @@ func (dg *Diago) handleReInvite(req *sip.Request, tx sip.ServerTransaction, id s
 
 		}
 		// No Error means we have ID
-		val, err := dialogsClientCache.DialogLoad(ctx, id)
+		val, err := DialogsClientCache.DialogLoad(ctx, id)
 		if err != nil {
 			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, "Call/Transaction Does Not Exist", nil))
 			return
@@ -555,11 +555,11 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 			return err
 		}
 
-		if err := dialogsClientCache.DialogStore(ctx, d.ID, d); err != nil {
+		if err := DialogsClientCache.DialogStore(ctx, d.ID, d); err != nil {
 			return err
 		}
 		d.OnClose(func() {
-			dialogsClientCache.DialogDelete(context.Background(), d.ID)
+			DialogsClientCache.DialogDelete(context.Background(), d.ID)
 		})
 		return nil
 	}

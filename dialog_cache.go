@@ -14,8 +14,8 @@ import (
 
 var (
 	// TODO, replace with typed versions
-	dialogsClientCache DialogCache = &dialogCacheMap{sync.Map{}}
-	dialogsServerCache DialogCache = &dialogCacheMap{sync.Map{}}
+	DialogsClientCache DialogCache = &dialogCacheMap{sync.Map{}}
+	DialogsServerCache DialogCache = &dialogCacheMap{sync.Map{}}
 )
 
 type DialogCache interface {
@@ -67,7 +67,7 @@ func MatchDialogClient(req *sip.Request) (*DialogClientSession, error) {
 		return nil, errors.Join(err, sipgo.ErrDialogOutsideDialog)
 	}
 
-	val, err := dialogsClientCache.DialogLoad(context.Background(), id)
+	val, err := DialogsClientCache.DialogLoad(context.Background(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func MatchDialogServer(req *sip.Request) (*DialogServerSession, error) {
 		return nil, errors.Join(err, sipgo.ErrDialogOutsideDialog)
 	}
 
-	val, err := dialogsServerCache.DialogLoad(context.Background(), id)
+	val, err := DialogsServerCache.DialogLoad(context.Background(), id)
 	if err != nil {
 		return nil, err
 	}
