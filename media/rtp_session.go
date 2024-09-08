@@ -136,7 +136,7 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) error {
 	// For now we only track latest SSRC
 	if stats.SSRC != readPkt.SSRC {
 		// For now we will reset all our stats.
-		// We expect that SSRC only changed but MULTI RTP stream per one session are not fully supported!
+		// We expect that SSRC only changed but MULTI RTP stream per one session is not supported
 		codec := CodecFromPayloadType(readPkt.PayloadType)
 
 		*stats = RTPReadStats{

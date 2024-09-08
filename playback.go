@@ -151,7 +151,6 @@ func streamWavRTP(body io.Reader, rtpWriter *media.RTPPacketWriter, codec media.
 		SampleDur:  20 * time.Millisecond,
 	})
 	return p.Play(body, "audio/wav")
-	return p.streamWav(body, enc)
 }
 
 func wavCopy(dec *audio.WavReader, playWriter io.Writer, payloadBuf []byte) (int64, error) {

@@ -99,7 +99,7 @@ func (d *DialogServerSession) Answer() error {
 	}
 
 	rtpSess := media.NewRTPSession(sess)
-	return d.AnswerSession(sess, rtpSess)
+	return d.AnswerSession(rtpSess)
 }
 
 type MediaOption func(d *DialogMedia) error
@@ -140,12 +140,13 @@ func (d *DialogServerSession) AnswerOptions(opts ...MediaOption) error {
 		return err
 	}
 	rtpSess := media.NewRTPSession(sess)
-	return d.AnswerSession(sess, rtpSess, opts...)
+	return d.AnswerSession(rtpSess, opts...)
 }
 
-// AnswerSession. It allows answering with custom media and rtpSess
+// AnswerSession. It allows answering with custom RTP Session.
 // NOTE: Not final API
-func (d *DialogServerSession) AnswerSession(sess *media.MediaSession, rtpSess *media.RTPSession, opts ...MediaOption) error {
+func (d *DialogServerSession) AnswerSession(rtpSess *media.RTPSession, opts ...MediaOption) error {
+	sess := rtpSess.Sess
 	sdp := d.InviteRequest.Body()
 	if sdp == nil {
 		return fmt.Errorf("no sdp present in INVITE")
