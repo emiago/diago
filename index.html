@@ -30,20 +30,20 @@
   <meta itemprop="name" content="Diago">
   <meta itemprop="description" content="DiagoDiago is short of dialog &#43; GO.
 Framework for building comunication (VOIP) solutions in GO.
-It is providing more developer friendly solution on top of SIPgo with full media stack integration.
+It is providing more developer friendly solution on top of SIPgo with media stack integration.
 Stack:
-SIP as signaling Media: RTP/UDP Webrtc (Experimental) Visit Documentation to find out more!
+Signaling: SIP Media: RTP/AVP Visit Documentation to find out more!
 You can follow on X/Twitter for more updates.
 NOTE: This API design is WIP and may have changes
 Core (Roadmap): WIP = Work in progress (Expect soon to be part of lib)">
-  <meta itemprop="wordCount" content="247">
+  <meta itemprop="wordCount" content="222">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Diago">
   <meta name="twitter:description" content="DiagoDiago is short of dialog &#43; GO.
 Framework for building comunication (VOIP) solutions in GO.
-It is providing more developer friendly solution on top of SIPgo with full media stack integration.
+It is providing more developer friendly solution on top of SIPgo with media stack integration.
 Stack:
-SIP as signaling Media: RTP/UDP Webrtc (Experimental) Visit Documentation to find out more!
+Signaling: SIP Media: RTP/AVP Visit Documentation to find out more!
 You can follow on X/Twitter for more updates.
 NOTE: This API design is WIP and may have changes
 Core (Roadmap): WIP = Work in progress (Expect soon to be part of lib)">
@@ -214,7 +214,15 @@ Core (Roadmap): WIP = Work in progress (Expect soon to be part of lib)">
       hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
     href="/diago/docs/examples/"
     
-  >Examples
+  >Demo     Examples
+    </a>
+              
+            </li><li class="hx-flex hx-flex-col "><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/docs/api_docs/"
+    
+  >API Docs
     </a>
               
             </li></ul>
@@ -263,12 +271,11 @@ Core (Roadmap): WIP = Work in progress (Expect soon to be part of lib)">
         <div class="content">
           <h1><em><strong>Diago</strong></em></h1><p><strong>Diago</strong> is short of <strong>dialog + GO</strong>.<br>
 Framework for building comunication (VOIP) solutions in <em>GO</em>.</p>
-<p>It is providing more developer friendly solution on top of <a href="https://github.com/emiago/sipgo" target="_blank" rel="noopener">SIPgo</a> with full <strong>media</strong> stack integration.</p>
-<p>Stack:</p>
+<p>It is providing more developer friendly solution on top of <a href="https://github.com/emiago/sipgo" target="_blank" rel="noopener">SIPgo</a> with <strong>media</strong> stack integration.</p>
+<p><strong>Stack:</strong></p>
 <ul>
-<li>SIP as signaling</li>
-<li>Media: RTP/UDP</li>
-<li>Webrtc (Experimental)</li>
+<li>Signaling: SIP</li>
+<li>Media: RTP/AVP</li>
 </ul>
 <p>Visit <a href="docs/" >Documentation</a> to find out more!</p>
 <p>You can follow on <a href="https://twitter.com/emiago123" target="_blank" rel="noopener">X/Twitter</a> for more updates.</p>
@@ -290,18 +297,18 @@ Framework for building comunication (VOIP) solutions in <em>GO</em>.</p>
 <li>[/] DTMF with RTP (No wrappers yet) (<em><strong>WIP</strong></em>)</li>
 <li><input disabled="" type="checkbox"> DTMF with SIP INFO (Needed more in case webrtc)</li>
 <li><input disabled="" type="checkbox"> Writing Unit Test on Server with SIP and Media Recorder (<em><strong>WIP</strong></em>)</li>
+<li><input disabled="" type="checkbox"> RTP symetric</li>
 <li><input disabled="" type="checkbox"> And plenty more &hellip;</li>
-</ul>
-<p>Some things that will be kept simple:</p>
-<ul>
-<li>bridge with transcoding is never good, instead return error when detected.</li>
-<li>offering always Low level to high level which allows optimizations</li>
-<li></li>
 </ul>
 <h2>diagox<span class="hx-absolute -hx-mt-20" id="diagox"></span>
     <a href="#diagox" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p><strong>Diago extra modules</strong></p>
-<p>Some of modules are not yet considered to be part of lib and they are developed as seperate package. To mention few: Recording, Webrtc stack, Complex modules etc&hellip;
-To find out more please contact me on mail.</p>
+<p>Some of modules are not yet considered to be part of lib and they are developed for private projects. To mention few:</p>
+<ul>
+<li>Recording</li>
+<li>Webrtc stack as media</li>
+<li>Complex modules etc&hellip;</li>
+</ul>
+<p>If you have interest or need consulting/sponsoring please contact me on <a href="mailto:emirfreelance91@gmail.com" >mail</a></p>
 
         </div>
       </main>

@@ -72,11 +72,10 @@
 &lt;h3&gt;Canceling call with SIP CANCEL&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;canceling-call-with-sip-cancel&#34;&gt;&lt;/span&gt;
     &lt;a href=&#34;#canceling-call-with-sip-cancel&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;
     &lt;img src=&#34;../call_cancel_seq.png&#34; alt=&#34;call_seq&#34; loading=&#34;lazy&#34; /&gt;&lt;/p&gt;
-&lt;p&gt;Caller cancels call by sending CANCEL msg. It contains mainly same headers as INVITE&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;NOTE:&lt;/strong&gt;&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;200 OK is for CANCEL&lt;/li&gt;
-&lt;/ul&gt;
+&lt;p&gt;Caller cancels call by sending CANCEL msg. It must contain same headers as INVITE for matching transcaction.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;CANCEL is new transaction&lt;/strong&gt; request like INVITE which receives response, but SIP uses this request to try match existing INVITE transaction.
+That is why 200 OK is replied&lt;/p&gt;
+&lt;p&gt;Once Bob finds matching transcation it terminates and sends respond to INVITE with 487 Request terminated&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;TO BE CONTINUED&lt;/strong&gt;&lt;/p&gt;
 
       </description>

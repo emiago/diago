@@ -42,7 +42,7 @@ Dialing = INVITE Answer = 200 OK response on INVITE Hangup = BYE Cancel = CANCEL
 Caller (Client): Sends one time ACK as confirmation
 Succesfull call Example of alice inviting bob
 INVITE sip:bob@127.0.0.1:5060 SIP/2.0 Via: SIP/2.0/udp 127.0.0.99:50725;branch=z9hG4bK.pgb382qZ312tyXIP Content-Type: application/sdp Content-Length: 235 Contact: &lt;sip:alice@127.">
-  <meta itemprop="wordCount" content="182">
+  <meta itemprop="wordCount" content="223">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Understading SIP with Call Scenarios">
   <meta name="twitter:description" content="Every call starts with INVITE SIP Messages. Here is how to relate SIP message to PHONE actions
@@ -226,7 +226,15 @@ INVITE sip:bob@127.0.0.1:5060 SIP/2.0 Via: SIP/2.0/udp 127.0.0.99:50725;branch=z
       hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
     href="/diago/docs/examples/"
     
-  >Examples
+  >Demo     Examples
+    </a>
+              
+            </li><li class="hx-flex hx-flex-col "><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/docs/api_docs/"
+    
+  >API Docs
     </a>
               
             </li></ul>
@@ -273,7 +281,14 @@ INVITE sip:bob@127.0.0.1:5060 SIP/2.0 Via: SIP/2.0/udp 127.0.0.99:50725;branch=z
       hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
     href="/diago/docs/examples/"
     
-  >Examples
+  >Demo     Examples
+    </a></li>
+          <li class=""><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/docs/api_docs/"
+    
+  >API Docs
     </a></li>
         
       </ul>
@@ -380,11 +395,10 @@ INVITE sip:bob@127.0.0.1:5060 SIP/2.0 Via: SIP/2.0/udp 127.0.0.99:50725;branch=z
 <h3>Canceling call with SIP CANCEL<span class="hx-absolute -hx-mt-20" id="canceling-call-with-sip-cancel"></span>
     <a href="#canceling-call-with-sip-cancel" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>
     <img src="../call_cancel_seq.png" alt="call_seq" loading="lazy" /></p>
-<p>Caller cancels call by sending CANCEL msg. It contains mainly same headers as INVITE</p>
-<p><strong>NOTE:</strong></p>
-<ul>
-<li>200 OK is for CANCEL</li>
-</ul>
+<p>Caller cancels call by sending CANCEL msg. It must contain same headers as INVITE for matching transcaction.</p>
+<p><strong>CANCEL is new transaction</strong> request like INVITE which receives response, but SIP uses this request to try match existing INVITE transaction.
+That is why 200 OK is replied</p>
+<p>Once Bob finds matching transcation it terminates and sends respond to INVITE with 487 Request terminated</p>
 <p><strong>TO BE CONTINUED</strong></p>
 
         </div>

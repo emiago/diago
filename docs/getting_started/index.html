@@ -12,9 +12,10 @@
 <link fetchpriority="low" href="/diago/site.webmanifest" rel="manifest" />
 
   <title>Diago</title>
-  <meta name="description" content="Getting starteddiago can act as UAS(User Agent Server) and UAC(User Agent Client), and ofcourse adds bridging capability to build B2BUA services.
-To keep abstractions low it intentionally distincts dialog received (Acting as server) and dialog created (Acting as client) Therefore it distincts your dialog/session control with this structs:
-DialogServerSession when receving incoming dialog (SIP INVITE) and setups session (media) DialogClientSession when it creates outgoing dialog (SIP INVITE) and setups session (media) Setup diago: ua, _ := sipgo." />
+  <meta name="description" content="Getting started As showcase, code below is only needed to start serving Calls. In this example Call will be answered and played some audio.
+For testing you can use gophone CLI sofpthone built with same libraries or any other SIP softphone.
+Echo test app Copy audio file from library testdata/files/demo-echotest.wav or change to whatever you want
+ua, _ := sipgo.NewUA() dg := diago.NewDiago(ua) dg.Serve(ctx, func(inDialog *diago.DialogServerSession) { inDialog.Progress() // Progress -&gt; 100 Trying inDialog." />
 
   
     <link rel="canonical" href="https://emiago.github.io/diago/docs/getting_started/" itemprop="url" />
@@ -23,9 +24,10 @@ DialogServerSession when receving incoming dialog (SIP INVITE) and setups sessio
   
 
 <meta property="og:title" content="" />
-<meta property="og:description" content="Getting starteddiago can act as UAS(User Agent Server) and UAC(User Agent Client), and ofcourse adds bridging capability to build B2BUA services.
-To keep abstractions low it intentionally distincts dialog received (Acting as server) and dialog created (Acting as client) Therefore it distincts your dialog/session control with this structs:
-DialogServerSession when receving incoming dialog (SIP INVITE) and setups session (media) DialogClientSession when it creates outgoing dialog (SIP INVITE) and setups session (media) Setup diago: ua, _ := sipgo." />
+<meta property="og:description" content="Getting started As showcase, code below is only needed to start serving Calls. In this example Call will be answered and played some audio.
+For testing you can use gophone CLI sofpthone built with same libraries or any other SIP softphone.
+Echo test app Copy audio file from library testdata/files/demo-echotest.wav or change to whatever you want
+ua, _ := sipgo.NewUA() dg := diago.NewDiago(ua) dg.Serve(ctx, func(inDialog *diago.DialogServerSession) { inDialog.Progress() // Progress -&gt; 100 Trying inDialog." />
 <meta property="og:type" content="article" />
 <meta property="og:url" content="https://emiago.github.io/diago/docs/getting_started/" /><meta property="article:section" content="docs" />
 
@@ -33,15 +35,17 @@ DialogServerSession when receving incoming dialog (SIP INVITE) and setups sessio
 
   
   <meta itemprop="name" content="Diago">
-  <meta itemprop="description" content="Getting starteddiago can act as UAS(User Agent Server) and UAC(User Agent Client), and ofcourse adds bridging capability to build B2BUA services.
-To keep abstractions low it intentionally distincts dialog received (Acting as server) and dialog created (Acting as client) Therefore it distincts your dialog/session control with this structs:
-DialogServerSession when receving incoming dialog (SIP INVITE) and setups session (media) DialogClientSession when it creates outgoing dialog (SIP INVITE) and setups session (media) Setup diago: ua, _ := sipgo.">
-  <meta itemprop="wordCount" content="258">
+  <meta itemprop="description" content="Getting started As showcase, code below is only needed to start serving Calls. In this example Call will be answered and played some audio.
+For testing you can use gophone CLI sofpthone built with same libraries or any other SIP softphone.
+Echo test app Copy audio file from library testdata/files/demo-echotest.wav or change to whatever you want
+ua, _ := sipgo.NewUA() dg := diago.NewDiago(ua) dg.Serve(ctx, func(inDialog *diago.DialogServerSession) { inDialog.Progress() // Progress -&gt; 100 Trying inDialog.">
+  <meta itemprop="wordCount" content="145">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Diago">
-  <meta name="twitter:description" content="Getting starteddiago can act as UAS(User Agent Server) and UAC(User Agent Client), and ofcourse adds bridging capability to build B2BUA services.
-To keep abstractions low it intentionally distincts dialog received (Acting as server) and dialog created (Acting as client) Therefore it distincts your dialog/session control with this structs:
-DialogServerSession when receving incoming dialog (SIP INVITE) and setups session (media) DialogClientSession when it creates outgoing dialog (SIP INVITE) and setups session (media) Setup diago: ua, _ := sipgo.">
+  <meta name="twitter:description" content="Getting started As showcase, code below is only needed to start serving Calls. In this example Call will be answered and played some audio.
+For testing you can use gophone CLI sofpthone built with same libraries or any other SIP softphone.
+Echo test app Copy audio file from library testdata/files/demo-echotest.wav or change to whatever you want
+ua, _ := sipgo.NewUA() dg := diago.NewDiago(ua) dg.Serve(ctx, func(inDialog *diago.DialogServerSession) { inDialog.Progress() // Progress -&gt; 100 Trying inDialog.">
 
     <link rel="preload" href="/diago/css/compiled/main.min.c1fe2c80102c9dc9ddc66184191e646769052d36a21b38ac5ab5077713cf7a81.css" as="style" integrity="sha256-wf4sgBAsncndxmGEGR5kZ2kFLTaiGzisWrUHdxPPeoE=" />
     <link href="/diago/css/compiled/main.min.c1fe2c80102c9dc9ddc66184191e646769052d36a21b38ac5ab5077713cf7a81.css" rel="stylesheet" integrity="sha256-wf4sgBAsncndxmGEGR5kZ2kFLTaiGzisWrUHdxPPeoE=" />
@@ -206,21 +210,15 @@ DialogServerSession when receving incoming dialog (SIP INVITE) and setups sessio
   
     <ul class='hx-flex hx-flex-col hx-gap-1 hx-relative before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] dark:before:hx-bg-neutral-800 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-pr-3 rtl:before:hx-right-0 ltr:hx-ml-3 rtl:hx-mr-3'><li>
               <a
-                href="#"
+                href="#getting-started"
                 class="hx-flex hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [word-break:break-word] hx-cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] contrast-more:hx-border hx-gap-2 before:hx-opacity-25 before:hx-content-['#'] hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:hx-text-gray-900 contrast-more:dark:hx-text-gray-50 contrast-more:hx-border-transparent contrast-more:hover:hx-border-gray-900 contrast-more:dark:hover:hx-border-gray-50"
-              ></a>
+              >Getting started</a>
             </li>
           <li>
               <a
-                href="#answering-call"
+                href="#echo-test-app"
                 class="hx-flex hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [word-break:break-word] hx-cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] contrast-more:hx-border hx-gap-2 before:hx-opacity-25 before:hx-content-['#'] hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:hx-text-gray-900 contrast-more:dark:hx-text-gray-50 contrast-more:hx-border-transparent contrast-more:hover:hx-border-gray-900 contrast-more:dark:hover:hx-border-gray-50"
-              >Answering call</a>
-            </li>
-          <li>
-              <a
-                href="#playing-file-with-playback"
-                class="hx-flex hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [word-break:break-word] hx-cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] contrast-more:hx-border hx-gap-2 before:hx-opacity-25 before:hx-content-['#'] hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:hx-text-gray-900 contrast-more:dark:hx-text-gray-50 contrast-more:hx-border-transparent contrast-more:hover:hx-border-gray-900 contrast-more:dark:hover:hx-border-gray-50"
-              >Playing file with Playback</a>
+              >Echo test app</a>
             </li>
           </ul>
   
@@ -230,7 +228,15 @@ DialogServerSession when receving incoming dialog (SIP INVITE) and setups sessio
       hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
     href="/diago/docs/examples/"
     
-  >Examples
+  >Demo     Examples
+    </a>
+              
+            </li><li class="hx-flex hx-flex-col "><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/docs/api_docs/"
+    
+  >API Docs
     </a>
               
             </li></ul>
@@ -277,7 +283,14 @@ DialogServerSession when receving incoming dialog (SIP INVITE) and setups sessio
       hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
     href="/diago/docs/examples/"
     
-  >Examples
+  >Demo     Examples
+    </a></li>
+          <li class=""><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/docs/api_docs/"
+    
+  >API Docs
     </a></li>
         
       </ul>
@@ -298,23 +311,11 @@ DialogServerSession when receving incoming dialog (SIP INVITE) and setups sessio
 <nav class="hextra-toc hx-order-last hx-hidden hx-w-64 hx-shrink-0 xl:hx-block print:hx-hidden hx-px-4" aria-label="table of contents">
     <div class="hextra-scrollbar hx-sticky hx-top-16 hx-overflow-y-auto hx-pr-4 hx-pt-6 hx-text-sm [hyphens:auto] hx-max-h-[calc(100vh-var(--navbar-height)-env(safe-area-inset-bottom))] ltr:hx--mr-4 rtl:hx--ml-4"><p class="hx-mb-4 hx-font-semibold hx-tracking-tight">On this page</p><ul>
       <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
-        <a class="ltr:hx-pl-8 rtl:hx-pr-8 hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#setup-diago">Setup diago:
+        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#getting-started">Getting started
         </a>
       </li>
       <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
-        <a class="ltr:hx-pl-8 rtl:hx-pr-8 hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#incoming-call">Incoming call
-        </a>
-      </li>
-      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
-        <a class="ltr:hx-pl-8 rtl:hx-pr-8 hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#outgoing">Outgoing
-        </a>
-      </li>
-      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
-        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#answering-call">Answering call
-        </a>
-      </li>
-      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
-        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#playing-file-with-playback">Playing file with Playback
+        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#echo-test-app">Echo test app
         </a>
       </li></ul>
       <div class="hx-mt-8 hx-border-t hx-bg-white hx-pt-8 hx-shadow-[0_-12px_16px_white] dark:hx-bg-dark dark:hx-shadow-[0_-12px_16px_#111] hx-sticky hx-bottom-0 hx-flex hx-flex-col hx-items-start hx-gap-2 hx-pb-8 dark:hx-border-neutral-800 contrast-more:hx-border-t contrast-more:hx-border-neutral-400 contrast-more:hx-shadow-none contrast-more:dark:hx-border-neutral-400">
@@ -340,143 +341,34 @@ DialogServerSession when receving incoming dialog (SIP INVITE) and setups sessio
 
         <div class="content">
           <h1></h1>
-          <h1>Getting started</h1><p>diago can act as <strong>UAS</strong>(User Agent Server) and <strong>UAC</strong>(User Agent Client), and ofcourse adds <strong>bridging</strong> capability to build B2BUA services.</p>
-<p>To keep abstractions low it intentionally <strong>distincts</strong> dialog received (<strong>Acting as server</strong>) and dialog created (<strong>Acting as client</strong>)
-Therefore it distincts your dialog/session control with this structs:</p>
-<ul>
-<li><code>DialogServerSession</code> when receving incoming dialog (SIP INVITE) and setups session (media)</li>
-<li><code>DialogClientSession</code> when it creates outgoing dialog (SIP INVITE) and setups session (media)</li>
-</ul>
-<h4>Setup diago:<span class="hx-absolute -hx-mt-20" id="setup-diago"></span>
-    <a href="#setup-diago" class="subheading-anchor" aria-label="Permalink for this section"></a></h4><div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
-  
-
-<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#a6e22e">ua</span>, <span style="color:#a6e22e">_</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">sipgo</span>.<span style="color:#a6e22e">NewUA</span>()
-</span></span><span style="display:flex;"><span><span style="color:#a6e22e">transportUDP</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">Transport</span>{
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">Transport</span>: <span style="color:#e6db74">&#34;udp&#34;</span>,
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">BindHost</span>:  <span style="color:#e6db74">&#34;127.0.0.1&#34;</span>,
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">BindPort</span>:  <span style="color:#ae81ff">5060</span>,
-</span></span><span style="display:flex;"><span>}
-</span></span><span style="display:flex;"><span>
-</span></span><span style="display:flex;"><span><span style="color:#a6e22e">transportTCP</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">Transport</span>{
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">Transport</span>: <span style="color:#e6db74">&#34;tcp&#34;</span>,
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">BindHost</span>:  <span style="color:#e6db74">&#34;127.0.0.1&#34;</span>,
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">BindPort</span>:  <span style="color:#ae81ff">5060</span>,
-</span></span><span style="display:flex;"><span>}
-</span></span><span style="display:flex;"><span>
-</span></span><span style="display:flex;"><span><span style="color:#a6e22e">d</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">NewDiago</span>(<span style="color:#a6e22e">ua</span>,
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">WithTransport</span>(<span style="color:#a6e22e">transportUDP</span>),
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">WithTransport</span>(<span style="color:#a6e22e">transportTCP</span>),
-</span></span><span style="display:flex;"><span>)</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
-  <button
-    class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
-    title="Copy code"
-  >
-    <div class="copy-icon group-[.copied]/copybtn:hx-hidden hx-pointer-events-none hx-h-4 hx-w-4"></div>
-    <div class="success-icon hx-hidden group-[.copied]/copybtn:hx-block hx-pointer-events-none hx-h-4 hx-w-4"></div>
-  </button>
-</div>
-
-  
-</div>
-<h4>Incoming call<span class="hx-absolute -hx-mt-20" id="incoming-call"></span>
-    <a href="#incoming-call" class="subheading-anchor" aria-label="Permalink for this section"></a></h4><div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
-  
-
-<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#a6e22e">d</span>.<span style="color:#a6e22e">Serve</span>(<span style="color:#a6e22e">ctx</span>, <span style="color:#66d9ef">func</span>(<span style="color:#a6e22e">inDialog</span> <span style="color:#f92672">*</span><span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">DialogServerSession</span>) {
-</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// - Do your call routing.
-</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#66d9ef">switch</span> <span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">ToUser</span>() {
-</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">case</span> <span style="color:#e6db74">&#34;answer&#34;</span>:
-</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">case</span> <span style="color:#e6db74">&#34;123456&#34;</span>
-</span></span><span style="display:flex;"><span>	}
-</span></span><span style="display:flex;"><span>})</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
-  <button
-    class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
-    title="Copy code"
-  >
-    <div class="copy-icon group-[.copied]/copybtn:hx-hidden hx-pointer-events-none hx-h-4 hx-w-4"></div>
-    <div class="success-icon hx-hidden group-[.copied]/copybtn:hx-block hx-pointer-events-none hx-h-4 hx-w-4"></div>
-  </button>
-</div>
-
-  
-</div>
-<h4>Outgoing<span class="hx-absolute -hx-mt-20" id="outgoing"></span>
-    <a href="#outgoing" class="subheading-anchor" aria-label="Permalink for this section"></a></h4><div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
-  
-
-<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#a6e22e">dialog</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">d</span>.<span style="color:#a6e22e">Invite</span>(<span style="color:#a6e22e">ctx</span>, <span style="color:#a6e22e">recipient</span> <span style="color:#a6e22e">sip</span>.<span style="color:#a6e22e">Uri</span>, <span style="color:#a6e22e">opts</span> <span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">InviteOptions</span>)
-</span></span><span style="display:flex;"><span><span style="color:#a6e22e">dialog</span>.<span style="color:#a6e22e">Hangup</span>()</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
-  <button
-    class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
-    title="Copy code"
-  >
-    <div class="copy-icon group-[.copied]/copybtn:hx-hidden hx-pointer-events-none hx-h-4 hx-w-4"></div>
-    <div class="success-icon hx-hidden group-[.copied]/copybtn:hx-block hx-pointer-events-none hx-h-4 hx-w-4"></div>
-  </button>
-</div>
-
-  
-</div>
-<h2>Answering call<span class="hx-absolute -hx-mt-20" id="answering-call"></span>
-    <a href="#answering-call" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
-  
-
-<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#66d9ef">func</span> <span style="color:#a6e22e">Answer</span>(<span style="color:#a6e22e">inDialog</span> <span style="color:#f92672">*</span><span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">DialogServerSession</span>) {
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">Progress</span>() <span style="color:#75715e">// Progress -&gt; 100 Trying
-</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">Ringing</span>()  <span style="color:#75715e">// Ringing -&gt; 180 Response
-</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
-</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">Answer</span>(); <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#66d9ef">nil</span> {
-</span></span><span style="display:flex;"><span>		<span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Failed to answer&#34;</span>, <span style="color:#a6e22e">err</span>)
-</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">return</span>
-</span></span><span style="display:flex;"><span>	}
-</span></span><span style="display:flex;"><span>
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">ctx</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">Context</span>()
-</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">select</span> {
-</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">case</span> <span style="color:#f92672">&lt;-</span><span style="color:#a6e22e">ctx</span>.<span style="color:#a6e22e">Done</span>():
-</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">case</span> <span style="color:#f92672">&lt;-</span><span style="color:#a6e22e">time</span>.<span style="color:#a6e22e">After</span>(<span style="color:#ae81ff">1</span> <span style="color:#f92672">*</span> <span style="color:#a6e22e">time</span>.<span style="color:#a6e22e">Minute</span>):
-</span></span><span style="display:flex;"><span>	}
-</span></span><span style="display:flex;"><span>}</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
-  <button
-    class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
-    title="Copy code"
-  >
-    <div class="copy-icon group-[.copied]/copybtn:hx-hidden hx-pointer-events-none hx-h-4 hx-w-4"></div>
-    <div class="success-icon hx-hidden group-[.copied]/copybtn:hx-block hx-pointer-events-none hx-h-4 hx-w-4"></div>
-  </button>
-</div>
-
-  
-</div>
-<h2>Playing file with Playback<span class="hx-absolute -hx-mt-20" id="playing-file-with-playback"></span>
-    <a href="#playing-file-with-playback" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>Playing file is done by playback.</p>
-<p>Supported formats:</p>
-<ul>
-<li>wav (PCM)</li>
-</ul>
+          <h2>Getting started<span class="hx-absolute -hx-mt-20" id="getting-started"></span>
+    <a href="#getting-started" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>As showcase, code below is only needed to start serving Calls.
+In this example Call will be answered and played some audio.</p>
+<p>For testing you can use <a href="https://github.com/emiago/gophone" target="_blank" rel="noopener">gophone CLI sofpthone</a> built with same libraries or
+any other SIP softphone.</p>
+<h2>Echo test app<span class="hx-absolute -hx-mt-20" id="echo-test-app"></span>
+    <a href="#echo-test-app" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>Copy audio file from library <code>testdata/files/demo-echotest.wav</code>
+or change to whatever you want</p>
 <div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
   
 
-<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#66d9ef">func</span> <span style="color:#a6e22e">Playback</span>(<span style="color:#a6e22e">inDialog</span> <span style="color:#f92672">*</span><span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">DialogServerSession</span>) {
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">Ringing</span>()
+<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#a6e22e">ua</span>, <span style="color:#a6e22e">_</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">sipgo</span>.<span style="color:#a6e22e">NewUA</span>()
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">dg</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">NewDiago</span>(<span style="color:#a6e22e">ua</span>)
 </span></span><span style="display:flex;"><span>
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">playfile</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Open</span>(<span style="color:#e6db74">&#34;demo-instruct.wav&#34;</span>)
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">dg</span>.<span style="color:#a6e22e">Serve</span>(<span style="color:#a6e22e">ctx</span>, <span style="color:#66d9ef">func</span>(<span style="color:#a6e22e">inDialog</span> <span style="color:#f92672">*</span><span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">DialogServerSession</span>) {
+</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">Progress</span>() <span style="color:#75715e">// Progress -&gt; 100 Trying
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">Answer</span>(); <span style="color:#75715e">// Answer
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// Make sure file below exists in work dir
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#a6e22e">playfile</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Open</span>(<span style="color:#e6db74">&#34;demo-echotest.wav&#34;</span>)
 </span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#66d9ef">nil</span> {
 </span></span><span style="display:flex;"><span>		<span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Failed to open file&#34;</span>, <span style="color:#a6e22e">err</span>)
 </span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">return</span>
 </span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">defer</span> <span style="color:#a6e22e">playfile</span>.<span style="color:#a6e22e">Close</span>()
 </span></span><span style="display:flex;"><span>
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">pb</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">PlaybackCreate</span>()
-</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#66d9ef">nil</span> {
-</span></span><span style="display:flex;"><span>		<span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Failed to create playback&#34;</span>, <span style="color:#a6e22e">err</span>)
-</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">return</span>
-</span></span><span style="display:flex;"><span>	}
-</span></span><span style="display:flex;"><span>
-</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">Answer</span>(); <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#66d9ef">nil</span> {
-</span></span><span style="display:flex;"><span>		<span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Failed to answer&#34;</span>, <span style="color:#a6e22e">err</span>)
-</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">return</span>
-</span></span><span style="display:flex;"><span>	}
-</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// Create playback and play file.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#a6e22e">pb</span>, <span style="color:#a6e22e">_</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">PlaybackCreate</span>()
 </span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">pb</span>.<span style="color:#a6e22e">Play</span>(<span style="color:#a6e22e">playfile</span>, <span style="color:#e6db74">&#34;audio/wav&#34;</span>); <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#66d9ef">nil</span> {
 </span></span><span style="display:flex;"><span>		<span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Playing failed&#34;</span>, <span style="color:#a6e22e">err</span>)
 </span></span><span style="display:flex;"><span>	}
@@ -492,10 +384,31 @@ Therefore it distincts your dialog/session control with this structs:</p>
 
   
 </div>
+<p>Dial in with softphone on <code>127.0.0.1:5060</code> and you should here audio playing.</p>
+<p>With gophone:</p>
+<div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
+  
+
+<pre><code>gophone dial -media=speaker sip:111@127.0.0.1</code></pre><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
+  <button
+    class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
+    title="Copy code"
+  >
+    <div class="copy-icon group-[.copied]/copybtn:hx-hidden hx-pointer-events-none hx-h-4 hx-w-4"></div>
+    <div class="success-icon hx-hidden group-[.copied]/copybtn:hx-block hx-pointer-events-none hx-h-4 hx-w-4"></div>
+  </button>
+</div>
+
+  
+</div>
 
         </div>
         <div class="hx-mt-16"></div>
-        
+        <div class="hx-mb-8 hx-flex hx-items-center hx-border-t hx-pt-8 dark:hx-border-neutral-800 contrast-more:hx-border-neutral-400 dark:contrast-more:hx-border-neutral-400 print:hx-hidden"><a
+        href="/diago/docs/examples/"
+        title="Demo     Examples"
+        class="hx-flex hx-max-w-[50%] hx-items-center hx-gap-1 hx-py-4 hx-text-base hx-font-medium hx-text-gray-600 hx-transition-colors [word-break:break-word] hover:hx-text-primary-600 dark:hx-text-gray-300 md:hx-text-lg ltr:hx-ml-auto ltr:hx-pl-4 ltr:hx-text-right rtl:hx-mr-auto rtl:hx-pr-4 rtl:hx-text-left"
+      >Demo     Examples<svg class="hx-inline hx-h-5 hx-shrink-0 rtl:-hx-rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></a></div>
         
       </main>
     </article>
