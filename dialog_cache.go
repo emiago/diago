@@ -91,3 +91,16 @@ func MatchDialogServer(req *sip.Request) (*DialogServerSession, error) {
 	d := val.(*DialogServerSession)
 	return d, nil
 }
+
+func MatchDialog(req *sip.Request) (*DialogServerSession, *DialogClientSession, error) {
+	d, err := MatchDialogServer(req)
+	if err != nil {
+		if !errors.Is(err, sipgo.ErrDialogDoesNotExists) {
+			return nil, nil, err
+		}
+
+		cd, err := MatchDialogClient(req)
+		return nil, cd, err
+	}
+	return d, nil, nil
+}

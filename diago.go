@@ -219,21 +219,6 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	server.OnAck(func(req *sip.Request, tx sip.ServerTransaction) {
 		d, err := MatchDialogServer(req)
 		if err != nil {
-			// if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
-			// 	_, err := MatchDialogClient(req)
-			// 	if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
-			// 		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
-			// 		return
-			// 	}
-
-			// 	if err != nil {
-			// 		// Security? When to answer this?
-			// 		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
-			// 		return
-			// 	}
-			// 	return
-			// }
-
 			// Normally ACK will be received if some out of dialog request is received or we responded negatively
 			// tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
 			return
@@ -247,38 +232,33 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	})
 
 	server.OnBye(func(req *sip.Request, tx sip.ServerTransaction) {
-		d, err := MatchDialogServer(req)
+		sd, cd, err := MatchDialog(req)
 		if err != nil {
-			if !errors.Is(err, sipgo.ErrDialogDoesNotExists) {
-				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
-				return
-			}
-
-			cd, err := MatchDialogClient(req)
-			if err != nil {
-				// Security? When to answer this?
+			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
 				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
 				return
+
 			}
-
-			if err := cd.ReadBye(req, tx); err != nil {
-				dg.log.Error().Err(err).Msg("failed to read bye")
-			}
-
-			// Terminate our media processing
-			// As user may stuck in playing or reading media, this unblocks that goroutine
-			d.DialogMedia.Close()
-
+			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
 			return
 		}
 
-		if err := d.ReadBye(req, tx); err != nil {
-			dg.log.Error().Err(err).Msg("failed to read bye")
-		}
-
+		// Respond to BYE
 		// Terminate our media processing
 		// As user may stuck in playing or reading media, this unblocks that goroutine
-		d.DialogMedia.Close()
+		if cd != nil {
+			if err := cd.ReadBye(req, tx); err != nil {
+				dg.log.Error().Err(err).Msg("failed to read bye for client dialog")
+			}
+
+			cd.DialogMedia.Close()
+			return
+		}
+
+		if err := sd.ReadBye(req, tx); err != nil {
+			dg.log.Error().Err(err).Msg("failed to read bye for server dialog")
+		}
+		sd.DialogMedia.Close()
 	})
 
 	server.OnInfo(func(req *sip.Request, tx sip.ServerTransaction) {
@@ -288,21 +268,22 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			return
 		}
 
-		d, err := MatchDialogServer(req)
+		sd, cd, err := MatchDialog(req)
 		if err != nil {
-			if !errors.Is(err, sipgo.ErrDialogDoesNotExists) {
-				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
+				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
 				return
-			}
 
-			cd, err := MatchDialogClient(req)
-			if err != nil {
-				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, "Call/Transaction Does Not Exist", nil))
 			}
+			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+			return
+		}
+
+		if cd != nil {
 			cd.readSIPInfoDTMF(req, tx)
 			return
 		}
-		d.readSIPInfoDTMF(req, tx)
+		sd.readSIPInfoDTMF(req, tx)
 
 		// 		INFO sips:sipgo@127.0.0.1:5443 SIP/2.0
 		// Via: SIP/2.0/WSS df7jal23ls0d.invalid;branch=z9hG4bKhzJuRuWp4pLmTAbrIg7MUGofWdV1u577;rport

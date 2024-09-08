@@ -39,13 +39,16 @@ func TestMain(m *testing.M) {
 }
 
 func TestIntegrationInbound(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Create transaction users, as many as needed.
 	ua, _ := sipgo.NewUA(
 		sipgo.WithUserAgent("inbound"),
 	)
-	dg := NewDiago(ua)
+	defer ua.Close()
 
-	ctx := context.TODO()
+	dg := NewDiago(ua)
 
 	err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
 		// Add some routing
@@ -73,6 +76,8 @@ func TestIntegrationInbound(t *testing.T) {
 
 	{
 		ua, _ := sipgo.NewUA()
+		defer ua.Close()
+
 		phone := NewDiago(ua)
 		// phone := sipgox.NewPhone(ua)
 
@@ -90,10 +95,13 @@ func TestIntegrationInbound(t *testing.T) {
 }
 
 func TestIntegrationBridging(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	// Create transaction users, as many as needed.
 	ua, _ := sipgo.NewUA(
 		sipgo.WithUserAgent("inbound"),
 	)
+	defer ua.Close()
 	tu := NewDiago(ua, WithTransport(
 		Transport{
 			Transport: "udp",
@@ -101,8 +109,6 @@ func TestIntegrationBridging(t *testing.T) {
 			BindPort:  5090,
 		},
 	))
-
-	ctx := context.TODO()
 
 	err := tu.ServeBackground(ctx, func(in *DialogServerSession) {
 		in.Progress()
@@ -146,6 +152,7 @@ func TestIntegrationBridging(t *testing.T) {
 
 	{
 		ua, _ := sipgo.NewUA()
+		defer ua.Close()
 
 		dg := NewDiago(ua, WithTransport(
 			Transport{
@@ -199,6 +206,8 @@ func TestDialogClientReinvite(t *testing.T) {
 
 	{
 		ua, _ := sipgo.NewUA(sipgo.WithUserAgent("server"))
+		defer ua.Close()
+
 		dg := NewDiago(ua, WithTransport(
 			Transport{
 				Transport: "udp",
@@ -215,6 +224,8 @@ func TestDialogClientReinvite(t *testing.T) {
 	}
 
 	ua, _ := sipgo.NewUA()
+	defer ua.Close()
+
 	dg := NewDiago(ua)
 
 	dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15060}, InviteOptions{})
@@ -232,6 +243,8 @@ func TestDialogServerReinvite(t *testing.T) {
 
 	{
 		ua, _ := sipgo.NewUA(sipgo.WithUserAgent("server"))
+		defer ua.Close()
+
 		dg := NewDiago(ua, WithTransport(
 			Transport{
 				Transport: "udp",
@@ -252,6 +265,8 @@ func TestDialogServerReinvite(t *testing.T) {
 	}
 
 	ua, _ := sipgo.NewUA()
+	defer ua.Close()
+
 	dg := NewDiago(ua, WithTransport(
 		Transport{
 			Transport: "udp",
@@ -278,7 +293,11 @@ func TestDialogServerReinvite(t *testing.T) {
 }
 
 func TestIntegrationDialogCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	ua, _ := sipgo.NewUA()
+	defer ua.Close()
 	dg := NewDiago(ua, WithTransport(
 		Transport{
 			Transport: "udp",
@@ -287,7 +306,7 @@ func TestIntegrationDialogCancel(t *testing.T) {
 		},
 	))
 
-	dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {
+	dg.ServeBackground(ctx, func(d *DialogServerSession) {
 		ctx := d.Context()
 		d.Progress()
 		d.Ringing()
@@ -297,6 +316,8 @@ func TestIntegrationDialogCancel(t *testing.T) {
 
 	{
 		ua, _ := sipgo.NewUA()
+		defer ua.Close()
+
 		dg := NewDiago(ua)
 		ctx, cancel := context.WithCancel(context.Background())
 		_, err := dg.Invite(ctx, sip.Uri{User: "test", Host: "127.0.0.1", Port: 15060}, InviteOptions{

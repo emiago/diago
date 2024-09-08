@@ -93,6 +93,7 @@ func TestIntegrationPlaybackURL(t *testing.T) {
 		require.Greater(t, b.Len(), 10000)
 	}
 
+	t.Log("Waiting server goroutine to exit")
 	wg.Wait()
 	require.NoError(t, errServer)
 }
