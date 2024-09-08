@@ -317,7 +317,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 func (dg *Diago) handleReInvite(req *sip.Request, tx sip.ServerTransaction, id string) {
 	ctx := context.TODO()
 	// No Error means we have ID
-	val, err := DialogsServerCache.DialogLoad(ctx, id)
+	s, err := DialogsServerCache.DialogLoad(ctx, id)
 	if err != nil {
 		id, err := sip.UACReadRequestDialogID(req)
 		if err != nil {
@@ -326,18 +326,16 @@ func (dg *Diago) handleReInvite(req *sip.Request, tx sip.ServerTransaction, id s
 
 		}
 		// No Error means we have ID
-		val, err := DialogsClientCache.DialogLoad(ctx, id)
+		s, err := DialogsClientCache.DialogLoad(ctx, id)
 		if err != nil {
 			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, "Call/Transaction Does Not Exist", nil))
 			return
 		}
 
-		s := val.(*DialogClientSession)
 		s.handleReInvite(req, tx)
 		return
 	}
 
-	s := val.(*DialogServerSession)
 	s.handleReInvite(req, tx)
 }
 

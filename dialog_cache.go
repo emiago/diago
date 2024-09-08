@@ -14,44 +14,42 @@ import (
 
 var (
 	// TODO, replace with typed versions
-	DialogsClientCache DialogCache = &dialogCacheMap{sync.Map{}}
-	DialogsServerCache DialogCache = &dialogCacheMap{sync.Map{}}
+	DialogsClientCache DialogCache[*DialogClientSession] = &dialogCacheMap[*DialogClientSession]{sync.Map{}}
+	DialogsServerCache DialogCache[*DialogServerSession] = &dialogCacheMap[*DialogServerSession]{sync.Map{}}
 )
 
-type DialogCache interface {
-	DialogStore(ctx context.Context, id string, v DialogSession) error
-	DialogLoad(ctx context.Context, id string) (DialogSession, error)
+type DialogCache[T DialogSession] interface {
+	DialogStore(ctx context.Context, id string, v T) error
+	DialogLoad(ctx context.Context, id string) (T, error)
 	DialogDelete(ctx context.Context, id string) error
+	DialogRange(ctx context.Context, f func(id string, d T) bool) error
 }
 
 // Non optimized for now
-type dialogCacheMap struct{ sync.Map }
+type dialogCacheMap[T DialogSession] struct{ sync.Map }
 
-func (m *dialogCacheMap) DialogStore(ctx context.Context, id string, v DialogSession) error {
+func (m *dialogCacheMap[T]) DialogStore(ctx context.Context, id string, v T) error {
 	m.Store(id, v)
 	return nil
 }
 
-func (m *dialogCacheMap) DialogDelete(ctx context.Context, id string) error {
+func (m *dialogCacheMap[T]) DialogDelete(ctx context.Context, id string) error {
 	m.Delete(id)
 	return nil
 }
 
-func (m *dialogCacheMap) DialogLoad(ctx context.Context, id string) (DialogSession, error) {
+func (m *dialogCacheMap[T]) DialogLoad(ctx context.Context, id string) (dialog T, err error) {
 	d, ok := m.Load(id)
 	if !ok {
-		return nil, sipgo.ErrDialogDoesNotExists
+		return dialog, sipgo.ErrDialogDoesNotExists
 	}
 	// interface to interface conversion is slow
-	return d.(DialogSession), nil
+	return d.(T), nil
 }
 
-// TODO consider modern iterator
-func (m *dialogCacheMap) DialogRange(ctx context.Context, f func(id string, v DialogSession) bool) error {
+func (m *dialogCacheMap[T]) DialogRange(ctx context.Context, f func(id string, d T) bool) error {
 	m.Range(func(key, value any) bool {
-		id := key.(string)
-		v := value.(DialogSession)
-		return f(id, v)
+		return f(key.(string), value.(T))
 	})
 	return nil
 }
@@ -72,8 +70,7 @@ func MatchDialogClient(req *sip.Request) (*DialogClientSession, error) {
 		return nil, err
 	}
 
-	d := val.(*DialogClientSession)
-	return d, nil
+	return val, nil
 }
 
 func MatchDialogServer(req *sip.Request) (*DialogServerSession, error) {
@@ -87,8 +84,7 @@ func MatchDialogServer(req *sip.Request) (*DialogServerSession, error) {
 		return nil, err
 	}
 
-	d := val.(*DialogServerSession)
-	return d, nil
+	return val, nil
 }
 
 func MatchDialog(req *sip.Request) (*DialogServerSession, *DialogClientSession, error) {
