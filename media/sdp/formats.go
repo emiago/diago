@@ -50,14 +50,7 @@ func (fmts Formats) String() string {
 	return strings.Join(out, ",")
 }
 
-// Only valid for RTP/AVP formats
-// For unknown it returns 0
-func FormatNumeric(f string) uint8 {
-	switch f {
-	case FORMAT_TYPE_ALAW:
-		return 8
-	case FORMAT_TYPE_ULAW:
-		return 0
-	}
-	return 0
+func FormatNumeric(f string) (uint8, error) {
+	num, err := strconv.Atoi(f)
+	return uint8(num), err
 }

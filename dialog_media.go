@@ -65,12 +65,19 @@ type DialogMedia struct {
 
 func (d *DialogMedia) Close() {
 	// Any hook attached
-	if d.onClose != nil {
-		d.onClose()
+	// Prevent double exec
+	d.mu.Lock()
+	onClose := d.onClose
+	d.onClose = nil
+	m := d.mediaSession
+	d.mu.Unlock()
+
+	if onClose != nil {
+		onClose()
 	}
 
-	if d.mediaSession != nil {
-		d.mediaSession.Close()
+	if m != nil {
+		m.Close()
 	}
 }
 

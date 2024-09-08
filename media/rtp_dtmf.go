@@ -28,6 +28,29 @@ var dtmfEventMapping = map[rune]byte{
 	'D': 15,
 }
 
+var dtmfEventMappingRev = map[byte]rune{
+	0:  '0',
+	1:  '1',
+	2:  '2',
+	3:  '3',
+	4:  '4',
+	5:  '5',
+	6:  '6',
+	7:  '7',
+	8:  '8',
+	9:  '9',
+	10: '*',
+	11: '#',
+	12: 'A',
+	13: 'B',
+	14: 'C',
+	15: 'D',
+}
+
+func DTMFToRune(dtmf uint8) rune {
+	return dtmfEventMappingRev[dtmf]
+}
+
 // RTPDTMFEncode creates series of DTMF redudant events which should be encoded as payload
 // It is currently only 8000 sample rate considered for telophone event
 func RTPDTMFEncode(char rune) []DTMFEvent {

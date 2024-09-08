@@ -52,6 +52,10 @@ func (d *DialogServerSession) ToUser() string {
 	return d.InviteRequest.To().Address.User
 }
 
+func (d *DialogServerSession) Transport() string {
+	return d.InviteRequest.Transport()
+}
+
 func (d *DialogServerSession) Progress() error {
 	return d.Respond(sip.StatusTrying, "Trying", nil)
 }
@@ -86,33 +90,62 @@ func (d *DialogServerSession) RespondSDP(body []byte) error {
 	return d.DialogServerSession.Respond(200, "OK", body, headers...)
 }
 
+// Answer creates media session and answers
+// NOTE: Not final API
 func (d *DialogServerSession) Answer() error {
-	// TODO, lot of here settings need to come from TU. or TU must copy before shipping
-	// We may have this settings
-	// - Codecs
-	// - RTP port ranges
-
-	// For now we keep things global and hardcoded
-	// Codecs are ulaw,alaw
-	// RTP port range is not set
-
-	// Now media SETUP
-	// ip, port, err := sipgox.FindFreeInterfaceHostPort("udp", "")
-	// if err != nil {
-	// 	return err
-	// }
-
 	sess, err := d.createMediaSession()
 	if err != nil {
 		return err
 	}
 
 	rtpSess := media.NewRTPSession(sess)
-	return d.AnswerWithSession(sess, rtpSess)
+	return d.AnswerSession(sess, rtpSess)
 }
 
-// AnswerWithSession. Not final API. It allows answering with custom media and rtpSess
-func (d *DialogServerSession) AnswerWithSession(sess *media.MediaSession, rtpSess *media.RTPSession) error {
+type MediaOption func(d *DialogMedia) error
+
+func WithMediaDTMFWriter(w *DTMFWriter) MediaOption {
+	return func(d *DialogMedia) error {
+		rtpWriter := d.RTPPacketWriter
+		if rtpWriter == nil {
+			panic("rtp packet is nil during dtmf reader init")
+		}
+		// TODO check are we even have enabled DTMF
+		dtmfW := media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, rtpWriter)
+		w.rtpWriter = dtmfW
+		d.audioWriter = dtmfW
+		return nil
+	}
+}
+
+func WithMediaDTMFReader(w *DTMFReader) MediaOption {
+	return func(d *DialogMedia) error {
+		rtpReader := d.RTPPacketReader
+		if rtpReader == nil {
+			panic("rtp packet is nil during dtmf reader init")
+		}
+		// TODO check are we even have enabled DTMF
+		dtmfR := media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, rtpReader)
+		w.rtpReader = dtmfR
+		d.audioReader = dtmfR
+		return nil
+	}
+}
+
+// AnswerOptions provides customized answer
+// NOTE: Not final API
+func (d *DialogServerSession) AnswerOptions(opts ...MediaOption) error {
+	sess, err := d.createMediaSession()
+	if err != nil {
+		return err
+	}
+	rtpSess := media.NewRTPSession(sess)
+	return d.AnswerSession(sess, rtpSess, opts...)
+}
+
+// AnswerSession. It allows answering with custom media and rtpSess
+// NOTE: Not final API
+func (d *DialogServerSession) AnswerSession(sess *media.MediaSession, rtpSess *media.RTPSession, opts ...MediaOption) error {
 	sdp := d.InviteRequest.Body()
 	if sdp == nil {
 		return fmt.Errorf("no sdp present in INVITE")
@@ -127,6 +160,11 @@ func (d *DialogServerSession) AnswerWithSession(sess *media.MediaSession, rtpSes
 		media.NewRTPPacketReaderSession(rtpSess),
 		media.NewRTPPacketWriterSession(rtpSess),
 	)
+
+	for _, o := range opts {
+		o(&d.DialogMedia)
+	}
+
 	// Must be called after media and reader writer is setup
 	rtpSess.MonitorBackground()
 

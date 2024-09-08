@@ -5,7 +5,6 @@ package media
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -42,8 +41,8 @@ type RTPPacketReader struct {
 	// Safe to read only in same goroutine as Read
 	PacketHeader rtp.Header
 
-	payloadType uint8
-	seqReader   RTPExtendedSequenceNumber
+	// payloadType uint8
+	seqReader RTPExtendedSequenceNumber
 
 	unreadPayload []byte
 	unread        int
@@ -82,8 +81,8 @@ func NewRTPPacketReaderMedia(sess *MediaSession) *RTPPacketReader {
 
 func NewRTPPacketReader(reader RTPReader, codec Codec) *RTPPacketReader {
 	w := RTPPacketReader{
-		reader:        reader,
-		payloadType:   codec.PayloadType,
+		reader: reader,
+		// payloadType:   codec.PayloadType,
 		seqReader:     RTPExtendedSequenceNumber{},
 		unreadPayload: make([]byte, RTPBufSize),
 	}
@@ -117,7 +116,7 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 	pkt := rtp.Packet{}
 
 	r.mu.RLock()
-	pt := r.payloadType
+	// pt := r.payloadType
 	reader := r.reader
 	r.mu.RUnlock()
 
@@ -157,9 +156,10 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 
 	// }
 
-	if pt != pkt.PayloadType {
-		return 0, fmt.Errorf("payload type does not match. expected=%d, actual=%d", pt, pkt.PayloadType)
-	}
+	// In case of DTMF we can receive different payload types
+	// if pt != pkt.PayloadType {
+	// 	return 0, fmt.Errorf("payload type does not match. expected=%d, actual=%d", pt, pkt.PayloadType)
+	// }
 
 	// If we are tracking this source, do check are we keep getting pkts in sequence
 	if r.lastSSRC == pkt.SSRC {
@@ -205,10 +205,10 @@ func (r *RTPPacketReader) Reader() RTPReader {
 }
 
 func (r *RTPPacketReader) UpdateRTPSession(rtpSess *RTPSession) {
-	codec := CodecFromSession(rtpSess.Sess)
+	// codec := CodecFromSession(rtpSess.Sess)
 	r.mu.Lock()
 	r.RTPSession = rtpSess
-	r.payloadType = codec.PayloadType
+	// r.payloadType = codec.PayloadType
 	r.reader = rtpSess
 	r.mu.Unlock()
 }

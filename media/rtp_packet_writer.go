@@ -139,13 +139,16 @@ func (w *RTPPacketWriter) updateClockRate(cod Codec) {
 // - RTCP generating
 func (p *RTPPacketWriter) Write(b []byte) (int, error) {
 	p.mu.RLock()
-	n, err := p.WriteSamples(p.writer, b, p.sampleRateTimestamp, p.nextTimestamp == p.initTimestamp, p.payloadType)
+	n, err := p.WriteSamples(b, p.sampleRateTimestamp, p.nextTimestamp == p.initTimestamp, p.payloadType)
 	p.mu.RUnlock()
 	<-p.clockTicker.C
 	return n, err
 }
 
-func (p *RTPPacketWriter) WriteSamples(writer RTPWriter, payload []byte, sampleRateTimestamp uint32, marker bool, payloadType uint8) (int, error) {
+// WriteSamples allows to skip default packet rate.
+// This is useful if you need to write different payload but keeping same SSRC
+func (p *RTPPacketWriter) WriteSamples(payload []byte, sampleRateTimestamp uint32, marker bool, payloadType uint8) (int, error) {
+	writer := p.writer
 	pkt := rtp.Packet{
 		Header: rtp.Header{
 			Version:     2,

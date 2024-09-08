@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	CodecAudioUlaw = Codec{PayloadType: 0, SampleRate: 8000, SampleDur: 20 * time.Millisecond}
-	CodecAudioAlaw = Codec{PayloadType: 8, SampleRate: 8000, SampleDur: 20 * time.Millisecond}
+	CodecAudioUlaw          = Codec{PayloadType: 0, SampleRate: 8000, SampleDur: 20 * time.Millisecond}
+	CodecAudioAlaw          = Codec{PayloadType: 8, SampleRate: 8000, SampleDur: 20 * time.Millisecond}
+	CodecTelephoneEvent8000 = Codec{PayloadType: 101, SampleRate: 8000, SampleDur: 20 * time.Millisecond}
 )
 
 type Codec struct {
@@ -28,35 +29,34 @@ func (c *Codec) SampleTimestamp() uint32 {
 
 func CodecFromSession(s *MediaSession) Codec {
 	f := s.Formats[0]
-	c := Codec{
-		PayloadType: sdp.FormatNumeric(f),
-		SampleRate:  8000,
-		SampleDur:   20 * time.Millisecond,
-	}
-	switch f {
-	case sdp.FORMAT_TYPE_ALAW:
-	case sdp.FORMAT_TYPE_ULAW:
-	default:
-		s.log.Warn().Str("format", f).Msg("Unsupported format. Using default clock rate")
-	}
-	return c
+
+	return mapSupportedCodec(f)
 }
 
 func CodecFromPayloadType(payloadType uint8) Codec {
-	c := Codec{
-		PayloadType: uint8(payloadType),
+	f := strconv.Itoa(int(payloadType))
+	return mapSupportedCodec(f)
+}
+
+func mapSupportedCodec(f string) Codec {
+	switch f {
+	case sdp.FORMAT_TYPE_ALAW:
+		return CodecAudioAlaw
+	case sdp.FORMAT_TYPE_ULAW:
+		return CodecAudioUlaw
+	case sdp.FORMAT_TYPE_TELEPHONE_EVENT:
+		return CodecTelephoneEvent8000
+	default:
+		log.Warn().Str("format", f).Msg("Unsupported format. Using default clock rate")
+	}
+	// Format as default
+	pt, err := sdp.FormatNumeric(f)
+	if err != nil {
+		log.Warn().Str("format", f).Msg("Format is non numeric value")
+	}
+	return Codec{
+		PayloadType: pt,
 		SampleRate:  8000,
 		SampleDur:   20 * time.Millisecond,
 	}
-
-	f := strconv.Itoa(int(payloadType))
-	switch f {
-	case sdp.FORMAT_TYPE_ALAW:
-	case sdp.FORMAT_TYPE_ULAW:
-	default:
-		// For now
-		log.Warn().Str("format", f).Msg("Unsupported format. Using default clock rate")
-
-	}
-	return c
 }

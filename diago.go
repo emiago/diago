@@ -127,8 +127,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		},
 		transports: []Transport{},
 		mediaConf: MediaConfig{
-			// TODO add DTMF once we have DTMF reader/writer
-			Formats: sdp.NewFormats(sdp.FORMAT_TYPE_ULAW, sdp.FORMAT_TYPE_ALAW),
+			Formats: sdp.NewFormats(sdp.FORMAT_TYPE_ULAW, sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_TELEPHONE_EVENT),
 		},
 	}
 
@@ -265,12 +264,21 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			if err := cd.ReadBye(req, tx); err != nil {
 				dg.log.Error().Err(err).Msg("failed to read bye")
 			}
+
+			// Terminate our media processing
+			// As user may stuck in playing or reading media, this unblocks that goroutine
+			d.DialogMedia.Close()
+
 			return
 		}
 
 		if err := d.ReadBye(req, tx); err != nil {
 			dg.log.Error().Err(err).Msg("failed to read bye")
 		}
+
+		// Terminate our media processing
+		// As user may stuck in playing or reading media, this unblocks that goroutine
+		d.DialogMedia.Close()
 	})
 
 	server.OnInfo(func(req *sip.Request, tx sip.ServerTransaction) {
