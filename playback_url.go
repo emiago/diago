@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2024 Emir Aganovic
+// SPDX-FileCopyrightText: Copyright (c) 2024, Emir Aganovic
 
 // Copyright (C) 2024 Emir Aganovic
 
