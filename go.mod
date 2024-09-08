@@ -1,9 +1,9 @@
 module github.com/emiago/diago
 
-go 1.22.1
+go 1.22.4
 
 require (
-	github.com/emiago/sipgo v0.22.2-0.20240906212527-ebf26a4c6a3b
+	github.com/emiago/sipgo v0.23.1-0.20240908130035-4552fe4bb49a
 	github.com/go-audio/riff v1.0.0
 	github.com/go-audio/wav v1.1.0
 	github.com/pion/rtcp v1.2.14
