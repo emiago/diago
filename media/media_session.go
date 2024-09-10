@@ -87,17 +87,17 @@ func (s *MediaSession) StopRTP(rw int8, dur time.Duration) error {
 	}
 	if rw&2 > 0 {
 		//Write stop
+		s.rtpConn.SetWriteDeadline(t)
 	}
 	return s.rtpConn.SetDeadline(t)
 }
 
 func (s *MediaSession) StartRTP(rw int8) error {
 	if rw&1 > 0 {
-		//Read stop
 		s.rtpConn.SetReadDeadline(time.Time{})
 	}
 	if rw&2 > 0 {
-		//Write stop
+		s.rtpConn.SetWriteDeadline(time.Time{})
 	}
 	return s.rtpConn.SetDeadline(time.Time{})
 }

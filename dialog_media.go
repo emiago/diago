@@ -341,7 +341,8 @@ type DTMFReader struct {
 	dtmfReader   *media.RTPDtmfReader
 }
 
-func (m *DialogMedia) DTMFReader() *DTMFReader {
+// AudioReaderDTMF is DTMF over RTP. It reads audio and provides hook for dtmf while listening for audio
+func (m *DialogMedia) AudioReaderDTMF() *DTMFReader {
 	return &DTMFReader{
 		dtmfReader:   media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, m.RTPPacketReader, m.getAudioReader()),
 		mediaSession: m.mediaSession,
@@ -361,7 +362,7 @@ func (d *DTMFReader) AudioRead(buf []byte, onDTMF func(dtmf rune) error, dur tim
 	mediaSession := d.mediaSession
 	if dur > 0 {
 		// Stop RTP
-		mediaSession.StopRTP(2, dur)
+		mediaSession.StopRTP(1, dur)
 		defer mediaSession.StartRTP(2)
 	}
 	// This is optimal way of reading audio and DTMF
@@ -377,4 +378,20 @@ func (d *DTMFReader) AudioRead(buf []byte, onDTMF func(dtmf rune) error, dur tim
 		}
 	}
 	return n, nil
+}
+
+type DTMFWriter struct {
+	mediaSession *media.MediaSession
+	dtmfReader   *media.RTPDtmfWriter
+}
+
+func (m *DialogMedia) AudioWriterDTMF() *DTMFWriter {
+	return &DTMFWriter{
+		dtmfReader:   media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, m.RTPPacketWriter, m.getAudioWriter()),
+		mediaSession: m.mediaSession,
+	}
+}
+
+func (w *DTMFWriter) WriteDTMF(dtmf rune) error {
+	return w.dtmfReader.WriteDTMF(dtmf)
 }
