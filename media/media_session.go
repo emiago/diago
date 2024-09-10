@@ -79,6 +79,29 @@ func NewMediaSession(laddr *net.UDPAddr) (s *MediaSession, e error) {
 	return s, nil
 }
 
+func (s *MediaSession) StopRTP(rw int8, dur time.Duration) error {
+	t := time.Now().Add(dur)
+	if rw&1 > 0 {
+		//Read stop
+		s.rtpConn.SetReadDeadline(t)
+	}
+	if rw&2 > 0 {
+		//Write stop
+	}
+	return s.rtpConn.SetDeadline(t)
+}
+
+func (s *MediaSession) StartRTP(rw int8) error {
+	if rw&1 > 0 {
+		//Read stop
+		s.rtpConn.SetReadDeadline(time.Time{})
+	}
+	if rw&2 > 0 {
+		//Write stop
+	}
+	return s.rtpConn.SetDeadline(time.Time{})
+}
+
 // Fork is special call to be used in case when there is session update
 // It preserves pointer to same conneciton but rest is remobed
 // After this call it still expected that

@@ -124,3 +124,8 @@ func CopyWithBuf(reader io.Reader, writer io.Writer, payloadBuf []byte) (int64, 
 		}
 	}
 }
+
+func ErrorIsTimeout(err error) bool {
+	e, ok := err.(net.Error)
+	return ok && e.Timeout()
+}

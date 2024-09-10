@@ -4,38 +4,36 @@
 package media
 
 import (
+	"io"
 	"sync"
 	"time"
 )
 
 type RTPDtmfWriter struct {
-	codec       Codec
-	payloadType uint8 // Depends on media session. Defaults to 101 per current mapping
-	rtpWriter   *RTPPacketWriter
+	codec        Codec
+	writer       io.Writer
+	packetWriter *RTPPacketWriter
 
 	mu sync.Mutex
 }
 
-// RTP DTMF writer is midleware for passing RTP DTMF event. It needs to be attached on packetizer
-func NewRTPDTMFWriter(codec Codec, rtpPacketizer *RTPPacketWriter) *RTPDtmfWriter {
+// RTP DTMF writer is midleware for passing RTP DTMF event.
+// If it is chained it uses to block writer while writing DTFM events
+func NewRTPDTMFWriter(codec Codec, rtpPacketizer *RTPPacketWriter, writer io.Writer) *RTPDtmfWriter {
 	return &RTPDtmfWriter{
-		codec:     codec,
-		rtpWriter: rtpPacketizer,
+		codec:        codec,
+		packetWriter: rtpPacketizer,
+		writer:       writer,
 	}
 }
 
-// func (w *RTPDtmfWriter) Init(payloadType uint8, rtpPacketizer *RTPPacketWriter) {
-// 	w.payloadType = payloadType
-// 	w.rtpWriter = rtpPacketizer
-// }
-
 // Write is RTP io.Writer which adds more sync mechanism
 func (w *RTPDtmfWriter) Write(b []byte) (int, error) {
-	// Do we have some currently dtmf
+	// If locked it means writer is currently writing DTMF over same stream
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	// Write whatever is intended
-	n, err := w.rtpWriter.Write(b)
+	n, err := w.writer.Write(b)
 	if err != nil {
 		return n, err
 	}
@@ -50,9 +48,9 @@ func (w *RTPDtmfWriter) WriteDTMF(dtmf rune) error {
 }
 
 func (w *RTPDtmfWriter) writeDTMF(dtmf rune) error {
-	rtpWriter := w.rtpWriter
+	// DTMF events are send directly to packet writer as they are different Codec
+	packetWriter := w.packetWriter
 
-	// DTMF events are send
 	evs := RTPDTMFEncode(dtmf)
 	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
@@ -68,7 +66,7 @@ func (w *RTPDtmfWriter) writeDTMF(dtmf rune) error {
 		<-ticker.C
 		// We are simulating RTP clock rate
 		// timestamp should not be increased for dtmf
-		_, err := rtpWriter.WriteSamples(data, 0, marker, w.payloadType)
+		_, err := packetWriter.WriteSamples(data, 0, marker, w.codec.PayloadType)
 		if err != nil {
 			return err
 		}

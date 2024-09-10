@@ -46,11 +46,11 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 		// This may look ugly but it is safe way of reading
 		origM := b.Originator.Media()
 		origProps := MediaProps{}
-		_ = origM.AudioWriterWithProps(&origProps)
+		_ = origM.audioWriterProps(&origProps)
 
 		m := d.Media()
 		mprops := MediaProps{}
-		_ = m.AudioWriterWithProps(&mprops)
+		_ = m.audioWriterProps(&mprops)
 
 		err := func() error {
 			if origProps.Codec != mprops.Codec {
@@ -78,7 +78,7 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 	// Check are both answered
 	for _, d := range b.dialogs {
 		// TODO remove this double locking. Read once
-		if d.Media().AudioReader() == nil || d.Media().AudioWriter() == nil {
+		if d.Media().RTPPacketReader == nil || d.Media().RTPPacketWriter == nil {
 			return fmt.Errorf("dialog session not answered %q", d.Id())
 		}
 	}
@@ -110,8 +110,8 @@ func (b *Bridge) proxyMedia() error {
 
 	func() {
 		p1, p2 := MediaProps{}, MediaProps{}
-		r := m1.AudioReaderWithProps(&p1)
-		w := m2.AudioWriterWithProps(&p2)
+		r := m1.audioReaderProps(&p1)
+		w := m2.audioWriterProps(&p2)
 
 		log.Info().Str("from", p1.Raddr+" > "+p1.Laddr).Str("to", p2.Laddr+" > "+p2.Raddr).Msg("Starting proxy media routine")
 		go proxyMediaBackground(log, r, w, errCh)
@@ -120,8 +120,8 @@ func (b *Bridge) proxyMedia() error {
 	// Second
 	func() {
 		p1, p2 := MediaProps{}, MediaProps{}
-		r := m2.AudioReaderWithProps(&p1)
-		w := m1.AudioWriterWithProps(&p2)
+		r := m2.audioReaderProps(&p1)
+		w := m1.audioWriterProps(&p2)
 		log.Info().Str("from", p1.Raddr+" > "+p1.Laddr).Str("to", p2.Laddr+" > "+p2.Raddr).Msg("Starting proxy media routine")
 		go proxyMediaBackground(log, r, w, errCh)
 	}()

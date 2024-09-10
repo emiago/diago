@@ -57,18 +57,12 @@ func start(ctx context.Context) error {
 func ReadDTMF(inDialog *diago.DialogServerSession) error {
 	inDialog.Progress() // Progress -> 100 Trying
 	inDialog.Ringing()  // Ringing -> 180 Response
-
-	// dtmfWriter := diago.DTMFWriter{}
-	dtmfReader := diago.DTMFReader{}
-	inDialog.AnswerOptions(
-		// diago.WithMediaDTMFWriter(&dtmfWriter),
-		diago.WithMediaDTMFReader(&dtmfReader),
-	)
+	inDialog.Answer()
 	log.Info().Msg("Reading DTMF")
-	dtmfReader.OnDTMF(func(dtmf rune) {
-		log.Info().Str("dtmf", string(dtmf)).Msg("Received DTMF")
-	})
 
-	log.Info().Msg("Listening on media to have DTMF read")
-	return inDialog.Listen()
+	reader := inDialog.DTMFReader()
+	return reader.Listen(func(dtmf rune) error {
+		log.Info().Str("dtmf", string(dtmf)).Msg("Received DTMF")
+		return nil
+	}, 10*time.Second)
 }

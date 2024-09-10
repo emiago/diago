@@ -169,11 +169,12 @@ func TestIntegrationBridging(t *testing.T) {
 
 			// ms := d.mediaSession
 			buf := make([]byte, media.RTPBufSize)
-
-			n, err := d.AudioReader().Read(buf)
+			r, _ := d.AudioReader()
+			n, err := r.Read(buf)
 			require.NoError(t, err)
 
-			d.AudioWriter().Write(buf[:n])
+			w, _ := d.AudioWriter()
+			w.Write(buf[:n])
 			require.NoError(t, err)
 
 			<-ctx.Done()
@@ -188,11 +189,13 @@ func TestIntegrationBridging(t *testing.T) {
 		require.NoError(t, err)
 		defer dialog.Close()
 
-		_, err = dialog.AudioWriter().Write([]byte("1234"))
+		w, _ := dialog.AudioWriter()
+		_, err = w.Write([]byte("1234"))
 		require.NoError(t, err)
 
 		buf := make([]byte, media.RTPBufSize)
-		dialog.AudioReader().Read(buf)
+		r, _ := dialog.AudioReader()
+		r.Read(buf)
 		require.NoError(t, err)
 
 		t.Log("Hanguping")

@@ -4,7 +4,7 @@
 package diago
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -57,6 +57,9 @@ type DialogMedia struct {
 	// In case we are chaining audio readers
 	audioReader io.Reader
 	audioWriter io.Writer
+
+	dtmfReader *media.RTPDtmfReader
+	dtmfWriter *media.RTPDtmfWriter
 
 	formats sdp.Formats
 
@@ -139,15 +142,7 @@ func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 	return nil
 }
 
-func (d *DialogMedia) AudioReader() io.Reader {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	if d.audioReader != nil {
-		return d.audioReader
-	}
-	return d.RTPPacketReader
-}
+type AudioReaderOption func(d *DialogMedia) error
 
 type MediaProps struct {
 	Codec media.Codec
@@ -155,18 +150,44 @@ type MediaProps struct {
 	Raddr string
 }
 
-// AudioReaderWithProps Parses MediaProps with current reader
-func (d *DialogMedia) AudioReaderWithProps(p *MediaProps) io.Reader {
+func WithAudioReaderMediaProps(p *MediaProps) AudioReaderOption {
+	return func(d *DialogMedia) error {
+		p.Codec = media.CodecFromSession(d.mediaSession)
+		p.Laddr = d.mediaSession.Laddr.String()
+		p.Raddr = d.mediaSession.Raddr.String()
+		return nil
+	}
+}
+
+// AudioReader gets current audio reader. It MUST be called after Answer.
+// Use AuidioListen for optimized reading.
+// Reading buffer should be equal or bigger of media.RTPBufSize
+func (d *DialogMedia) AudioReader(opts ...AudioReaderOption) (io.Reader, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	p.Codec = media.CodecFromSession(d.mediaSession)
-	p.Laddr = d.mediaSession.Laddr.String()
-	p.Raddr = d.mediaSession.Raddr.String()
+	for _, o := range opts {
+		if err := o(d); err != nil {
+			return nil, err
+		}
+	}
+	return d.getAudioReader(), nil
+}
+
+func (d *DialogMedia) getAudioReader() io.Reader {
 	if d.audioReader != nil {
 		return d.audioReader
 	}
 	return d.RTPPacketReader
+}
+
+// audioReaderProps
+func (d *DialogMedia) audioReaderProps(p *MediaProps) io.Reader {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	WithAudioReaderMediaProps(p)(d)
+	return d.getAudioReader()
 }
 
 // SetAudioReader adds/changes audio reader.
@@ -177,27 +198,43 @@ func (d *DialogMedia) SetAudioReader(r io.Reader) {
 	d.audioReader = r
 }
 
-func (d *DialogMedia) AudioWriter() io.Writer {
+type AudioWriterOption func(d *DialogMedia) error
+
+func WithAudioWriterMediaProps(p *MediaProps) AudioWriterOption {
+	return func(d *DialogMedia) error {
+		p.Codec = media.CodecFromSession(d.mediaSession)
+		p.Laddr = d.mediaSession.Laddr.String()
+		p.Raddr = d.mediaSession.Raddr.String()
+		return nil
+	}
+}
+
+func (d *DialogMedia) AudioWriter(opts ...AudioWriterOption) (io.Writer, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
+	for _, o := range opts {
+		if err := o(d); err != nil {
+			return nil, err
+		}
+	}
+
+	return d.getAudioWriter(), nil
+}
+
+func (d *DialogMedia) getAudioWriter() io.Writer {
 	if d.audioReader != nil {
 		return d.audioWriter
 	}
 	return d.RTPPacketWriter
 }
 
-func (d *DialogMedia) AudioWriterWithProps(p *MediaProps) io.Writer {
+func (d *DialogMedia) audioWriterProps(p *MediaProps) io.Writer {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	p.Codec = media.CodecFromSession(d.mediaSession)
-	p.Laddr = d.mediaSession.Laddr.String()
-	p.Raddr = d.mediaSession.Raddr.String()
-	if d.audioWriter != nil {
-		return d.audioWriter
-	}
-	return d.RTPPacketWriter
+	WithAudioWriterMediaProps(p)(d)
+	return d.getAudioWriter()
 }
 
 // SetAudioWriter adds/changes audio reader.
@@ -215,7 +252,7 @@ func (d *DialogMedia) Media() *DialogMedia {
 // PlaybackCreate creates playback for audio
 func (d *DialogMedia) PlaybackCreate() (AudioPlayback, error) {
 	mprops := MediaProps{}
-	w := d.AudioWriterWithProps(&mprops)
+	w := d.audioWriterProps(&mprops)
 	if w == nil {
 		return AudioPlayback{}, fmt.Errorf("no media setup")
 	}
@@ -227,7 +264,7 @@ func (d *DialogMedia) PlaybackCreate() (AudioPlayback, error) {
 func (d *DialogMedia) PlaybackControlCreate() (AudioPlaybackControl, error) {
 	// NOTE we should avoid returning pointers for any IN dialplan to avoid heap
 	mprops := MediaProps{}
-	w := d.AudioWriterWithProps(&mprops)
+	w := d.audioWriterProps(&mprops)
 
 	if w == nil {
 		return AudioPlaybackControl{}, fmt.Errorf("no media setup")
@@ -244,25 +281,6 @@ func (d *DialogMedia) PlaybackControlCreate() (AudioPlaybackControl, error) {
 	return p, nil
 }
 
-// Listen is main function to be called when we want to listen stream on this dialog.
-// If session is not bridged you need to call this if you want to have your data flowing
-func (m *DialogMedia) Listen() error {
-	buf := make([]byte, media.RTPBufSize)
-	r := m.AudioReader()
-	for {
-		_, err := r.Read(buf)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
-
-			return err
-		}
-	}
-}
-
-// TODO Listen With Control. Same as Audio playback control we may want to mute/unmute incoming stream
-
 type loggingTransport struct{}
 
 func (s *loggingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -277,4 +295,86 @@ func (s *loggingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	log.Debug().Msgf("HTTP Debug:\n%s\n", bytes)
 
 	return resp, err
+}
+
+func (d *DialogMedia) Listen() error {
+	buf := make([]byte, media.RTPBufSize)
+	audioRader := d.getAudioReader()
+	for {
+		_, err := audioRader.Read(buf)
+		if err != nil {
+			return err
+		}
+	}
+}
+
+func (d *DialogMedia) ListenContext(ctx context.Context) error {
+	buf := make([]byte, media.RTPBufSize)
+	go func() {
+		<-ctx.Done()
+		d.mediaSession.StopRTP(2, 0)
+	}()
+	audioRader := d.getAudioReader()
+	for {
+		_, err := audioRader.Read(buf)
+		if err != nil {
+			return err
+		}
+	}
+}
+
+func (d *DialogMedia) ListenUntil(dur time.Duration) error {
+	buf := make([]byte, media.RTPBufSize)
+
+	d.mediaSession.StopRTP(2, dur)
+	audioReader := d.getAudioReader()
+	for {
+		_, err := audioReader.Read(buf)
+		if err != nil {
+			return err
+		}
+	}
+}
+
+type DTMFReader struct {
+	mediaSession *media.MediaSession
+	dtmfReader   *media.RTPDtmfReader
+}
+
+func (m *DialogMedia) DTMFReader() *DTMFReader {
+	return &DTMFReader{
+		dtmfReader:   media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, m.RTPPacketReader, m.getAudioReader()),
+		mediaSession: m.mediaSession,
+	}
+}
+
+func (d *DTMFReader) Listen(onDTMF func(dtmf rune) error, dur time.Duration) error {
+	buf := make([]byte, media.RTPBufSize)
+	for {
+		if _, err := d.AudioRead(buf, onDTMF, dur); err != nil {
+			return err
+		}
+	}
+}
+
+func (d *DTMFReader) AudioRead(buf []byte, onDTMF func(dtmf rune) error, dur time.Duration) (n int, err error) {
+	mediaSession := d.mediaSession
+	if dur > 0 {
+		// Stop RTP
+		mediaSession.StopRTP(2, dur)
+		defer mediaSession.StartRTP(2)
+	}
+	// This is optimal way of reading audio and DTMF
+	dtmfReader := d.dtmfReader
+	n, err = dtmfReader.Read(buf)
+	if err != nil {
+		return n, err
+	}
+
+	if dtmf, ok := dtmfReader.ReadDTMF(); ok {
+		if err := onDTMF(dtmf); err != nil {
+			return n, err
+		}
+	}
+	return n, nil
 }

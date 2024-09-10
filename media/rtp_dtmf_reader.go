@@ -4,37 +4,43 @@
 package media
 
 import (
+	"io"
+
 	"github.com/rs/zerolog/log"
 )
 
 type RTPDtmfReader struct {
-	codec     Codec // Depends on media session. Defaults to 101 per current mapping
-	rtpReader *RTPPacketReader
+	codec        Codec // Depends on media session. Defaults to 101 per current mapping
+	reader       io.Reader
+	packetReader *RTPPacketReader
 
-	lastEv DTMFEvent
-	dtmfCh chan byte
+	lastEv  DTMFEvent
+	dtmf    rune
+	dtmfSet bool
 }
 
 // RTP DTMF writer is midleware for reading DTMF events
-func NewRTPDTMFReader(codec Codec, reader *RTPPacketReader) *RTPDtmfReader {
+// It reads from io Reader and checks packet Reader
+func NewRTPDTMFReader(codec Codec, packetReader *RTPPacketReader, reader io.Reader) *RTPDtmfReader {
 	return &RTPDtmfReader{
-		codec:     codec,
-		rtpReader: reader,
-		dtmfCh:    make(chan byte, 5),
+		codec:        codec,
+		packetReader: packetReader,
+		reader:       reader,
+		// dmtfs:        make([]rune, 0, 5), // have some
 	}
 }
 
 // Write is RTP io.Writer which adds more sync mechanism
 func (w *RTPDtmfReader) Read(b []byte) (int, error) {
-	n, err := w.rtpReader.Read(b)
+	n, err := w.reader.Read(b)
 	if err != nil {
 		// Signal our reader that no more dtmfs will be read
-		close(w.dtmfCh)
+		// close(w.dtmfCh)
 		return n, err
 	}
 
 	// Check is this DTMF
-	hdr := w.rtpReader.PacketHeader
+	hdr := w.packetReader.PacketHeader
 	if hdr.PayloadType != w.codec.PayloadType {
 		return n, nil
 	}
@@ -62,11 +68,13 @@ func (w *RTPDtmfReader) processDTMFEvent(ev DTMFEvent) {
 			return
 		}
 
-		select {
-		case w.dtmfCh <- byte(ev.Event):
-		default:
-			log.Warn().Msg("DTMF event missed")
-		}
+		w.dtmf = DTMFToRune(ev.Event)
+		w.dtmfSet = true
+		// select {
+		// case w.dtmfCh <- byte(ev.Event):
+		// default:
+		// 	log.Warn().Msg("DTMF event missed")
+		// }
 		// Reset last ev
 		w.lastEv = DTMFEvent{}
 		return
@@ -78,6 +86,8 @@ func (w *RTPDtmfReader) processDTMFEvent(ev DTMFEvent) {
 }
 
 func (w *RTPDtmfReader) ReadDTMF() (rune, bool) {
-	dtmf, ok := <-w.dtmfCh
-	return DTMFToRune(dtmf), ok
+	defer func() { w.dtmfSet = false }()
+	return w.dtmf, w.dtmfSet
+	// dtmf, ok := <-w.dtmfCh
+	// return DTMFToRune(dtmf), ok
 }

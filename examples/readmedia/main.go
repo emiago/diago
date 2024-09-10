@@ -61,7 +61,9 @@ func ReadMedia(inDialog *diago.DialogServerSession) error {
 
 	// After answer we can access audio reader and read props
 	m := diago.MediaProps{}
-	audioReader := inDialog.AudioReaderWithProps(&m)
+	audioReader, _ := inDialog.AudioReader(
+		diago.WithAudioReaderMediaProps(&m),
+	)
 
 	decoder, err := audio.NewPCMDecoder(m.Codec.PayloadType, audioReader)
 	if err != nil {

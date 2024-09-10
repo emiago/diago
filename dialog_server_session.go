@@ -102,50 +102,9 @@ func (d *DialogServerSession) Answer() error {
 	return d.AnswerSession(rtpSess)
 }
 
-type MediaOption func(d *DialogMedia) error
-
-func WithMediaDTMFWriter(w *DTMFWriter) MediaOption {
-	return func(d *DialogMedia) error {
-		rtpWriter := d.RTPPacketWriter
-		if rtpWriter == nil {
-			panic("rtp packet is nil during dtmf reader init")
-		}
-		// TODO check are we even have enabled DTMF
-		dtmfW := media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, rtpWriter)
-		w.rtpWriter = dtmfW
-		d.audioWriter = dtmfW
-		return nil
-	}
-}
-
-func WithMediaDTMFReader(w *DTMFReader) MediaOption {
-	return func(d *DialogMedia) error {
-		rtpReader := d.RTPPacketReader
-		if rtpReader == nil {
-			panic("rtp packet is nil during dtmf reader init")
-		}
-		// TODO check are we even have enabled DTMF
-		dtmfR := media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, rtpReader)
-		w.rtpReader = dtmfR
-		d.audioReader = dtmfR
-		return nil
-	}
-}
-
-// AnswerOptions provides customized answer
-// NOTE: Not final API
-func (d *DialogServerSession) AnswerOptions(opts ...MediaOption) error {
-	sess, err := d.createMediaSession()
-	if err != nil {
-		return err
-	}
-	rtpSess := media.NewRTPSession(sess)
-	return d.AnswerSession(rtpSess, opts...)
-}
-
 // AnswerSession. It allows answering with custom RTP Session.
 // NOTE: Not final API
-func (d *DialogServerSession) AnswerSession(rtpSess *media.RTPSession, opts ...MediaOption) error {
+func (d *DialogServerSession) AnswerSession(rtpSess *media.RTPSession) error {
 	sess := rtpSess.Sess
 	sdp := d.InviteRequest.Body()
 	if sdp == nil {
@@ -156,22 +115,18 @@ func (d *DialogServerSession) AnswerSession(rtpSess *media.RTPSession, opts ...M
 		return err
 	}
 
+	if err := d.RespondSDP(sess.LocalSDP()); err != nil {
+		return err
+	}
+
 	d.InitMediaSession(
 		sess,
 		media.NewRTPPacketReaderSession(rtpSess),
 		media.NewRTPPacketWriterSession(rtpSess),
 	)
 
-	for _, o := range opts {
-		o(&d.DialogMedia)
-	}
-
 	// Must be called after media and reader writer is setup
 	rtpSess.MonitorBackground()
-
-	if err := d.RespondSDP(sess.LocalSDP()); err != nil {
-		return err
-	}
 
 	// Wait ACK
 	// If we do not wait ACK, hanguping call will fail as ACK can be delayed when we are doing Hangup
