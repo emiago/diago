@@ -36,7 +36,7 @@
 &lt;h3&gt;Succesfull call&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;succesfull-call&#34;&gt;&lt;/span&gt;
     &lt;a href=&#34;#succesfull-call&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;
     &lt;img src=&#34;../call_seq.png&#34; alt=&#34;call_seq&#34; loading=&#34;lazy&#34; /&gt;&lt;/p&gt;
-&lt;!-- raw HTML omitted --&gt;
+&lt;img width=&#34;300&#34; src=&#34;call_seq.png&#34;&gt;
 &lt;p&gt;Example of &lt;code&gt;alice&lt;/code&gt; inviting &lt;code&gt;bob&lt;/code&gt;&lt;/p&gt;
 &lt;div class=&#34;hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code&#34;&gt;
   
@@ -95,7 +95,7 @@ That is why 200 OK is replied&lt;/p&gt;
 &lt;p&gt;Accepting(Answering) call is done by respondin with &lt;strong&gt;200 OK&lt;/strong&gt;&lt;br&gt;
 Response carries &lt;strong&gt;SDP&lt;/strong&gt; in body as &lt;strong&gt;answer&lt;/strong&gt; to explain callee&amp;rsquo;s media capabilites and connection.&lt;/p&gt;
 &lt;h3&gt;Call with media&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;call-with-media&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#call-with-media&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;!-- raw HTML omitted --&gt;
+    &lt;a href=&#34;#call-with-media&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;img width=&#34;300&#34; src=&#34;call_with_media_seq.png&#34;&gt;
 &lt;p&gt;Here we will just explain most important things for media.&lt;/p&gt;
 &lt;p&gt;With SDP we explain our capabilites and protocol used for media and this mostly boils down to this 3 things:&lt;/p&gt;
 &lt;ul&gt;

@@ -28,25 +28,21 @@
 
   
   <meta itemprop="name" content="Diago">
-  <meta itemprop="description" content="DiagoDiago is short of dialog &#43; GO.
+  <meta itemprop="description" content="Diago is short of dialog &#43; GO.
 Library for building comunication (VOIP) solutions in GO.
-It is providing more developer friendly solution on top of SIPgo with media stack integration.
+It is providing more developer friendly solution on top of SIPgo to develop any kind of media streaming (VOIP) services. It comes with own media stack to provide optimized handling of media(RTP framework) in Go language.
 Stack:
 Signaling: SIP Media: RTP/AVP Visit Documentation to find out more!
-You can follow on X/Twitter for more updates.
-NOTE: This API design is WIP and may have changes
-Core (Roadmap): WIP = Work in progress (Expect soon to be part of lib)">
-  <meta itemprop="wordCount" content="218">
+You can follow on X/Twitter for more updates.">
+  <meta itemprop="wordCount" content="286">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Diago">
-  <meta name="twitter:description" content="DiagoDiago is short of dialog &#43; GO.
+  <meta name="twitter:description" content="Diago is short of dialog &#43; GO.
 Library for building comunication (VOIP) solutions in GO.
-It is providing more developer friendly solution on top of SIPgo with media stack integration.
+It is providing more developer friendly solution on top of SIPgo to develop any kind of media streaming (VOIP) services. It comes with own media stack to provide optimized handling of media(RTP framework) in Go language.
 Stack:
 Signaling: SIP Media: RTP/AVP Visit Documentation to find out more!
-You can follow on X/Twitter for more updates.
-NOTE: This API design is WIP and may have changes
-Core (Roadmap): WIP = Work in progress (Expect soon to be part of lib)">
+You can follow on X/Twitter for more updates.">
 
     <link rel="preload" href="/diago/css/compiled/main.min.c1fe2c80102c9dc9ddc66184191e646769052d36a21b38ac5ab5077713cf7a81.css" as="style" integrity="sha256-wf4sgBAsncndxmGEGR5kZ2kFLTaiGzisWrUHdxPPeoE=" />
     <link href="/diago/css/compiled/main.min.c1fe2c80102c9dc9ddc66184191e646769052d36a21b38ac5ab5077713cf7a81.css" rel="stylesheet" integrity="sha256-wf4sgBAsncndxmGEGR5kZ2kFLTaiGzisWrUHdxPPeoE=" />
@@ -89,9 +85,9 @@ Core (Roadmap): WIP = Work in progress (Expect soon to be part of lib)">
   <div class="nav-container-blur hx-pointer-events-none hx-absolute hx-z-[-1] hx-h-full hx-w-full hx-bg-white dark:hx-bg-dark hx-shadow-[0_2px_4px_rgba(0,0,0,.02),0_1px_0_rgba(0,0,0,.06)] contrast-more:hx-shadow-[0_0_0_1px_#000] dark:hx-shadow-[0_-1px_0_rgba(255,255,255,.1)_inset] contrast-more:dark:hx-shadow-[0_0_0_1px_#fff]"></div>
 
   <nav class="hx-mx-auto hx-flex hx-items-center hx-justify-end hx-gap-2 hx-h-16 hx-px-6 hx-max-w-[90rem]">
-    <a class="hx-flex hx-items-center hover:hx-opacity-75 ltr:hx-mr-auto rtl:hx-ml-auto" href="/diago/">
-        <img class="hx-block dark:hx-hidden" src="/diago/images/logo.svg" alt="Diago" height="20" width="20" />
-        <img class="hx-hidden dark:hx-block" src="/diago/images/logo.svg" alt="Diago" height="20" width="20" />
+    <a class="hx-flex hx-items-center hover:hx-opacity-75 ltr:hx-mr-auto rtl:hx-ml-auto" href="/diago">
+        <img class="hx-block dark:hx-hidden" src="/diago/logo/logo.svg" alt="Diago" height="20" width="30" />
+        <img class="hx-hidden dark:hx-block" src="/diago/logo/logo-dark.svg" alt="Diago" height="20" width="30" />
         <span class="hx-mx-2 hx-font-extrabold hx-inline hx-select-none" title="Diago">Diago</span>
     </a><a
             title="Documentation"
@@ -246,6 +242,10 @@ Core (Roadmap): WIP = Work in progress (Expect soon to be part of lib)">
 <nav class="hextra-toc hx-order-last hx-hidden hx-w-64 hx-shrink-0 xl:hx-block print:hx-hidden hx-px-4" aria-label="table of contents">
     <div class="hextra-scrollbar hx-sticky hx-top-16 hx-overflow-y-auto hx-pr-4 hx-pt-6 hx-text-sm [hyphens:auto] hx-max-h-[calc(100vh-var(--navbar-height)-env(safe-area-inset-bottom))] ltr:hx--mr-4 rtl:hx--ml-4"><p class="hx-mb-4 hx-font-semibold hx-tracking-tight">On this page</p><ul>
       <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
+        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#what-is-really-about">What is really about?
+        </a>
+      </li>
+      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
         <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#core-roadmap">Core (Roadmap):
         </a>
       </li>
@@ -269,9 +269,11 @@ Core (Roadmap): WIP = Work in progress (Expect soon to be part of lib)">
       <main class="hx-w-full hx-min-w-0 hx-max-w-6xl hx-px-6 hx-pt-4 md:hx-px-12">
         <h1 class="hx-text-center hx-mt-2 hx-text-4xl hx-font-bold hx-tracking-tight hx-text-slate-900 dark:hx-text-slate-100"></h1>
         <div class="content">
-          <h1><em><strong>Diago</strong></em></h1><p><strong>Diago</strong> is short of <strong>dialog + GO</strong>.<br>
+          <img src="diago-text-no-icon.png" width="300" alt="DIAGO">
+<p><strong>Diago</strong> is short of <strong>dialog + GO</strong>.<br>
 Library for building comunication (VOIP) solutions in <em>GO</em>.</p>
-<p>It is providing more developer friendly solution on top of <a href="https://github.com/emiago/sipgo" target="_blank" rel="noopener">SIPgo</a> with <strong>media</strong> stack integration.</p>
+<p>It is providing more developer friendly solution on top of <a href="https://github.com/emiago/sipgo" target="_blank" rel="noopener">SIPgo</a> to develop any kind of media streaming (VOIP) services.
+It comes with own media stack to provide optimized handling of media(RTP framework) in Go language.</p>
 <p><strong>Stack:</strong></p>
 <ul>
 <li>Signaling: SIP</li>
@@ -280,6 +282,10 @@ Library for building comunication (VOIP) solutions in <em>GO</em>.</p>
 <p>Visit <a href="docs/" >Documentation</a> to find out more!</p>
 <p>You can follow on <a href="https://twitter.com/emiago123" target="_blank" rel="noopener">X/Twitter</a> for more updates.</p>
 <p><strong>NOTE: This API design is WIP and may have changes</strong></p>
+<h2>What is really about?<span class="hx-absolute -hx-mt-20" id="what-is-really-about"></span>
+    <a href="#what-is-really-about" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>If you are familiar with terms
+<em>Calling, Bridging, Conferencing, IVR, Recording, Transcribing, Voicemail &hellip;</em> that is all about.</p>
+<p>Using GO it offers faster way of <strong>developing</strong> and <strong>testing</strong> communication services, with main focus on building voice services over IP.</p>
 <h2>Core (Roadmap):<span class="hx-absolute -hx-mt-20" id="core-roadmap"></span>
     <a href="#core-roadmap" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p><em><strong>WIP</strong></em> = Work in progress (Expect soon to be part of lib)</p>
 <ul>
@@ -294,10 +300,11 @@ Library for building comunication (VOIP) solutions in <em>GO</em>.</p>
 <li><input checked="" disabled="" type="checkbox"> Handling Reinvites with media updates</li>
 <li><input checked="" disabled="" type="checkbox"> Bridging as proxy media for 2 parties B2BUA</li>
 <li><input disabled="" type="checkbox"> Handling transfers (Refers) (WIP)</li>
-<li><input disabled="" type="checkbox"> Bridging as proxy for conferencing</li>
+<li><input disabled="" type="checkbox"> Conferencing audio</li>
 <li><input disabled="" type="checkbox"> DTMF with SIP INFO (Needed more in case webrtc)</li>
 <li><input disabled="" type="checkbox"> Writing Unit Test on Server with SIP and Media Recorder (<em><strong>WIP</strong></em>)</li>
 <li><input disabled="" type="checkbox"> RTP symetric</li>
+<li><input disabled="" type="checkbox"> SRTP for more critical services</li>
 <li><input disabled="" type="checkbox"> And plenty more &hellip;</li>
 </ul>
 <h2>diagox<span class="hx-absolute -hx-mt-20" id="diagox"></span>
@@ -305,7 +312,7 @@ Library for building comunication (VOIP) solutions in <em>GO</em>.</p>
 <p>Some of modules are not yet considered to be part of lib and they are developed for private projects. To mention few:</p>
 <ul>
 <li>Recording</li>
-<li>Webrtc stack as media</li>
+<li>Webrtc(pion) stack over diago&rsquo;s media stack</li>
 <li>Complex modules etc&hellip;</li>
 </ul>
 <p>If you have interest or need consulting/sponsoring please contact me on <a href="mailto:emirfreelance91@gmail.com" >mail</a></p>
