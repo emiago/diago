@@ -223,7 +223,7 @@ func (d *DialogMedia) AudioWriter(opts ...AudioWriterOption) (io.Writer, error) 
 }
 
 func (d *DialogMedia) getAudioWriter() io.Writer {
-	if d.audioReader != nil {
+	if d.audioWriter != nil {
 		return d.audioWriter
 	}
 	return d.RTPPacketWriter

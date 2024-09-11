@@ -70,14 +70,6 @@ func TestIntegrationPlaybackStreamWAV(t *testing.T) {
 }
 
 func TestIntegrationPlaybackFile(t *testing.T) {
-	// udpDump, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
-	// require.NoError(t, err)
-	// defer udpDump.Close()
-
-	// go func() {
-	// 	io.ReadAll(udpDump)
-	// }()
-
 	r, w := io.Pipe()
 	go func() {
 		io.ReadAll(r)
@@ -87,7 +79,8 @@ func TestIntegrationPlaybackFile(t *testing.T) {
 		DialogMedia: DialogMedia{
 			mediaSession: &media.MediaSession{Formats: sdp.NewFormats(sdp.FORMAT_TYPE_ULAW)},
 			// audioReader:  bytes.NewBuffer(make([]byte, 9999)),
-			audioWriter: w,
+			audioWriter:     w,
+			RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioUlaw),
 		},
 	}
 
