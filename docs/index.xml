@@ -144,7 +144,7 @@ You will need go compiler installed.&lt;/p&gt;
         
         &lt;p&gt;Library API tries to be well documented through comments.
 For more reference visit &lt;a href=&#34;https://pkg.go.dev/github.com/emiago/diago&#34; target=&#34;_blank&#34; rel=&#34;noopener&#34;&gt;GO DOC&lt;/a&gt;&lt;/p&gt;
-&lt;p&gt;Here should be understanding some main concepts and usage.&lt;/p&gt;
+&lt;p&gt;Here we explain some of main built in concepts and usage.&lt;/p&gt;
 &lt;h2&gt;Dialog Sessions&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;dialog-sessions&#34;&gt;&lt;/span&gt;
     &lt;a href=&#34;#dialog-sessions&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;diago can act as &lt;strong&gt;UAS&lt;/strong&gt;(User Agent Server) and &lt;strong&gt;UAC&lt;/strong&gt;(User Agent Client), and adds &lt;strong&gt;bridging&lt;/strong&gt; capability to build B2BUA services.&lt;/p&gt;
 &lt;p&gt;It intentionally &lt;strong&gt;distincts&lt;/strong&gt; dialog received (&lt;strong&gt;Acting as server&lt;/strong&gt;) and dialog created (&lt;strong&gt;Acting as client&lt;/strong&gt;):&lt;/p&gt;
