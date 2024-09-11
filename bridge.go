@@ -175,19 +175,6 @@ func (b *Bridge) proxyMediaRTPRaw(m1 media.RTPReaderRaw, m2 media.RTPWriterRaw) 
 		}
 		total += int64(written)
 	}
-
-	// for {
-	// 	// In case of recording we need to unmarshal RTP packet
-	// 	pkt, err := m1.ReadRTP()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-
-	// 	if err := m2.WriteRTP(&pkt); err != nil {
-	// 		return err
-	// 	}
-	// }
-
 }
 
 func (b *Bridge) proxyMediaRTP(m1 media.RTPReader, m2 media.RTPWriter) (written int64, e error) {
@@ -208,19 +195,6 @@ func (b *Bridge) proxyMediaRTP(m1 media.RTPReader, m2 media.RTPWriter) (written 
 		total += int64(len(p.Payload))
 		total += 12
 	}
-
-	// for {
-	// 	// In case of recording we need to unmarshal RTP packet
-	// 	pkt, err := m1.ReadRTP()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-
-	// 	if err := m2.WriteRTP(&pkt); err != nil {
-	// 		return err
-	// 	}
-	// }
-
 }
 
 func (b *Bridge) proxyMediaRTCP(m1 *media.MediaSession, m2 *media.MediaSession) (written int64, e error) {
@@ -242,19 +216,6 @@ func (b *Bridge) proxyMediaRTCP(m1 *media.MediaSession, m2 *media.MediaSession) 
 		}
 		total += int64(written)
 	}
-
-	// for {
-	// 	// In case of recording we need to unmarshal RTP packet
-	// 	pkt, err := m1.ReadRTP()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-
-	// 	if err := m2.WriteRTP(&pkt); err != nil {
-	// 		return err
-	// 	}
-	// }
-
 }
 
 func (b *Bridge) proxyMediaRTCPRaw(m1 media.RTPCReaderRaw, m2 media.RTCPWriterRaw) (written int64, e error) {
