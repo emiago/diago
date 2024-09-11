@@ -14,6 +14,7 @@ It is more developer friendly library for developing VOIP solutions and more...
 *If you find this project interesting and you need support/help in your projects, you can contact me on*
 [mail](mailto:emirfreelance91@gmail.com)
 
- 
-
 Follow me on [X/Twitter](https://twitter.com/emiago123) for regular updates
+
+## Contributions
+Please open first issues instead PRs. Library is under development and could not have latest code pushed.
