@@ -30,19 +30,19 @@
   <meta itemprop="name" content="Diago">
   <meta itemprop="description" content="Diago is short of dialog &#43; GO.
 Library for building comunication (VOIP) solutions in GO.
-It is providing more developer friendly solution on top of SIPgo to develop any kind of media streaming (VOIP) services. It comes with own media stack to provide optimized handling of media(RTP framework) in Go language.
-Stack:
-Signaling: SIP Media: RTP/AVP Visit Documentation to find out more!
-You can follow on X/Twitter for more updates.">
-  <meta itemprop="wordCount" content="286">
+It is providing more developer friendly solution on top of SIPgo to develop any kind of media streaming (VOIP) services.
+Visit Documentation to find out more!
+You can follow on X/Twitter for more updates.
+NOTE: This API design is WIP and may have changes">
+  <meta itemprop="wordCount" content="59">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Diago">
   <meta name="twitter:description" content="Diago is short of dialog &#43; GO.
 Library for building comunication (VOIP) solutions in GO.
-It is providing more developer friendly solution on top of SIPgo to develop any kind of media streaming (VOIP) services. It comes with own media stack to provide optimized handling of media(RTP framework) in Go language.
-Stack:
-Signaling: SIP Media: RTP/AVP Visit Documentation to find out more!
-You can follow on X/Twitter for more updates.">
+It is providing more developer friendly solution on top of SIPgo to develop any kind of media streaming (VOIP) services.
+Visit Documentation to find out more!
+You can follow on X/Twitter for more updates.
+NOTE: This API design is WIP and may have changes">
 
     <link rel="preload" href="/diago/css/compiled/main.min.c1fe2c80102c9dc9ddc66184191e646769052d36a21b38ac5ab5077713cf7a81.css" as="style" integrity="sha256-wf4sgBAsncndxmGEGR5kZ2kFLTaiGzisWrUHdxPPeoE=" />
     <link href="/diago/css/compiled/main.min.c1fe2c80102c9dc9ddc66184191e646769052d36a21b38ac5ab5077713cf7a81.css" rel="stylesheet" integrity="sha256-wf4sgBAsncndxmGEGR5kZ2kFLTaiGzisWrUHdxPPeoE=" />
@@ -221,6 +221,14 @@ You can follow on X/Twitter for more updates.">
   >API Docs
     </a>
               
+            </li><li class="hx-flex hx-flex-col "><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/docs/why_diago/"
+    
+  >Why Diago
+    </a>
+              
             </li></ul>
       </div></li>
     </ul>
@@ -240,20 +248,8 @@ You can follow on X/Twitter for more updates.">
 </div></div></aside>
     
 <nav class="hextra-toc hx-order-last hx-hidden hx-w-64 hx-shrink-0 xl:hx-block print:hx-hidden hx-px-4" aria-label="table of contents">
-    <div class="hextra-scrollbar hx-sticky hx-top-16 hx-overflow-y-auto hx-pr-4 hx-pt-6 hx-text-sm [hyphens:auto] hx-max-h-[calc(100vh-var(--navbar-height)-env(safe-area-inset-bottom))] ltr:hx--mr-4 rtl:hx--ml-4"><p class="hx-mb-4 hx-font-semibold hx-tracking-tight">On this page</p><ul>
-      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
-        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#what-is-really-about">What is really about?
-        </a>
-      </li>
-      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
-        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#core-roadmap">Core (Roadmap):
-        </a>
-      </li>
-      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
-        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#diagox">diagox
-        </a>
-      </li></ul>
-      <div class="hx-mt-8 hx-border-t hx-bg-white hx-pt-8 hx-shadow-[0_-12px_16px_white] dark:hx-bg-dark dark:hx-shadow-[0_-12px_16px_#111] hx-sticky hx-bottom-0 hx-flex hx-flex-col hx-items-start hx-gap-2 hx-pb-8 dark:hx-border-neutral-800 contrast-more:hx-border-t contrast-more:hx-border-neutral-400 contrast-more:hx-shadow-none contrast-more:dark:hx-border-neutral-400">
+    <div class="hextra-scrollbar hx-sticky hx-top-16 hx-overflow-y-auto hx-pr-4 hx-pt-6 hx-text-sm [hyphens:auto] hx-max-h-[calc(100vh-var(--navbar-height)-env(safe-area-inset-bottom))] ltr:hx--mr-4 rtl:hx--ml-4">
+      <div class=" hx-sticky hx-bottom-0 hx-flex hx-flex-col hx-items-start hx-gap-2 hx-pb-8 dark:hx-border-neutral-800 contrast-more:hx-border-t contrast-more:hx-border-neutral-400 contrast-more:hx-shadow-none contrast-more:dark:hx-border-neutral-400">
         <button aria-hidden="true" id="backToTop" onClick="scrollUp();" class="hx-transition-all hx-duration-75 hx-opacity-0 hx-text-xs hx-font-medium hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-100 contrast-more:hx-text-gray-800 contrast-more:dark:hx-text-gray-50">
           <span>Scroll to top</span>
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="hx-inline ltr:hx-ml-1 rtl:hx-mr-1 hx-h-3.5 hx-w-3.5 hx-border hx-rounded-full hx-border-gray-500 hover:hx-border-gray-900 dark:hx-border-gray-400 dark:hover:hx-border-gray-100 contrast-more:hx-border-gray-800 contrast-more:dark:hx-border-gray-50">
@@ -272,50 +268,10 @@ You can follow on X/Twitter for more updates.">
           <img src="diago-text-no-icon.png" width="300" alt="DIAGO">
 <p><strong>Diago</strong> is short of <strong>dialog + GO</strong>.<br>
 Library for building comunication (VOIP) solutions in <em>GO</em>.</p>
-<p>It is providing more developer friendly solution on top of <a href="https://github.com/emiago/sipgo" target="_blank" rel="noopener">SIPgo</a> to develop any kind of media streaming (VOIP) services.
-It comes with own media stack to provide optimized handling of media(RTP framework) in Go language.</p>
-<p><strong>Stack:</strong></p>
-<ul>
-<li>Signaling: SIP</li>
-<li>Media: RTP/AVP</li>
-</ul>
+<p>It is providing more developer friendly solution on top of <a href="https://github.com/emiago/sipgo" target="_blank" rel="noopener">SIPgo</a> to develop any kind of media streaming (VOIP) services.</p>
 <p>Visit <a href="docs/" >Documentation</a> to find out more!</p>
 <p>You can follow on <a href="https://twitter.com/emiago123" target="_blank" rel="noopener">X/Twitter</a> for more updates.</p>
 <p><strong>NOTE: This API design is WIP and may have changes</strong></p>
-<h2>What is really about?<span class="hx-absolute -hx-mt-20" id="what-is-really-about"></span>
-    <a href="#what-is-really-about" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>If you are familiar with terms
-<em>Calling, Bridging, Conferencing, IVR, Recording, Transcribing, Voicemail &hellip;</em> that is all about.</p>
-<p>Using GO it offers faster way of <strong>developing</strong> and <strong>testing</strong> communication services, with main focus on building voice services over IP.</p>
-<h2>Core (Roadmap):<span class="hx-absolute -hx-mt-20" id="core-roadmap"></span>
-    <a href="#core-roadmap" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p><em><strong>WIP</strong></em> = Work in progress (Expect soon to be part of lib)</p>
-<ul>
-<li><input checked="" disabled="" type="checkbox"> Full dialog control and High Level API</li>
-<li><input checked="" disabled="" type="checkbox"> alaw,ulaw codecs (opus as third is planned as well)</li>
-<li><input checked="" disabled="" type="checkbox"> Audio package for streaming: WAV reader/writer, PCM transcoding to alaw/ulaw</li>
-<li><input checked="" disabled="" type="checkbox"> Playbacks as buffers,files(wav),url</li>
-<li><input checked="" disabled="" type="checkbox"> Playback URL streaming</li>
-<li><input checked="" disabled="" type="checkbox"> Playback with control mute/unmute</li>
-<li><input checked="" disabled="" type="checkbox"> Audio Reader/Writer stream exposed for manual processing like sending to third party</li>
-<li><input checked="" disabled="" type="checkbox"> DTMF with RTP</li>
-<li><input checked="" disabled="" type="checkbox"> Handling Reinvites with media updates</li>
-<li><input checked="" disabled="" type="checkbox"> Bridging as proxy media for 2 parties B2BUA</li>
-<li><input disabled="" type="checkbox"> Handling transfers (Refers) (WIP)</li>
-<li><input disabled="" type="checkbox"> Conferencing audio</li>
-<li><input disabled="" type="checkbox"> DTMF with SIP INFO (Needed more in case webrtc)</li>
-<li><input disabled="" type="checkbox"> Writing Unit Test on Server with SIP and Media Recorder (<em><strong>WIP</strong></em>)</li>
-<li><input disabled="" type="checkbox"> RTP symetric</li>
-<li><input disabled="" type="checkbox"> SRTP for more critical services</li>
-<li><input disabled="" type="checkbox"> And plenty more &hellip;</li>
-</ul>
-<h2>diagox<span class="hx-absolute -hx-mt-20" id="diagox"></span>
-    <a href="#diagox" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p><strong>Diago extra modules</strong></p>
-<p>Some of modules are not yet considered to be part of lib and they are developed for private projects. To mention few:</p>
-<ul>
-<li>Recording</li>
-<li>Webrtc(pion) stack over diago&rsquo;s media stack</li>
-<li>Complex modules etc&hellip;</li>
-</ul>
-<p>If you have interest or need consulting/sponsoring please contact me on <a href="mailto:emirfreelance91@gmail.com" >mail</a></p>
 
         </div>
       </main>

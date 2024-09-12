@@ -459,27 +459,30 @@ That is why 200 OK is replied&lt;/p&gt;
         
         
         &lt;h2&gt;Undestanding SIP and media&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;undestanding-sip-and-media&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#undestanding-sip-and-media&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;INVITE carries &lt;strong&gt;SDP&lt;/strong&gt; (application/sdp) in body of message as &lt;strong&gt;offer&lt;/strong&gt; to exlain media capabilites and connection setup. INVITE can have any other type in Body like HTTP, but SDP protocol is mainly used. More about this later&lt;/p&gt;
+    &lt;a href=&#34;#undestanding-sip-and-media&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;INVITE carries &lt;strong&gt;SDP&lt;/strong&gt; (application/sdp) in body of message as &lt;strong&gt;offer&lt;/strong&gt; to explain media capabilites and connection setup. INVITE can have any other type in Body like HTTP, but SDP protocol is mainly used. More about this later.&lt;/p&gt;
 &lt;p&gt;Accepting(Answering) call is done by respondin with &lt;strong&gt;200 OK&lt;/strong&gt;&lt;br&gt;
 Response carries &lt;strong&gt;SDP&lt;/strong&gt; in body as &lt;strong&gt;answer&lt;/strong&gt; to explain callee&amp;rsquo;s media capabilites and connection.&lt;/p&gt;
 &lt;h3&gt;Call with media&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;call-with-media&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#call-with-media&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;img width=&#34;300&#34; src=&#34;call_with_media_seq.png&#34;&gt;
-&lt;p&gt;Here we will just explain most important things for media.&lt;/p&gt;
+    &lt;a href=&#34;#call-with-media&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;
+    &lt;img src=&#34;../call_with_media_seq.png&#34; alt=&#34;call_seq&#34; loading=&#34;lazy&#34; /&gt;&lt;/p&gt;
 &lt;p&gt;With SDP we explain our capabilites and protocol used for media and this mostly boils down to this 3 things:&lt;/p&gt;
-&lt;ul&gt;
+&lt;ol&gt;
 &lt;li&gt;explaining which codecs are supported for decoding (alaw,ulaw, opus, g722, &amp;hellip;),&lt;/li&gt;
-&lt;li&gt;protocol (RTP)&lt;/li&gt;
+&lt;li&gt;protocol and profile (RTP AVP). RTP can have different profile but AVP (Audio Video) is used in this case&lt;/li&gt;
 &lt;li&gt;and Listen IP where we expect incoming media (UDP)&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;Client (Caller) and Server (Callee) both exchange SDP to explain their capabilites and &lt;strong&gt;Listening&lt;/strong&gt; IP&lt;/p&gt;
+&lt;/ol&gt;
+&lt;h4&gt;Returning 200&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;returning-200&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#returning-200&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;For realtime media RTP is one mostly used. Anyway in case Bob has no similar capabilities, lets say codecs, Bob will send non 200 response and call will be terminated.&lt;/p&gt;
+&lt;h4&gt;Sending ACK&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;sending-ack&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#sending-ack&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;After Caller receiving 200 OK it is required that Caller acknowledge Callee capabilities, by sending ACK (non transactional, no response) request.&lt;/p&gt;
 &lt;h3&gt;Codecs&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;codecs&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#codecs&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Codecs or in other words &lt;strong&gt;Formats&lt;/strong&gt; are identified as numbers for audio. Ex:&lt;/p&gt;
+    &lt;a href=&#34;#codecs&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Codecs or in other words &lt;strong&gt;Formats&lt;/strong&gt; are identified as numbers. There are static defined by AVP profile or user can have any other defined with own custom numbers. In above case we use statically defined.&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;0 ulaw 8000Hz&lt;/li&gt;
 &lt;li&gt;8 alaw 8000Hz&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;In SDP this will be shown as &lt;strong&gt;m=desc&lt;/strong&gt; key. Ex:&lt;br&gt;
-&lt;code&gt;m=audio 49170 RTP/AVP 0&lt;/code&gt;&lt;br&gt;
+&lt;code&gt;m=audio 49170 RTP/AVP 0 8&lt;/code&gt;&lt;br&gt;
 Description:&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;audio: type of stream&lt;/li&gt;
@@ -487,14 +490,35 @@ Description:&lt;/p&gt;
 &lt;li&gt;RTP/AVP: identifier for RTP protocol and AVP denotes as Audio Video&lt;/li&gt;
 &lt;li&gt;0: is codec identifier&lt;/li&gt;
 &lt;/ul&gt;
+&lt;p&gt;Normally this should be followed with &lt;code&gt;a=rtpmap&lt;/code&gt; attributes to explain about codecs. In case static this is not required.&lt;/p&gt;
 &lt;h3&gt;Listen IP&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;listen-ip&#34;&gt;&lt;/span&gt;
     &lt;a href=&#34;#listen-ip&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Information and where device/use is listening for incoming media traffic
 &lt;code&gt;c=IN IP4 198.51.100.1&lt;/code&gt;&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;IP4 denotes IP version 4 is used&lt;/li&gt;
 &lt;/ul&gt;
+&lt;p&gt;With nowdays NAT this unfortunatelly makes problem, as you can expect end user behind NAT will publish his private IP like &lt;code&gt;192.168.1.1&lt;/code&gt;. This is solved in different ways, but for now we will stop here.
+Other problem is if call is jumping between media servers, above can be changed with new IP received via new INVITE messaging.&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;NOTE&lt;/strong&gt;:
 Publishing local IP like above is problem for NAT and there different approaches to solve this issue, but for now we will skip this part.&lt;/p&gt;
+
+      </description>
+    </item>
+    
+    <item>
+      <title></title>
+      <link>https://emiago.github.io/diago/docs/why_diago/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>https://emiago.github.io/diago/docs/why_diago/</guid>
+      <description>
+        
+        
+        &lt;h2&gt;Why Diago?&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;why-diago&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#why-diago&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Development of VOIP services can be slow or it was full workarrounds.
+Diago try to offer more modern Stack and put you closer to protcol,network,media but offering High level and low level API calls.&lt;/p&gt;
+&lt;p&gt;Diago is built with GO language and we are keeping well optimized sip and media stack to have performance and low GC latency. Major win is Go offers fast development speed and memory safety, but also tooling to tweak best performance.&lt;/p&gt;
+&lt;p&gt;In case you wondering is Go right language, there are already good benchmark results with just &lt;a href=&#34;https://github.com/emiago/sipgo&#34; target=&#34;_blank&#34; rel=&#34;noopener&#34;&gt;sipgo&lt;/a&gt;.&lt;/p&gt;
 
       </description>
     </item>
