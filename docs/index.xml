@@ -294,6 +294,14 @@ Dialog created is scoped (Like HTTP request serving). Once dialog exists, it is 
 
   
 &lt;/div&gt;
+&lt;h2&gt;Media handling&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;media-handling&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#media-handling&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Every session comes with 2 streams (Audio for now). In diago case it is referenced as reader/writer.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;AudioReader&lt;/code&gt; reads incoming stream&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;AudioWriter&lt;/code&gt; writes outgoing stream&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Normally you mostly deal with writing audio so &lt;strong&gt;Playback&lt;/strong&gt; is created for easier dealing with audio streams.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;NOTE&lt;/strong&gt;: Diago does not automatically reads audio stream in background. This can happen with explicit call or &lt;em&gt;bridging&lt;/em&gt;.&lt;/p&gt;
 &lt;h2&gt;Playback&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;playback&#34;&gt;&lt;/span&gt;
     &lt;a href=&#34;#playback&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Playing audio file is done with audio playback. Library provides prebuilt playback functionality&lt;/p&gt;
 &lt;p&gt;Playback can:&lt;/p&gt;
@@ -514,12 +522,7 @@ Publishing local IP like above is problem for NAT and there different approaches
       <description>
         
         
-        &lt;h2&gt;Why Diago?&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;why-diago&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#why-diago&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Development of VOIP services can be slow or it was full workarrounds.
-Diago try to offer more modern Stack and put you closer to protcol,network,media but offering High level and low level API calls.&lt;/p&gt;
-&lt;p&gt;Diago is built with GO language and we are keeping well optimized sip and media stack to have performance and low GC latency. Major win is Go offers fast development speed and memory safety, but also tooling to tweak best performance.&lt;/p&gt;
-&lt;p&gt;In case you wondering is Go right language, there are already good benchmark results with just &lt;a href=&#34;https://github.com/emiago/sipgo&#34; target=&#34;_blank&#34; rel=&#34;noopener&#34;&gt;sipgo&lt;/a&gt;.&lt;/p&gt;
-
+        
       </description>
     </item>
     

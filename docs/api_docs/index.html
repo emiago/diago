@@ -42,7 +42,7 @@ Here we explain some of main built in concepts and usage.
 Dialog Sessions diago can act as UAS(User Agent Server) and UAC(User Agent Client), and adds bridging capability to build B2BUA services.
 It intentionally distincts dialog received (Acting as server) and dialog created (Acting as client):
 DialogServerSession when receving incoming dialog (SIP INVITE) and setups session (media) DialogClientSession when it creates outgoing dialog (SIP INVITE) and setups session (media) For best understanding here some docs with short code reference.">
-  <meta itemprop="wordCount" content="577">
+  <meta itemprop="wordCount" content="639">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="API Docs">
   <meta name="twitter:description" content="Library API tries to be well documented through comments. For more reference visit GO DOC
@@ -260,6 +260,12 @@ DialogServerSession when receving incoming dialog (SIP INVITE) and setups sessio
             </li>
           <li>
               <a
+                href="#media-handling"
+                class="hx-flex hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [word-break:break-word] hx-cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] contrast-more:hx-border hx-gap-2 before:hx-opacity-25 before:hx-content-['#'] hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:hx-text-gray-900 contrast-more:dark:hx-text-gray-50 contrast-more:hx-border-transparent contrast-more:hover:hx-border-gray-900 contrast-more:dark:hover:hx-border-gray-50"
+              >Media handling</a>
+            </li>
+          <li>
+              <a
                 href="#playback"
                 class="hx-flex hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [word-break:break-word] hx-cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] contrast-more:hx-border hx-gap-2 before:hx-opacity-25 before:hx-content-['#'] hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:hx-text-gray-900 contrast-more:dark:hx-text-gray-50 contrast-more:hx-border-transparent contrast-more:hover:hx-border-gray-900 contrast-more:dark:hover:hx-border-gray-50"
               >Playback</a>
@@ -381,6 +387,10 @@ DialogServerSession when receving incoming dialog (SIP INVITE) and setups sessio
       </li>
       <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
         <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#answering-call">Answering call
+        </a>
+      </li>
+      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
+        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#media-handling">Media handling
         </a>
       </li>
       <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
@@ -570,6 +580,14 @@ Dialog created is scoped (Like HTTP request serving). Once dialog exists, it is 
 
   
 </div>
+<h2>Media handling<span class="hx-absolute -hx-mt-20" id="media-handling"></span>
+    <a href="#media-handling" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>Every session comes with 2 streams (Audio for now). In diago case it is referenced as reader/writer.</p>
+<ul>
+<li><code>AudioReader</code> reads incoming stream</li>
+<li><code>AudioWriter</code> writes outgoing stream</li>
+</ul>
+<p>Normally you mostly deal with writing audio so <strong>Playback</strong> is created for easier dealing with audio streams.</p>
+<p><strong>NOTE</strong>: Diago does not automatically reads audio stream in background. This can happen with explicit call or <em>bridging</em>.</p>
 <h2>Playback<span class="hx-absolute -hx-mt-20" id="playback"></span>
     <a href="#playback" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>Playing audio file is done with audio playback. Library provides prebuilt playback functionality</p>
 <p>Playback can:</p>
