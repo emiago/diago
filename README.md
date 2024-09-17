@@ -7,8 +7,6 @@
 Short of **dialog + GO**.  
 **Library for building comunication (VOIP) solutions in GO!**
 
-It is more developer friendly library for developing VOIP solutions and more...
-
 **For more information and documentation visit [the website](https://emiago.github.io/diago)**
 
 Quick links:
