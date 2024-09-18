@@ -34,7 +34,7 @@ func main() {
 		TimeFormat: time.StampMicro,
 	}).With().Timestamp().Logger().Level(lev)
 
-	media.RTPDebug = true
+	media.RTPDebug = os.Getenv("RTP_DEBUG") == "true"
 
 	err = start(ctx)
 	if err != nil {

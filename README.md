@@ -52,3 +52,12 @@ dg.Serve(ctx, func(inDialog *diago.DialogServerSession) {
 ```
 
 See more [examples in this repo](/examples)
+### Tracing SIP, RTP
+
+While openning issue, consider having some traces enabled.
+
+```go
+sip.SIPDebug = true // Enables SIP tracing
+media.RTCPDebug = true // Enables RTCP tracing
+media.RTPDebug = true // Enables RTP tracing. NOTE: It will dump every RTP Packet
+```
