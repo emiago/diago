@@ -42,11 +42,15 @@ type DialogMedia struct {
 	// media session is RTP local and remote
 	// it is forked on media changes and updated on writer and reader
 	// must be mutex protected
+	// It MUST be always created on Media Session Init
+	// Only safe to use after dialog Answered (Completed state)
 	mediaSession *media.MediaSession
 
 	// Packet reader is default reader for RTP audio stream
 	// Use always AudioReader to get current Audio reader
 	// Use this only as read only
+	// It MUST be always created on Media Session Init
+	// Only safe to use after dialog Answered (Completed state)
 	RTPPacketReader *media.RTPPacketReader
 
 	// Packet writer is default writer for RTP audio stream

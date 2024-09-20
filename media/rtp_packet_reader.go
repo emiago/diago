@@ -212,3 +212,10 @@ func (r *RTPPacketReader) UpdateRTPSession(rtpSess *RTPSession) {
 	r.reader = rtpSess
 	r.mu.Unlock()
 }
+
+func (r *RTPPacketReader) UpdateReader(reader RTPReader) {
+	// codec := CodecFromSession(rtpSess.Sess)
+	r.mu.Lock()
+	r.reader = reader
+	r.mu.Unlock()
+}

@@ -134,7 +134,7 @@ func (d *DialogServerSession) AnswerSession(rtpSess *media.RTPSession) error {
 		select {
 		case <-time.After(10 * time.Second):
 			return fmt.Errorf("no ACK received")
-		case state := <-d.State():
+		case state := <-d.StateRead():
 			if state == sip.DialogStateConfirmed {
 				return nil
 			}
