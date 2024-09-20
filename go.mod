@@ -7,8 +7,8 @@ require (
 	github.com/go-audio/riff v1.0.0
 	github.com/go-audio/wav v1.1.0
 	github.com/pion/rtcp v1.2.14
-	github.com/pion/rtp v1.8.7
-	github.com/rs/zerolog v1.32.0
+	github.com/pion/rtp v1.8.9
+	github.com/rs/zerolog v1.33.0
 	github.com/stretchr/testify v1.9.0
 	github.com/zaf/g711 v1.4.0
 )
