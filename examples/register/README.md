@@ -1,10 +1,6 @@
 
-Run playback as server
+Run server and see how it registers
 ```bash
-go run ./examples/playback
+go run ./examples/register -username <username> -password <pass> sip:myuser@127.0.0.1:5060 
 ```
 
-Dial in and you should hear audio on your speakers
-```sh 
-gophone dial -media=speaker sip:112@127.0.0.1
-```
