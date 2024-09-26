@@ -111,11 +111,19 @@ func WithMediaConfig(conf MediaConfig) DiagoOption {
 	}
 }
 
+// WithServer allows providing custom server handle. Consider still it needs to use same UA as diago
 func WithServer(srv *sipgo.Server) DiagoOption {
 	return func(dg *Diago) {
 		dg.server = srv
 	}
 }
+
+// // WithClient allows providing custom client handle. Consider still it needs to use same UA as diago
+// func WithClient(client *sipgo.Client) DiagoOption {
+// 	return func(dg *Diago) {
+// 		dg.server = srv
+// 	}
+// }
 
 // NewDiago construct b2b user agent that will act as server and client
 func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
@@ -136,7 +144,9 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	}
 
 	if dg.client == nil {
-		dg.client, _ = sipgo.NewClient(ua)
+		dg.client, _ = sipgo.NewClient(ua,
+			sipgo.WithClientNAT(),
+		)
 	}
 
 	if dg.server == nil {
@@ -300,6 +310,15 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		// Signal=8
 		// Duration=120
 
+	})
+
+	// TODO deal with OPTIONS more correctly
+	// For now leave it for keep alive
+	dg.server.OnOptions(func(req *sip.Request, tx sip.ServerTransaction) {
+		res := sip.NewResponseFromRequest(req, sip.StatusOK, "OK", nil)
+		if err := tx.Respond(res); err != nil {
+			log.Error().Err(err).Msg("OPTIONS 200 failed to respond")
+		}
 	})
 
 	// server.OnRefer(func(req *sip.Request, tx sip.ServerTransaction) {
