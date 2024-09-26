@@ -351,7 +351,7 @@ func (m *MediaSession) ReadRTCP(buf []byte, pkts []rtcp.Packet) (n int, err erro
 
 	if RTCPDebug {
 		for _, p := range pkts[:n] {
-			m.log.Debug().Msgf("RTCP read:\n%s", stringRTCP(p))
+			m.log.Debug().Msgf("RTCP read:\n%s", StringRTCP(p))
 		}
 	}
 	return n, err
@@ -405,7 +405,7 @@ func (m *MediaSession) WriteRTPRaw(data []byte) (n int, err error) {
 
 func (m *MediaSession) WriteRTCP(p rtcp.Packet) error {
 	if RTCPDebug {
-		m.log.Debug().Msgf("RTCP write: \n%s", stringRTCP(p))
+		m.log.Debug().Msgf("RTCP write: \n%s", StringRTCP(p))
 	}
 
 	data, err := p.Marshal()
@@ -471,7 +471,7 @@ func selectFormats(sendCodecs []string, recvCodecs []string) []int {
 	return formats
 }
 
-func stringRTCP(p rtcp.Packet) string {
+func StringRTCP(p rtcp.Packet) string {
 
 	switch r := p.(type) {
 	case *rtcp.SenderReport:

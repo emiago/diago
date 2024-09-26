@@ -4,6 +4,7 @@
 package media
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -21,6 +22,10 @@ type Codec struct {
 	PayloadType uint8
 	SampleRate  uint32
 	SampleDur   time.Duration
+}
+
+func (c *Codec) String() string {
+	return fmt.Sprintf("pt=%d rate=%d dur=%s", c.PayloadType, c.SampleRate, c.SampleDur.String())
 }
 
 func (c *Codec) SampleTimestamp() uint32 {
