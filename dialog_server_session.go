@@ -99,6 +99,7 @@ func (d *DialogServerSession) Answer() error {
 	}
 
 	rtpSess := media.NewRTPSession(sess)
+	d.rtpSess = rtpSess
 	return d.AnswerSession(rtpSess)
 }
 

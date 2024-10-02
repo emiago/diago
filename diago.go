@@ -69,6 +69,18 @@ func WithTransport(t Transport) DiagoOption {
 			t.ExternalPort = t.BindPort
 		}
 
+		// Resolve unspecified IP for contact hdr
+		extIp := net.ParseIP(t.ExternalHost)
+		if t.ExternalHost == "" || (extIp != nil && extIp.IsUnspecified()) {
+			ip, _, err := sip.ResolveInterfacesIP(t.Transport, nil)
+			if err != nil {
+				dg.log.Error().Err(err).Msg("Failed to resolve interface ip for contact header")
+			} else {
+				// We should follow udp4 tcp4 in future
+				t.ExternalHost = ip.To4().String()
+			}
+		}
+
 		dg.transports = append(dg.transports, t)
 	}
 }
@@ -528,6 +540,7 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 
 		// Start RTP session
 		rtpSess := media.NewRTPSession(sess)
+		d.rtpSess = rtpSess
 		log.Debug().Str("laddr", sess.Laddr.String()).Str("raddr", sess.Raddr.String()).Msg("RTP Session setuped")
 		d.InitMediaSession(
 			sess,

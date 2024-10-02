@@ -56,7 +56,7 @@ func RTCPUnmarshal(data []byte, packets []rtcp.Packet) (n int, err error) {
 
 		err = h.Unmarshal(data)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("unmarshal RTCP error: %w", err)
 		}
 
 		pktLen := int(h.Length+1) * 4

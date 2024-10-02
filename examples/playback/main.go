@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/emiago/diago"
+	"github.com/emiago/diago/media"
 	"github.com/emiago/diago/testdata"
 	"github.com/emiago/sipgo"
+	"github.com/emiago/sipgo/sip"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -33,6 +35,9 @@ func main() {
 		Out:        os.Stdout,
 		TimeFormat: time.StampMicro,
 	}).With().Timestamp().Logger().Level(lev)
+
+	sip.SIPDebug = os.Getenv("SIP_DEBUG") == "true"
+	media.RTCPDebug = os.Getenv("RTCP_DEBUG") == "true"
 
 	err = start(ctx)
 	if err != nil {

@@ -40,6 +40,7 @@ type RTPSession struct {
 	rtcpMU sync.Mutex
 	// All below fields should not be updated without rtcpMu Lock
 	rtcpTicker *time.Ticker
+	rtcpClosed chan struct{}
 	readStats  RTPReadStats
 	writeStats RTPWriteStats
 
@@ -97,10 +98,12 @@ func NewRTPSession(sess *MediaSession) *RTPSession {
 		Sess:       sess,
 		rtcpTicker: time.NewTicker(5 * time.Second),
 		log:        sess.log,
+		rtcpClosed: make(chan struct{}),
 	}
 }
 
 func (s *RTPSession) Close() error {
+	close(s.rtcpClosed)
 	s.rtcpTicker.Stop()
 	// Stop monitor routing
 	err := s.Sess.rtcpConn.SetDeadline(time.Now())
@@ -245,7 +248,13 @@ func (s *RTPSession) Monitor() error {
 
 	var err error
 	for {
-		now := <-s.rtcpTicker.C
+		var now time.Time
+		select {
+		case now = <-s.rtcpTicker.C:
+		case <-s.rtcpClosed:
+			s.Sess.log.Debug().Msg("RTCP writer closed")
+			return nil
+		}
 		if err = s.writeRTCP(now); err != nil {
 			break
 		}
@@ -274,6 +283,7 @@ func (s *RTPSession) MonitorBackground() {
 				sess.log.Debug().Msg("RTP session RTCP closed with timeout")
 				return
 			}
+
 			sess.log.Error().Err(err).Msg("RTP session RTCP reader stopped with error")
 		}
 	}()
@@ -282,17 +292,20 @@ func (s *RTPSession) MonitorBackground() {
 		sess := s.Sess
 		sess.log.Debug().Str("raddr", sess.rtcpRaddr.String()).Msg("RTCP writer started")
 		for {
-			now, open := <-s.rtcpTicker.C
-			if !open {
+			var now time.Time
+			select {
+			case now = <-s.rtcpTicker.C:
+			case <-s.rtcpClosed:
 				sess.log.Debug().Msg("RTCP writer closed")
 				return
 			}
+
 			if err := s.writeRTCP(now); err != nil {
 				if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
 					sess.log.Debug().Msg("RTP session RTCP writer exit")
 					return
 				}
-				sess.log.Error().Err(err).Msg("RTP session RTCP writer stopped with error")
+				sess.log.Error().Err(err).Str("now", now.String()).Msg("RTP session RTCP writer stopped with error")
 				return
 			}
 		}

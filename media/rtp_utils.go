@@ -105,6 +105,11 @@ func generateSilentAudioFrame() []byte {
 	return frame
 }
 
+// Copy is like io.Copy but it uses buffer size needed for RTP
+func Copy(reader io.Reader, writer io.Writer) (int64, error) {
+	return CopyWithBuf(reader, writer, make([]byte, RTPBufSize))
+}
+
 // CopyWithBuf is simple and strict compared to io.CopyBuffer. ReadFrom and WriteTo is not considered
 // and due to RTP buf requirement it can lead to different buffer size passing
 func CopyWithBuf(reader io.Reader, writer io.Writer, payloadBuf []byte) (int64, error) {
