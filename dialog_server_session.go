@@ -165,6 +165,39 @@ func (d *DialogServerSession) ReInvite(ctx context.Context) error {
 	return nil
 }
 
+// Refer tries todo refer (blind transfer) on call
+func (d *DialogServerSession) Refer(ctx context.Context, referTo sip.Uri) error {
+	// TODO check state of call
+
+	req := sip.NewRequest(sip.REFER, d.InviteRequest.Contact().Address)
+	// UASRequestBuild(req, d.InviteResponse)
+
+	// Invite request tags must be preserved but switched
+	req.AppendHeader(sip.NewHeader("Refer-to", referTo.String()))
+
+	res, err := d.Do(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if res.StatusCode != sip.StatusAccepted {
+		return sipgo.ErrDialogResponse{
+			Res: res,
+		}
+	}
+
+	// d.waitNotify = make(chan error)
+	return d.Hangup(ctx)
+
+	// // There is now implicit subscription
+	// select {
+	// case e := <-d.waitNotify:
+	// 	return e
+	// case <-d.Context().Done():
+	// 	return d.Context().Err()
+	// }
+}
+
 func (d *DialogServerSession) handleReInvite(req *sip.Request, tx sip.ServerTransaction) {
 	if err := d.ReadRequest(req, tx); err != nil {
 		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))

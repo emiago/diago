@@ -40,30 +40,6 @@ type Diago struct {
 
 type DiagoOption func(dg *Diago)
 
-func WithClientOptions(opts ...sipgo.ClientOption) DiagoOption {
-	return func(dg *Diago) {
-		// TODO remove error here
-		cli, err := sipgo.NewClient(dg.ua)
-		if err != nil {
-			panic(err)
-		}
-
-		dg.client = cli
-	}
-}
-
-func WithServerOptions(opts ...sipgo.ServerOption) DiagoOption {
-	return func(dg *Diago) {
-		// TODO remove error here
-		srv, err := sipgo.NewServer(dg.ua)
-		if err != nil {
-			panic(err)
-		}
-
-		dg.server = srv
-	}
-}
-
 func WithAuth(auth sipgo.DigestAuth) DiagoOption {
 	return func(dg *Diago) {
 		dg.auth = auth
@@ -118,12 +94,12 @@ func WithServer(srv *sipgo.Server) DiagoOption {
 	}
 }
 
-// // WithClient allows providing custom client handle. Consider still it needs to use same UA as diago
-// func WithClient(client *sipgo.Client) DiagoOption {
-// 	return func(dg *Diago) {
-// 		dg.server = srv
-// 	}
-// }
+// WithClient allows providing custom client handle. Consider still it needs to use same UA as diago
+func WithClient(client *sipgo.Client) DiagoOption {
+	return func(dg *Diago) {
+		dg.client = client
+	}
+}
 
 // NewDiago construct b2b user agent that will act as server and client
 func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
@@ -616,35 +592,62 @@ func (dg *Diago) getContactHDR(transport string) sip.ContactHeader {
 	}
 }
 
-// type RegisterRequest struct {
-// 	RegisterURI sip.Uri
-// 	sipgox.RegisterOptions
-// }
+type RegisterOptions struct {
+	// Digest auth
+	Username string
+	Password string
 
-// func (d *Diago) Register(ctx context.Context, req RegisterRequest) error {
-// 	if len(d.transports) == 0 {
-// 		return fmt.Errorf("No transports defined")
-// 	}
-// 	t := d.transports[0]
-// 	contHDR := sip.ContactHeader{
-// 		Address: sip.Uri{
-// 			Host: t.ExternalHost,
-// 			Port: t.ExternalPort,
-// 		},
-// 	}
+	// Expiry is for Expire header
+	Expiry time.Duration
+	// Retry interval is interval before next Register is sent
+	RetryInterval time.Duration
+	AllowHeaders  []string
 
-// 	// client := d.client
-// 	registerCtx := sipgox.NewRegisterTransaction(
-// 		d.log,
-// 		d.client,
-// 		req.RegisterURI,
-// 		contHDR,
-// 		req.RegisterOptions,
-// 	)
+	// Useragent default will be used on what is provided as NewUA()
+	UserAgent         string
+	UserAgentHostname string
+}
 
-// 	if err := registerCtx.Register(ctx); err != nil {
-// 		return err
-// 	}
+// Register will create register transaction and keep registration ongoing until error is hit.
+// For more granular control over registraions user RegisterTransaction
+func (dg *Diago) Register(ctx context.Context, recipient sip.Uri, opts RegisterOptions) error {
+	t, err := dg.RegisterTransaction(ctx, recipient, opts)
+	if err != nil {
+		return err
+	}
 
-// 	return registerCtx.QualifyLoop(ctx)
-// }
+	if err := t.Register(ctx); err != nil {
+		return err
+	}
+
+	// Unregister
+	defer func() {
+		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+		err := t.Unregister(ctx)
+		if err != nil {
+			log.Error().Err(err).Msg("Fail to unregister")
+		}
+	}()
+
+	return t.QualifyLoop(ctx)
+}
+
+// Register transaction creates register transaction object that can be used for Register Unregister requests
+func (dg *Diago) RegisterTransaction(ctx context.Context, recipient sip.Uri, opts RegisterOptions) (*RegisterTransaction, error) {
+	// Make our client reuse address
+	transport := recipient.Headers["transport"]
+	if transport == "" {
+		transport = "udp"
+	}
+	contactHDR := dg.getContactHDR(transport)
+
+	// client, err := sipgo.NewClient(dg.ua,
+	// 	sipgo.WithClientHostname(contactHDR.Address.Host),
+	// 	// sipgo.WithClientPort(lport),
+	// 	sipgo.WithClientNAT(), // add rport support
+	// )
+	// if err != nil {
+	// 	return nil, err
+	// }
+	return newRegisterTransaction(dg.client, recipient, contactHDR, opts), nil
+}

@@ -24,6 +24,10 @@ import (
 func main() {
 	fUsername := flag.String("username", "", "Digest username")
 	fPassword := flag.String("password", "", "Digest password")
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s -username <username> -password <pass> sip:123@example.com\n", os.Args[0])
+		flag.PrintDefaults()
+	}
 	flag.Parse()
 
 	// Setup signaling
@@ -94,6 +98,5 @@ func start(ctx context.Context, recipientURI string, regOpts diago.RegisterOptio
 	}()
 
 	// Do register or fail on error
-	// TODO this could be in loop in case endpoint is not available
 	return tu.Register(ctx, recipient, regOpts)
 }

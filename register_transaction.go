@@ -13,11 +13,7 @@ import (
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/rs/zerolog"
-)
-
-var (
-	ErrRegisterFail        = fmt.Errorf("register failed")
-	ErrRegisterUnathorized = fmt.Errorf("register unathorized")
+	"github.com/rs/zerolog/log"
 )
 
 type RegisterResponseError struct {
@@ -43,11 +39,7 @@ type RegisterTransaction struct {
 	log    zerolog.Logger
 }
 
-func (t *RegisterTransaction) Terminate() error {
-	return t.client.Close()
-}
-
-func NewRegisterTransaction(log zerolog.Logger, client *sipgo.Client, recipient sip.Uri, contact sip.ContactHeader, opts RegisterOptions) *RegisterTransaction {
+func newRegisterTransaction(client *sipgo.Client, recipient sip.Uri, contact sip.ContactHeader, opts RegisterOptions) *RegisterTransaction {
 	expiry, allowHDRS := opts.Expiry, opts.AllowHeaders
 	// log := p.getLoggerCtx(ctx, "Register")
 	req := sip.NewRequest(sip.REGISTER, recipient)
@@ -64,7 +56,7 @@ func NewRegisterTransaction(log zerolog.Logger, client *sipgo.Client, recipient 
 		Origin: req, // origin maybe updated after first register
 		opts:   opts,
 		client: client,
-		log:    log,
+		log:    log.With().Str("caller", "Register").Logger(),
 	}
 
 	return t
@@ -175,14 +167,14 @@ func (t *RegisterTransaction) Unregister(ctx context.Context) error {
 	req.AppendHeader(&expires)
 
 	log.Info().Str("uri", req.Recipient.String()).Msg("UNREGISTER")
-	return t.reregister(ctx, req)
+	return t.doRequest(ctx, req)
 }
 
 func (t *RegisterTransaction) qualify(ctx context.Context) error {
-	return t.reregister(ctx, t.Origin)
+	return t.doRequest(ctx, t.Origin)
 }
 
-func (t *RegisterTransaction) reregister(ctx context.Context, req *sip.Request) error {
+func (t *RegisterTransaction) doRequest(ctx context.Context, req *sip.Request) error {
 	// log := p.getLoggerCtx(ctx, "Register")
 	log := t.log
 	client := t.client
