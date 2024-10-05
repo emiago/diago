@@ -414,8 +414,6 @@ func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts InviteOptio
 // Outgoing session will be added into bridge on answer
 // If bridge has Originator (first participant) it will be used for creating outgoing call leg as in B2BUA
 // When bridge is provided then this call will be bridged with any participant already present in bridge
-// TODO:
-// - transcoding will not be allowed -> error will be returned
 func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts InviteOptions) (d *DialogClientSession, err error) {
 	transport := "udp"
 	if recipient.UriParams != nil {
@@ -429,19 +427,14 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		ContactHDR: dg.getContactHDR(transport),
 	}
 
-	// Now media SEdgP
-	// TODO this probably needs take in account Contact header or listen addr
-	// ip, port, err := sipgox.FindFreeInterfaceHostPort(transport, "")
-	ip, _, err := sip.ResolveInterfacesIP("ip4", nil)
+	d = &DialogClientSession{}
+
+	// Create media
+	// TODO explicit media format passing
+	sess, err := d.createMediaSession(dg.mediaConf.Formats)
 	if err != nil {
 		return nil, err
 	}
-	laddr := &net.UDPAddr{IP: ip, Port: 0}
-	sess, err := media.NewMediaSession(laddr)
-	if err != nil {
-		return nil, err
-	}
-	sess.Formats = dg.mediaConf.Formats
 
 	dialHDRS := append(opts.Headers, sip.NewHeader("Content-Type", "application/sdp"))
 
@@ -489,6 +482,7 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 				return nil, fmt.Errorf("no audio media is supported from originator")
 			}
 
+			// Safe to update until we start using in rtp session
 			sess.Formats = []string{singleFormat}
 
 			// Unless caller is customizing response handling we want to answer caller on
@@ -513,12 +507,9 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		sess.Close()
 		return nil, err
 	}
+	d.DialogClientSession = dialog
 
-	d = &DialogClientSession{
-		DialogClientSession: dialog,
-	}
-
-	waitCall := func() error {
+	waitCall := func(ctx context.Context) error {
 		log.Info().Msg("Waiting answer")
 		answO := sipgo.AnswerOptions{
 			Username:   opts.Username,
@@ -538,19 +529,21 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 			return err
 		}
 
-		// Start RTP session
+		// Create RTP session. After this no media session configuration should be changed
 		rtpSess := media.NewRTPSession(sess)
 		d.rtpSess = rtpSess
-		log.Debug().Str("laddr", sess.Laddr.String()).Str("raddr", sess.Raddr.String()).Msg("RTP Session setuped")
 		d.InitMediaSession(
 			sess,
 			media.NewRTPPacketReaderSession(rtpSess),
 			media.NewRTPPacketWriterSession(rtpSess),
 		)
+		log.Debug().Str("laddr", sess.Laddr.String()).Str("raddr", sess.Raddr.String()).Msg("RTP Session setuped")
+
 		// Must be called after reader and writer setup due to race
 		rtpSess.MonitorBackground()
 
-		// Add to bridge as early media
+		// Add to bridge as early media. This may need to be moved earlier to handlin ringback tones
+		// but normally callee should not send any other media before receving ack.
 		if bridge != nil {
 			if err := bridge.AddDialogSession(d); err != nil {
 				return err
@@ -570,7 +563,7 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		return nil
 	}
 
-	if err := waitCall(); err != nil {
+	if err := waitCall(ctx); err != nil {
 		d.Close()
 		return nil, err
 	}

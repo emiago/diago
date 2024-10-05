@@ -33,6 +33,12 @@ import (
 // Roadmap:
 // - Can handle multiple SSRC from Reader
 // - Multiple RTCP Recever Blocks
+
+var (
+	DefaultOnReadRTCP  func(pkt rtcp.Packet, rtpStats RTPReadStats)  = nil
+	DefaultOnWriteRTCP func(pkt rtcp.Packet, rtpStats RTPWriteStats) = nil
+)
+
 type RTPSession struct {
 	// Keep pointers at top to reduce GC
 	Sess *MediaSession
@@ -95,10 +101,12 @@ type RTPWriteStats struct {
 // RTP session creates new RTP reader/writer from session
 func NewRTPSession(sess *MediaSession) *RTPSession {
 	return &RTPSession{
-		Sess:       sess,
-		rtcpTicker: time.NewTicker(5 * time.Second),
-		log:        sess.log,
-		rtcpClosed: make(chan struct{}),
+		Sess:        sess,
+		rtcpTicker:  time.NewTicker(5 * time.Second),
+		log:         sess.log,
+		rtcpClosed:  make(chan struct{}),
+		OnReadRTCP:  DefaultOnReadRTCP,
+		OnWriteRTCP: DefaultOnWriteRTCP,
 	}
 }
 

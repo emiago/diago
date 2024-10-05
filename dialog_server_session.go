@@ -93,7 +93,7 @@ func (d *DialogServerSession) RespondSDP(body []byte) error {
 // Answer creates media session and answers
 // NOTE: Not final API
 func (d *DialogServerSession) Answer() error {
-	sess, err := d.createMediaSession()
+	sess, err := d.createMediaSession(d.formats)
 	if err != nil {
 		return err
 	}

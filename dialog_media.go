@@ -64,9 +64,6 @@ type DialogMedia struct {
 	audioReader io.Reader
 	audioWriter io.Writer
 
-	dtmfReader *media.RTPDtmfReader
-	dtmfWriter *media.RTPDtmfWriter
-
 	formats sdp.Formats
 
 	onClose func()
@@ -130,7 +127,7 @@ func (d *DialogMedia) InitMediaSession(m *media.MediaSession, r *media.RTPPacket
 	d.RTPPacketWriter = w
 }
 
-func (d *DialogMedia) createMediaSession() (*media.MediaSession, error) {
+func (d *DialogMedia) createMediaSession(formats sdp.Formats) (*media.MediaSession, error) {
 	ip, _, err := sip.ResolveInterfacesIP("ip4", nil)
 	if err != nil {
 		return nil, err
@@ -138,7 +135,7 @@ func (d *DialogMedia) createMediaSession() (*media.MediaSession, error) {
 
 	laddr := &net.UDPAddr{IP: ip, Port: 0}
 	sess, err := media.NewMediaSession(laddr)
-	sess.Formats = d.formats
+	sess.Formats = formats
 	return sess, err
 }
 
