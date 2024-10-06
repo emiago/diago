@@ -55,7 +55,8 @@ type RTPSession struct {
 	OnReadRTCP  func(pkt rtcp.Packet, rtpStats RTPReadStats)
 	OnWriteRTCP func(pkt rtcp.Packet, rtpStats RTPWriteStats)
 
-	log zerolog.Logger
+	log    zerolog.Logger
+	closed bool
 }
 
 // Some of fields here are exported (as readonly) intentionally
@@ -111,12 +112,18 @@ func NewRTPSession(sess *MediaSession) *RTPSession {
 }
 
 func (s *RTPSession) Close() error {
-	close(s.rtcpClosed)
-	s.rtcpTicker.Stop()
-	// Stop monitor routing
-	err := s.Sess.rtcpConn.SetDeadline(time.Now())
-	// defer s.Sess.rtcpConn.SetDeadline(time.Time{})
+	s.rtcpMU.Lock()
+	closed := s.closed
+	s.closed = true
+	s.rtcpMU.Unlock()
 
+	// Stop monitor routing
+	if !closed {
+		close(s.rtcpClosed)
+	}
+	// Below is safe to call again
+	s.rtcpTicker.Stop()
+	err := s.Sess.rtcpConn.SetDeadline(time.Now())
 	return err
 }
 

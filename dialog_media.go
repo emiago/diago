@@ -46,8 +46,6 @@ type DialogMedia struct {
 	// Only safe to use after dialog Answered (Completed state)
 	mediaSession *media.MediaSession
 
-	rtpSess *media.RTPSession
-
 	// Packet reader is default reader for RTP audio stream
 	// Use always AudioReader to get current Audio reader
 	// Use this only as read only
@@ -85,18 +83,10 @@ func (d *DialogMedia) Close() {
 	d.onClose = nil
 	m := d.mediaSession
 
-	// Check rtp sessions
-	rtpSess := d.rtpSess
 	d.mu.Unlock()
 
 	if onClose != nil {
 		onClose()
-	}
-
-	if rtpSess != nil {
-		if err := rtpSess.Close(); err != nil {
-			log.Error().Err(err).Msg("Closing session")
-		}
 	}
 
 	if m != nil {
@@ -107,6 +97,10 @@ func (d *DialogMedia) Close() {
 func (d *DialogMedia) OnClose(f func()) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.onCloseUnsafe(f)
+}
+
+func (d *DialogMedia) onCloseUnsafe(f func()) {
 	if d.onClose != nil {
 		prev := d.onClose
 		d.onClose = func() {
@@ -121,7 +115,10 @@ func (d *DialogMedia) OnClose(f func()) {
 func (d *DialogMedia) InitMediaSession(m *media.MediaSession, r *media.RTPPacketReader, w *media.RTPPacketWriter) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.initMediaSessionUnsafe(m, r, w)
+}
 
+func (d *DialogMedia) initMediaSessionUnsafe(m *media.MediaSession, r *media.RTPPacketReader, w *media.RTPPacketWriter) {
 	d.mediaSession = m
 	d.RTPPacketReader = r
 	d.RTPPacketWriter = w
@@ -150,7 +147,11 @@ func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 	d.mediaSession = msess
 
 	rtpSess := media.NewRTPSession(msess)
-	d.rtpSess = rtpSess
+	d.onCloseUnsafe(func() {
+		if err := rtpSess.Close(); err != nil {
+			log.Error().Err(err).Msg("Closing session")
+		}
+	})
 
 	d.RTPPacketReader.UpdateRTPSession(rtpSess)
 	d.RTPPacketWriter.UpdateRTPSession(rtpSess)

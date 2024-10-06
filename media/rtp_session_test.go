@@ -235,7 +235,9 @@ func TestRTPSessionClose(t *testing.T) {
 
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		rtpSess.Close()
+		if err := rtpSess.Close(); err != nil {
+			t.Error(err)
+		}
 	}()
 	err = rtpSess.readRTCP()
 	neterr, ok := err.(net.Error)

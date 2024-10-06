@@ -11,6 +11,8 @@ import (
 
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 type RTPReader interface {
@@ -31,11 +33,10 @@ type RTPCReaderRaw interface {
 
 // RTPPacketReader reads RTP packet and extracts payload and header
 type RTPPacketReader struct {
-	mu sync.RWMutex
+	mu  sync.RWMutex
+	log zerolog.Logger
 
-	Sess       *MediaSession // TODO remove this
-	RTPSession *RTPSession   // TODO remove this
-	reader     RTPReader
+	reader RTPReader
 
 	// PacketHeader is stored after calling Read
 	// Safe to read only in same goroutine as Read
@@ -51,31 +52,17 @@ type RTPPacketReader struct {
 	lastSSRC uint32
 }
 
-// RTP reader consumes samples of audio from RTP session
-// Use NewRTPSession to construct RTP session
+// NewRTPPacketReaderSession just helper constructor
 func NewRTPPacketReaderSession(sess *RTPSession) *RTPPacketReader {
-	r := NewRTPPacketReaderMedia(sess.Sess)
-	r.RTPSession = sess
+	r := newRTPPacketReaderMedia(sess.Sess)
 	r.reader = sess
 	return r
 }
 
-// NewRTPWriterMedia is left for backward compability. It does not add RTCP reporting
-// It talks directly to network
-func NewRTPPacketReaderMedia(sess *MediaSession) *RTPPacketReader {
+// used for tests only
+func newRTPPacketReaderMedia(sess *MediaSession) *RTPPacketReader {
 	codec := CodecFromSession(sess)
-
-	// w := RTPReader{
-	// 	Sess:        sess,
-	// 	PayloadType: codec.PayloadType,
-	// 	OnRTP:       func(pkt *rtp.Packet) {},
-
-	// 	seqReader:     RTPExtendedSequenceNumber{},
-	// 	unreadPayload: make([]byte, RTPBufSize),
-	// }
 	w := NewRTPPacketReader(sess, codec)
-	w.Sess = sess // For backward compatibility
-
 	return w
 }
 
@@ -85,6 +72,7 @@ func NewRTPPacketReader(reader RTPReader, codec Codec) *RTPPacketReader {
 		// payloadType:   codec.PayloadType,
 		seqReader:     RTPExtendedSequenceNumber{},
 		unreadPayload: make([]byte, RTPBufSize),
+		log:           log.With().Str("caller", "media").Logger(),
 	}
 
 	return &w
@@ -109,7 +97,7 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 	// Use unread buffer and still avoid alloc
 	buf := b
 	if len(b) < RTPBufSize {
-		r.Sess.log.Debug().Msg("Read RTP buf is < RTPBufSize. Using internal")
+		r.log.Debug().Msg("Read RTP buf is < RTPBufSize. Using internal")
 		buf = r.unreadPayload
 	}
 
@@ -165,12 +153,12 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 	if r.lastSSRC == pkt.SSRC {
 		prevSeq := r.seqReader.ReadExtendedSeq()
 		if err := r.seqReader.UpdateSeq(pkt.SequenceNumber); err != nil {
-			r.Sess.log.Warn().Msg(err.Error())
+			r.log.Warn().Msg(err.Error())
 		}
 
 		newSeq := r.seqReader.ReadExtendedSeq()
 		if prevSeq+1 != newSeq {
-			r.Sess.log.Warn().Uint64("expected", prevSeq+1).Uint64("actual", newSeq).Uint16("real", pkt.SequenceNumber).Msg("Out of order pkt received")
+			r.log.Warn().Uint64("expected", prevSeq+1).Uint64("actual", newSeq).Uint16("real", pkt.SequenceNumber).Msg("Out of order pkt received")
 		}
 	} else {
 		r.seqReader.InitSeq(pkt.SequenceNumber)
@@ -189,7 +177,7 @@ func (r *RTPPacketReader) readPayload(b []byte, payload []byte) int {
 	if n < len(payload) {
 		written := copy(r.unreadPayload, payload[n:])
 		if written < len(payload[n:]) {
-			r.Sess.log.Error().Msg("Payload is huge, it will be unread")
+			r.log.Error().Msg("Payload is huge, it will be unread")
 		}
 		r.unread = written
 	} else {
@@ -205,12 +193,13 @@ func (r *RTPPacketReader) Reader() RTPReader {
 }
 
 func (r *RTPPacketReader) UpdateRTPSession(rtpSess *RTPSession) {
+	r.UpdateReader(rtpSess)
 	// codec := CodecFromSession(rtpSess.Sess)
-	r.mu.Lock()
-	r.RTPSession = rtpSess
-	// r.payloadType = codec.PayloadType
-	r.reader = rtpSess
-	r.mu.Unlock()
+	// r.mu.Lock()
+	// r.RTPSession = rtpSess
+	// // r.payloadType = codec.PayloadType
+	// r.reader = rtpSess
+	// r.mu.Unlock()
 }
 
 func (r *RTPPacketReader) UpdateReader(reader RTPReader) {

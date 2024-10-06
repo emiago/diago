@@ -531,12 +531,19 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 
 		// Create RTP session. After this no media session configuration should be changed
 		rtpSess := media.NewRTPSession(sess)
-		d.rtpSess = rtpSess
-		d.InitMediaSession(
+
+		d.mu.Lock()
+		d.initMediaSessionUnsafe(
 			sess,
 			media.NewRTPPacketReaderSession(rtpSess),
 			media.NewRTPPacketWriterSession(rtpSess),
 		)
+		d.onCloseUnsafe(func() {
+			if err := rtpSess.Close(); err != nil {
+				log.Error().Err(err).Msg("Closing session")
+			}
+		})
+		d.mu.Unlock()
 		log.Debug().Str("laddr", sess.Laddr.String()).Str("raddr", sess.Raddr.String()).Msg("RTP Session setuped")
 
 		// Must be called after reader and writer setup due to race

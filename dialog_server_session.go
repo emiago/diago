@@ -12,6 +12,7 @@ import (
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
+	"github.com/rs/zerolog/log"
 )
 
 // DialogServerSession represents inbound channel
@@ -99,7 +100,7 @@ func (d *DialogServerSession) Answer() error {
 	}
 
 	rtpSess := media.NewRTPSession(sess)
-	d.rtpSess = rtpSess
+
 	return d.AnswerSession(rtpSess)
 }
 
@@ -120,12 +121,19 @@ func (d *DialogServerSession) AnswerSession(rtpSess *media.RTPSession) error {
 		return err
 	}
 
-	d.InitMediaSession(
+	d.mu.Lock()
+	d.initMediaSessionUnsafe(
 		sess,
 		media.NewRTPPacketReaderSession(rtpSess),
 		media.NewRTPPacketWriterSession(rtpSess),
 	)
-
+	// Close RTP session
+	d.onCloseUnsafe(func() {
+		if err := rtpSess.Close(); err != nil {
+			log.Error().Err(err).Msg("Closing session")
+		}
+	})
+	d.mu.Unlock()
 	// Must be called after media and reader writer is setup
 	rtpSess.MonitorBackground()
 
