@@ -4,10 +4,10 @@
 ![Coverage](https://img.shields.io/badge/coverage-61.1%25-blue)
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/emiago/diago)
 
-Short of **dialog + GO**.  
-**Library for building comunication (VOIP) solutions in GO!**
+Short for **dialog + GO**.  
+**A library for building communication (VOIP) solutions in GO!**
 
-**For more information and documentation visit [the website](https://emiago.github.io/diago)**
+**For more information and documentation, visit [the website](https://emiago.github.io/diago)**
 
 Quick links:
 - [Getting started](https://emiago.github.io/diago/docs/getting_started/)
@@ -15,18 +15,18 @@ Quick links:
 - [API Docs](https://emiago.github.io/diago/docs/api_docs/)
 - [GO Docs](https://pkg.go.dev/github.com/emiago/diago)
 
-*If you find this project useful and you want to support/sponzor or need help in your projects, you can contact me on*
+*If you find this project useful and you want to support/sponsor or need help in your projects, you can contact me on*
 [mail](mailto:emirfreelance91@gmail.com)
 
-Follow me on [X/Twitter](https://twitter.com/emiago123) for regular updates
+Follow me on [X/Twitter](https://twitter.com/emiago123) for regular updates.
 
 ## Contributions
-Please open first issues instead PRs. Library is under development and could not have latest code pushed.
+Please open issues first instead of submitting PRs. The library is under development and may not have the latest code pushed.
 
 
 ## Usage 
 
-Checkout more on [Getting started](https://emiago.github.io/diago/docs/getting_started/) but for quick view here is echotest (hello world) example.
+Check out more in [Getting started](https://emiago.github.io/diago/docs/getting_started/) but for quick view, here is echotest (hello world) example.
 ```go 
 ua, _ := sipgo.NewUA()
 dg := diago.NewDiago(ua)
@@ -54,7 +54,7 @@ dg.Serve(ctx, func(inDialog *diago.DialogServerSession) {
 See more [examples in this repo](/examples)
 ### Tracing SIP, RTP
 
-While openning issue, consider having some traces enabled.
+When opening an issue, consider enabling some traces.
 
 ```go
 sip.SIPDebug = true // Enables SIP tracing
