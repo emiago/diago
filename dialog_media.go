@@ -125,6 +125,7 @@ func (d *DialogMedia) initMediaSessionUnsafe(m *media.MediaSession, r *media.RTP
 }
 
 func (d *DialogMedia) createMediaSession(formats sdp.Formats) (*media.MediaSession, error) {
+	// TODO we may want to give this control caller or try to figure out based on SIP routing
 	ip, _, err := sip.ResolveInterfacesIP("ip4", nil)
 	if err != nil {
 		return nil, err

@@ -101,12 +101,33 @@ func (d *DialogServerSession) Answer() error {
 
 	rtpSess := media.NewRTPSession(sess)
 
-	return d.AnswerSession(rtpSess)
+	return d.answerSession(rtpSess)
 }
 
-// AnswerSession. It allows answering with custom RTP Session.
+type AnswerOptions struct {
+	OnRTPSession func(rtpSess *media.RTPSession)
+}
+
+// Experimental
+//
+// NOTE: API may change
+func (d *DialogServerSession) AnswerOptions(opt AnswerOptions) error {
+	sess, err := d.createMediaSession(d.formats)
+	if err != nil {
+		return err
+	}
+
+	rtpSess := media.NewRTPSession(sess)
+	if opt.OnRTPSession != nil {
+		opt.OnRTPSession(rtpSess)
+	}
+
+	return d.answerSession(rtpSess)
+}
+
+// answerSession. It allows answering with custom RTP Session.
 // NOTE: Not final API
-func (d *DialogServerSession) AnswerSession(rtpSess *media.RTPSession) error {
+func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
 	sess := rtpSess.Sess
 	sdp := d.InviteRequest.Body()
 	if sdp == nil {

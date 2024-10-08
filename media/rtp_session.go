@@ -72,7 +72,7 @@ type RTPReadStats struct {
 	TotalPackets uint64
 
 	// RTP reading stats
-	sampleRate       uint32
+	SampleRate       uint32
 	lastRTPTime      time.Time
 	lastRTPTimestamp uint32
 	jitter           float64
@@ -161,12 +161,12 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) error {
 			SSRC:                   readPkt.SSRC,
 			FirstPktSequenceNumber: readPkt.SequenceNumber,
 
-			sampleRate: codec.SampleRate,
+			SampleRate: codec.SampleRate,
 		}
 		stats.lastSeq.InitSeq(readPkt.SequenceNumber)
 	} else {
 		stats.lastSeq.UpdateSeq(readPkt.SequenceNumber)
-		sampleRate := s.readStats.sampleRate
+		sampleRate := s.readStats.SampleRate
 
 		// Jitter here will mostly be incorrect as Reading RTP can be faster slower
 		// and not actually dictated by sampling (clock)

@@ -395,8 +395,8 @@ func (dg *Diago) ServeBackground(ctx context.Context, f ServeDialogFunc) error {
 }
 
 type InviteOptions struct {
-	OnResponse func(res *sip.Response) error
-
+	OnResponse   func(res *sip.Response) error
+	OnRTPSession func(rtpSess *media.RTPSession)
 	// For digest authentication
 	Username string
 	Password string
@@ -531,6 +531,9 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 
 		// Create RTP session. After this no media session configuration should be changed
 		rtpSess := media.NewRTPSession(sess)
+		if opts.OnRTPSession != nil {
+			opts.OnRTPSession(rtpSess)
+		}
 
 		d.mu.Lock()
 		d.initMediaSessionUnsafe(
