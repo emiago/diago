@@ -5,7 +5,9 @@
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/emiago/diago)
 
 Short of **dialog + GO**.  
-**Library for building comunication (VOIP) solutions in GO!**
+**Library for building communication (VOIP) solutions in GO!**
+
+Built on top of optimized [SIPgo library]((https://emiago.github.io/diago))!
 
 **For more information and documentation visit [the website](https://emiago.github.io/diago)**
 
@@ -26,7 +28,7 @@ Please open first issues instead PRs. Library is under development and could not
 
 ## Usage 
 
-Checkout more on [Getting started](https://emiago.github.io/diago/docs/getting_started/) but for quick view here is echotest (hello world) example.
+Checkout more on [Getting started](https://emiago.github.io/diago/docs/getting_started/), but for quick view here is echotest (hello world) example.
 ```go 
 ua, _ := sipgo.NewUA()
 dg := diago.NewDiago(ua)
