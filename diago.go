@@ -401,7 +401,32 @@ type InviteOptions struct {
 	Username string
 	Password string
 
+	// Custom headers to pass. DO NOT SET THIS to nil
 	Headers []sip.Header
+}
+
+// func (o InviteOptions) SetCaller(displayName string, callerID string) {
+// 	o.Headers = append(o.Headers, &sip.FromHeader{
+// 		DisplayName: displayName,
+// 		Address:     sip.Uri{User: callerID, Host: },
+// 	})
+// }
+
+// Sets from user to RFC anonymous
+func (o *InviteOptions) SetAnonymousCaller() {
+	o.Headers = append(o.Headers, &sip.FromHeader{
+		DisplayName: "Anonymous",
+		Address:     sip.Uri{User: "anonymous", Host: "anonymous.invalid"},
+		Params:      sip.NewParams(),
+	})
+}
+
+func (o *InviteOptions) SetCaller(displayName string, callerID string) {
+	o.Headers = append(o.Headers, &sip.FromHeader{
+		DisplayName: displayName,
+		Address:     sip.Uri{User: callerID, Host: ""},
+		Params:      sip.NewParams(),
+	})
 }
 
 // Invite makes outgoing call leg and waits for answer.
@@ -436,7 +461,10 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		return nil, err
 	}
 
-	dialHDRS := append(opts.Headers, sip.NewHeader("Content-Type", "application/sdp"))
+	inviteReq := sip.NewRequest(sip.INVITE, recipient)
+	for _, h := range opts.Headers {
+		inviteReq.AppendHeader(h)
+	}
 
 	// Are we bridging?
 	if bridge != nil {
@@ -444,20 +472,20 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 			// In case originator then:
 			// - check do we support this media formats by conf
 			// - if we do, then filter and pass to dial endpoint filtered
-			inviteReq := omed.DialogSIP().InviteRequest
-			fromHDROrig := inviteReq.From()
-			fromHDR := sip.FromHeader{
-				DisplayName: fromHDROrig.DisplayName,
-				Address:     *fromHDROrig.Address.Clone(),
-				Params:      fromHDROrig.Params.Clone(),
+			origInvite := omed.DialogSIP().InviteRequest
+			if fromHDR := inviteReq.From(); fromHDR == nil {
+				// From header should be preserved from originator
+				fromHDROrig := inviteReq.From()
+				f := sip.FromHeader{
+					DisplayName: fromHDROrig.DisplayName,
+					Address:     *fromHDROrig.Address.Clone(),
+					Params:      fromHDROrig.Params.Clone(),
+				}
+				inviteReq.AppendHeader(&f)
 			}
-			fromHDR.Params["tag"] = sip.GenerateTagN(16)
-
-			// From header should be preserved from originator
-			dialHDRS = append(dialHDRS, &fromHDR)
 
 			sd := sdp.SessionDescription{}
-			if err := sdp.Unmarshal(inviteReq.Body(), &sd); err != nil {
+			if err := sdp.Unmarshal(origInvite.Body(), &sd); err != nil {
 				return nil, err
 			}
 			md, err := sd.MediaDescription("audio")
@@ -502,7 +530,18 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		}
 	}
 
-	dialog, err := dialogCli.Invite(ctx, recipient, sess.LocalSDP(), dialHDRS...)
+	inviteReq.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
+	inviteReq.SetBody(sess.LocalSDP())
+
+	// We allow changing full from header, but we need to make sure it is correctly set
+	if fromHDR := inviteReq.From(); fromHDR != nil {
+		fromHDR.Params["tag"] = sip.GenerateTagN(16)
+		if fromHDR.Address.Host == "" { // IN case caller is set but not hostname
+			fromHDR.Address.Host = dg.client.Hostname()
+		}
+	}
+
+	dialog, err := dialogCli.WriteInvite(ctx, inviteReq)
 	if err != nil {
 		sess.Close()
 		return nil, err
