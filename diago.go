@@ -353,7 +353,7 @@ func (dg *Diago) initServerSession(d *DialogServerSession) {
 
 func (dg *Diago) Serve(ctx context.Context, f ServeDialogFunc) error {
 	server := dg.server
-	dg.serveHandler = f
+	dg.HandleFunc(f)
 
 	// For multi transports start multi server
 	if len(dg.transports) > 1 {
@@ -392,6 +392,11 @@ func (dg *Diago) ServeBackground(ctx context.Context, f ServeDialogFunc) error {
 	case <-ch:
 		return nil
 	}
+}
+
+// HandleFunc registers you handler function for dialog. Must be called before serving request
+func (dg *Diago) HandleFunc(f ServeDialogFunc) {
+	dg.serveHandler = f
 }
 
 type InviteOptions struct {
@@ -475,7 +480,7 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 			origInvite := omed.DialogSIP().InviteRequest
 			if fromHDR := inviteReq.From(); fromHDR == nil {
 				// From header should be preserved from originator
-				fromHDROrig := inviteReq.From()
+				fromHDROrig := origInvite.From()
 				f := sip.FromHeader{
 					DisplayName: fromHDROrig.DisplayName,
 					Address:     *fromHDROrig.Address.Clone(),
