@@ -13,5 +13,4 @@
 /asterisk-sounds-wav
 /audio/pcm_encoder.go
 /testdata
-/rtp_parse_test.go
 /rfc*.txt

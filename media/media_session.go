@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -265,26 +264,21 @@ func (s *MediaSession) listenRTPandRTCP(laddr *net.UDPAddr) error {
 	return nil
 }
 
-var rtpBufPool = &sync.Pool{
-	New: func() any { return make([]byte, 1600) },
-}
-
 // ReadRTP reads data from network and parses to pkt
 // buffer is passed in order to avoid extra allocs
-func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) error {
+func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	if len(buf) < RTPBufSize {
-		return io.ErrShortBuffer
+		return 0, io.ErrShortBuffer
 	}
 
 	n, from, err := m.rtpConn.ReadFrom(buf)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// If from does not match our remote
-
 	if err := RTPUnmarshal(buf[:n], pkt); err != nil {
-		return err
+		return n, err
 	}
 
 	// Problem is that this buffer is refferenced in rtp PACKET
@@ -295,7 +289,7 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) error {
 	if RTPDebug {
 		m.log.Debug().Msgf("Recv RTP %s < %s \n%s", m.Laddr, from.String(), pkt.String())
 	}
-	return err
+	return n, err
 }
 
 // return parsed rtp

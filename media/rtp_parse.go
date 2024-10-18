@@ -22,7 +22,6 @@ func RTPUnmarshal(buf []byte, p *rtp.Packet) error {
 	if err != nil {
 		return err
 	}
-
 	if p.Header.Extension {
 		// For now eliminate it as it holds reference on buffer
 		// TODO fix this
@@ -39,11 +38,17 @@ func RTPUnmarshal(buf []byte, p *rtp.Packet) error {
 		return io.ErrShortBuffer
 	}
 
+	// If Payload buffer exists try to fill it and allow buffer reusage
+	if p.Payload != nil && len(p.Payload) >= len(buf[n:end]) {
+		copy(p.Payload, buf[n:end])
+		return nil
+	}
+
+	// This creates allocations
 	// Payload should be recreated instead referenced
 	// This allows buf reusage
 	p.Payload = make([]byte, len(buf[n:end]))
 	copy(p.Payload, buf[n:end])
-
 	return nil
 }
 

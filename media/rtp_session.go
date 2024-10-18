@@ -127,10 +127,11 @@ func (s *RTPSession) Close() error {
 	return err
 }
 
-func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) error {
+func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 	for {
-		if err := s.Sess.ReadRTP(b, readPkt); err != nil {
-			return err
+		n, err = s.Sess.ReadRTP(b, readPkt)
+		if err != nil {
+			return n, err
 		}
 
 		// Validate pkt. Check is it keep alive
@@ -201,7 +202,7 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) error {
 	// default:
 	// }
 
-	return nil
+	return n, err
 }
 
 func (s *RTPSession) ReadRTPRaw(buf []byte) (int, error) {
