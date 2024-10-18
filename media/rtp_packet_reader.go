@@ -118,32 +118,6 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 		return 0, err
 	}
 
-	// if r.RTPSession != nil {
-	// 	if err := r.RTPSession.ReadRTP(buf, &pkt); err != nil {
-	// 		if errors.Is(err, net.ErrClosed) {
-	// 			return 0, io.EOF
-	// 		}
-	// 		return 0, err
-	// 	}
-	// } else if r.Sess != nil {
-
-	// 	// Reuse read buffer.
-	// 	if err := r.Sess.ReadRTP(buf, &pkt); err != nil {
-	// 		if errors.Is(err, net.ErrClosed) {
-	// 			return 0, io.EOF
-	// 		}
-	// 		return 0, err
-	// 	}
-
-	// 	// NOTE: pkt after unmarshall will hold reference on b buffer.
-	// 	// Caller should do copy of PacketHeader if it reuses buffer
-	// 	// if err := pkt.Unmarshal(buf[:n]); err != nil {
-	// 	// 	return 0, err
-	// 	// }
-	// } else {
-
-	// }
-
 	// In case of DTMF we can receive different payload types
 	// if pt != pkt.PayloadType {
 	// 	return 0, fmt.Errorf("payload type does not match. expected=%d, actual=%d", pt, pkt.PayloadType)
@@ -167,8 +141,7 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 	r.lastSSRC = pkt.SSRC
 	r.PacketHeader = pkt.Header
 
-	size := min(len(b), len(buf))
-	n = r.readPayload(buf[:size], pkt.Payload)
+	n = r.readPayload(b, pkt.Payload)
 	return n, nil
 }
 
