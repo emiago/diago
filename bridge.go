@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/emiago/diago/media"
-	"github.com/pion/rtp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -174,26 +173,6 @@ func (b *Bridge) proxyMediaRTPRaw(m1 media.RTPReaderRaw, m2 media.RTPWriterRaw) 
 			return total, io.ErrShortWrite
 		}
 		total += int64(written)
-	}
-}
-
-func (b *Bridge) proxyMediaRTP(m1 media.RTPReader, m2 media.RTPWriter) (written int64, e error) {
-	buf := make([]byte, 1500) // MTU
-
-	var total int64
-	for {
-		p := rtp.Packet{}
-		// In case of recording we need to unmarshal RTP packet
-		err := m1.ReadRTP(buf, &p)
-		if err != nil {
-			return total, err
-		}
-		err = m2.WriteRTP(&p)
-		if err != nil {
-			return total, err
-		}
-		total += int64(len(p.Payload))
-		total += 12
 	}
 }
 
