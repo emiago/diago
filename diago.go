@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strconv"
 	"time"
 
@@ -155,6 +156,8 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	contactHDR := dg.getContactHDR("")
 
 	server := dg.server
+	registered := dg.server.RegisteredMethods()
+
 	server.OnInvite(func(req *sip.Request, tx sip.ServerTransaction) {
 		// What if multiple server transports?
 		id, err := sip.UASReadRequestDialogID(req)
@@ -208,106 +211,116 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		}
 	})
 
-	server.OnCancel(func(req *sip.Request, tx sip.ServerTransaction) {
-		// INVITE transaction should be terminated by transaction layer and 200 response will be sent
-		// In case of stateless proxy this we would need to forward
-		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, "Call/Transaction Does Not Exist", nil))
-	})
+	if !slices.Contains(registered, sip.CANCEL.String()) {
+		server.OnCancel(func(req *sip.Request, tx sip.ServerTransaction) {
+			// INVITE transaction should be terminated by transaction layer and 200 response will be sent
+			// In case of stateless proxy this we would need to forward
+			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, "Call/Transaction Does Not Exist", nil))
+		})
+	}
 
-	server.OnAck(func(req *sip.Request, tx sip.ServerTransaction) {
-		d, err := MatchDialogServer(req)
-		if err != nil {
-			// Normally ACK will be received if some out of dialog request is received or we responded negatively
-			// tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
-			return
-		}
-
-		if err := d.ReadAck(req, tx); err != nil {
-			dg.log.Error().Err(err).Msg("ACK finished with error")
-			// Do not respond bad request as client will DOS on any non 2xx response
-			return
-		}
-	})
-
-	server.OnBye(func(req *sip.Request, tx sip.ServerTransaction) {
-		sd, cd, err := MatchDialog(req)
-		if err != nil {
-			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
-				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
+	if !slices.Contains(registered, sip.ACK.String()) {
+		server.OnAck(func(req *sip.Request, tx sip.ServerTransaction) {
+			d, err := MatchDialogServer(req)
+			if err != nil {
+				// Normally ACK will be received if some out of dialog request is received or we responded negatively
+				// tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
 				return
-
-			}
-			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
-			return
-		}
-
-		// Respond to BYE
-		// Terminate our media processing
-		// As user may stuck in playing or reading media, this unblocks that goroutine
-		if cd != nil {
-			if err := cd.ReadBye(req, tx); err != nil {
-				dg.log.Error().Err(err).Msg("failed to read bye for client dialog")
 			}
 
-			cd.DialogMedia.Close()
-			return
-		}
-
-		if err := sd.ReadBye(req, tx); err != nil {
-			dg.log.Error().Err(err).Msg("failed to read bye for server dialog")
-		}
-		sd.DialogMedia.Close()
-	})
-
-	server.OnInfo(func(req *sip.Request, tx sip.ServerTransaction) {
-		// Handle DTMF out of band
-		if req.ContentType().Value() != "application/dtmf-relay" {
-			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
-			return
-		}
-
-		sd, cd, err := MatchDialog(req)
-		if err != nil {
-			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
-				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
+			if err := d.ReadAck(req, tx); err != nil {
+				dg.log.Error().Err(err).Msg("ACK finished with error")
+				// Do not respond bad request as client will DOS on any non 2xx response
 				return
-
 			}
-			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
-			return
-		}
+		})
+	}
 
-		if cd != nil {
-			cd.readSIPInfoDTMF(req, tx)
-			return
-		}
-		sd.readSIPInfoDTMF(req, tx)
+	if !slices.Contains(registered, sip.BYE.String()) {
+		server.OnBye(func(req *sip.Request, tx sip.ServerTransaction) {
+			sd, cd, err := MatchDialog(req)
+			if err != nil {
+				if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
+					tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
+					return
 
-		// 		INFO sips:sipgo@127.0.0.1:5443 SIP/2.0
-		// Via: SIP/2.0/WSS df7jal23ls0d.invalid;branch=z9hG4bKhzJuRuWp4pLmTAbrIg7MUGofWdV1u577;rport
-		// From: "IVR Webrtc"<sips:ivr.699c4b45-c800-4891-8133-fded5b26f942.579938@localhost:6060>;tag=foSxtEhHq9QOSeSdgJCC
-		// To: <sip:playback@localhost>;tag=f814097f-467a-46ad-be0a-76c2a1225378
-		// Contact: "IVR Webrtc"<sips:ivr.699c4b45-c800-4891-8133-fded5b26f942.579938@df7jal23ls0d.invalid;rtcweb-breaker=no;click2call=no;transport=wss>;+g.oma.sip-im;language="en,fr"
-		// Call-ID: 047c3631-e85a-27d2-8f69-4de6e0391253
-		// CSeq: 29586 INFO
-		// Content-Type: application/dtmf-relay
-		// Content-Length: 22
-		// Max-Forwards: 70
-		// User-Agent: IM-client/OMA1.0 sipML5-v1.2016.03.04
+				}
+				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+				return
+			}
 
-		// Signal=8
-		// Duration=120
+			// Respond to BYE
+			// Terminate our media processing
+			// As user may stuck in playing or reading media, this unblocks that goroutine
+			if cd != nil {
+				if err := cd.ReadBye(req, tx); err != nil {
+					dg.log.Error().Err(err).Msg("failed to read bye for client dialog")
+				}
 
-	})
+				cd.DialogMedia.Close()
+				return
+			}
 
-	// TODO deal with OPTIONS more correctly
-	// For now leave it for keep alive
-	dg.server.OnOptions(func(req *sip.Request, tx sip.ServerTransaction) {
-		res := sip.NewResponseFromRequest(req, sip.StatusOK, "OK", nil)
-		if err := tx.Respond(res); err != nil {
-			log.Error().Err(err).Msg("OPTIONS 200 failed to respond")
-		}
-	})
+			if err := sd.ReadBye(req, tx); err != nil {
+				dg.log.Error().Err(err).Msg("failed to read bye for server dialog")
+			}
+			sd.DialogMedia.Close()
+		})
+	}
+
+	if !slices.Contains(registered, sip.INFO.String()) {
+		server.OnInfo(func(req *sip.Request, tx sip.ServerTransaction) {
+			// Handle DTMF out of band
+			if req.ContentType().Value() != "application/dtmf-relay" {
+				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
+				return
+			}
+
+			sd, cd, err := MatchDialog(req)
+			if err != nil {
+				if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
+					tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
+					return
+
+				}
+				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+				return
+			}
+
+			if cd != nil {
+				cd.readSIPInfoDTMF(req, tx)
+				return
+			}
+			sd.readSIPInfoDTMF(req, tx)
+
+			// 		INFO sips:sipgo@127.0.0.1:5443 SIP/2.0
+			// Via: SIP/2.0/WSS df7jal23ls0d.invalid;branch=z9hG4bKhzJuRuWp4pLmTAbrIg7MUGofWdV1u577;rport
+			// From: "IVR Webrtc"<sips:ivr.699c4b45-c800-4891-8133-fded5b26f942.579938@localhost:6060>;tag=foSxtEhHq9QOSeSdgJCC
+			// To: <sip:playback@localhost>;tag=f814097f-467a-46ad-be0a-76c2a1225378
+			// Contact: "IVR Webrtc"<sips:ivr.699c4b45-c800-4891-8133-fded5b26f942.579938@df7jal23ls0d.invalid;rtcweb-breaker=no;click2call=no;transport=wss>;+g.oma.sip-im;language="en,fr"
+			// Call-ID: 047c3631-e85a-27d2-8f69-4de6e0391253
+			// CSeq: 29586 INFO
+			// Content-Type: application/dtmf-relay
+			// Content-Length: 22
+			// Max-Forwards: 70
+			// User-Agent: IM-client/OMA1.0 sipML5-v1.2016.03.04
+
+			// Signal=8
+			// Duration=120
+
+		})
+	}
+
+	if !slices.Contains(registered, sip.OPTIONS.String()) {
+		// TODO deal with OPTIONS more correctly
+		// For now leave it for keep alive
+		dg.server.OnOptions(func(req *sip.Request, tx sip.ServerTransaction) {
+			res := sip.NewResponseFromRequest(req, sip.StatusOK, "OK", nil)
+			if err := tx.Respond(res); err != nil {
+				log.Error().Err(err).Msg("OPTIONS 200 failed to respond")
+			}
+		})
+	}
 
 	// server.OnRefer(func(req *sip.Request, tx sip.ServerTransaction) {
 	// 	d, err := MatchDialogServer(req)
