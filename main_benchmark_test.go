@@ -76,7 +76,7 @@ func BenchmarkIntegrationClientServer(t *testing.B) {
 			t.Log(err.Error())
 			return
 		}
-		_, err = pb.PlayFile("./testdata/demo-thanks.wav")
+		_, err = pb.PlayFile("./testdata/files/demo-echodone.wav")
 		if err != nil {
 			t.Log(err.Error())
 			return
@@ -148,7 +148,7 @@ func BenchmarkIntegrationClientServer(t *testing.B) {
 						reader := dialog.mediaSession
 						for {
 							p := rtp.Packet{}
-							err := reader.ReadRTP(buf, &p)
+							_, err := reader.ReadRTP(buf, &p)
 							if err != nil {
 								return
 							}
@@ -162,8 +162,8 @@ func BenchmarkIntegrationClientServer(t *testing.B) {
 
 					start := time.Now()
 					select {
-					// Audio is 6 sec long
-					case <-time.After(7 * time.Second):
+					// Audio is 2 sec long
+					case <-time.After(2 * time.Second):
 						t.Log("NON SERVER hanguping")
 						dialog.Hangup(context.TODO())
 					case <-dialog.Context().Done():
