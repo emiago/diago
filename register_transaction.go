@@ -37,6 +37,8 @@ type RegisterTransaction struct {
 
 	client *sipgo.Client
 	log    zerolog.Logger
+
+	expiry time.Duration
 }
 
 func newRegisterTransaction(client *sipgo.Client, recipient sip.Uri, contact sip.ContactHeader, opts RegisterOptions) *RegisterTransaction {
@@ -62,11 +64,11 @@ func newRegisterTransaction(client *sipgo.Client, recipient sip.Uri, contact sip
 	return t
 }
 
-func (p *RegisterTransaction) Register(ctx context.Context) error {
-	username, password, expiry := p.opts.Username, p.opts.Password, p.opts.Expiry
-	client := p.client
-	log := p.log
-	req := p.Origin
+func (t *RegisterTransaction) Register(ctx context.Context) error {
+	username, password, expiry := t.opts.Username, t.opts.Password, t.opts.Expiry
+	client := t.client
+	log := t.log
+	req := t.Origin
 	contact := *req.Contact().Clone()
 
 	// Send request and parse response
@@ -132,15 +134,42 @@ func (p *RegisterTransaction) Register(ctx context.Context) error {
 		}
 	}
 
+	// Now update server expiry
+	t.expiry = t.opts.Expiry
+	if h := res.GetHeader("Expires"); h != nil {
+		val, err := strconv.Atoi(h.Value())
+		if err != nil {
+			return fmt.Errorf("Failed to parse server Expires value: %w", err)
+		}
+		t.expiry = time.Duration(val) * time.Second
+	}
+
 	return nil
 }
 
 func (t *RegisterTransaction) QualifyLoop(ctx context.Context) error {
 	// TODO: based on server response Expires header this must be adjusted
-	retry := t.opts.RetryInterval
-	if retry == 0 {
-		retry = 30 * time.Second
+	// Allows caller to adjust
+
+	calcRetry := func(expiry time.Duration) time.Duration {
+		// Allow caller to use own interval
+		if t.opts.RetryInterval != 0 {
+			return t.opts.RetryInterval
+		}
+
+		calc := expiry.Seconds() * 0.75
+		retry := time.Duration(calc) * time.Second
+
+		// Set to 30 in case retry is not set
+		if retry == 0 {
+			retry = 30 * time.Second
+		}
+
+		return retry
 	}
+
+	expiry := t.expiry
+	retry := calcRetry(expiry)
 
 	ticker := time.NewTicker(retry)
 	for {
@@ -153,6 +182,16 @@ func (t *RegisterTransaction) QualifyLoop(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+
+		if t.expiry != expiry {
+			// expiry got updated
+			expiry = t.expiry
+			retry = calcRetry(expiry)
+
+			t.log.Info().Dur("expiry_old", expiry).Dur("expiry_new", t.expiry).Dur("retry", retry).Msg("Register expiry changed")
+			ticker.Reset(retry)
+		}
+
 	}
 }
 
@@ -219,6 +258,15 @@ func (t *RegisterTransaction) doRequest(ctx context.Context, req *sip.Request) e
 			RegisterRes: res,
 			Msg:         res.StartLine(),
 		}
+	}
+
+	// Check is expirese changed
+	if h := res.GetHeader("Expires"); h != nil {
+		val, err := strconv.Atoi(h.Value())
+		if err != nil {
+			return fmt.Errorf("Failed to parse server Expires value: %w", err)
+		}
+		t.expiry = time.Duration(val) * time.Second
 	}
 
 	return nil
