@@ -458,6 +458,23 @@ That is why 200 OK is replied&lt;/p&gt;
     </item>
     
     <item>
+      <title></title>
+      <link>https://emiago.github.io/diago/docs/why_diago/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>https://emiago.github.io/diago/docs/why_diago/</guid>
+      <description>
+        
+        
+        &lt;p&gt;Development of VOIP services can be slow or it was full workarounds.
+Diago try to offer more modern Stack and put you closer to protocol,network,media but offering High level and low level API calls.&lt;/p&gt;
+&lt;p&gt;Diago is built with GO language. We are keeping well optimized sip and media stack to have performance and low GC latency. Major win is Go offers fast development speed and memory safety, but also tooling to tweak best performance.&lt;/p&gt;
+&lt;p&gt;In case you wondering is Go right language, there are already good benchmark results with just &lt;a href=&#34;https://github.com/emiago/sipgo/tree/main/example/proxysip#results&#34; target=&#34;_blank&#34; rel=&#34;noopener&#34;&gt;sipgo proxysip benchmarks&lt;/a&gt;.&lt;/p&gt;
+
+      </description>
+    </item>
+    
+    <item>
       <title>SIP and Media</title>
       <link>https://emiago.github.io/diago/docs/guides/sip_and_media/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
@@ -510,19 +527,6 @@ Other problem is if call is jumping between media servers, above can be changed 
 &lt;p&gt;&lt;strong&gt;NOTE&lt;/strong&gt;:
 Publishing local IP like above is problem for NAT and there different approaches to solve this issue, but for now we will skip this part.&lt;/p&gt;
 
-      </description>
-    </item>
-    
-    <item>
-      <title></title>
-      <link>https://emiago.github.io/diago/docs/why_diago/</link>
-      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
-      
-      <guid>https://emiago.github.io/diago/docs/why_diago/</guid>
-      <description>
-        
-        
-        
       </description>
     </item>
     
