@@ -92,6 +92,8 @@ func WithTransport(t Transport) DiagoOption {
 type MediaConfig struct {
 	Formats sdp.Formats
 
+	InterfaceIP net.IP
+
 	// TODO
 	// RTPPortStart int
 	// RTPPortEnd   int
@@ -466,7 +468,7 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 
 	// Create media
 	// TODO explicit media format passing
-	sess, err := d.createMediaSession(dg.mediaConf.Formats)
+	sess, err := d.createMediaSessionFromConf(dg.mediaConf)
 	if err != nil {
 		return nil, err
 	}

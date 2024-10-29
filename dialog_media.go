@@ -137,6 +137,24 @@ func (d *DialogMedia) createMediaSession(formats sdp.Formats) (*media.MediaSessi
 	return sess, err
 }
 
+func (d *DialogMedia) createMediaSessionFromConf(conf MediaConfig) (*media.MediaSession, error) {
+	formats := conf.Formats
+	ip := conf.InterfaceIP
+
+	if ip == nil {
+		var err error
+		ip, _, err = sip.ResolveInterfacesIP("ip4", nil)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	laddr := &net.UDPAddr{IP: ip, Port: 0}
+	sess, err := media.NewMediaSession(laddr)
+	sess.Formats = formats
+	return sess, err
+}
+
 // Must be protected with lock
 func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 	msess := d.mediaSession.Fork()
