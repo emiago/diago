@@ -6,6 +6,7 @@ package audio
 import (
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/zaf/g711"
 )
@@ -29,44 +30,48 @@ const (
 	FORMAT_TYPE_ALAW = 8
 )
 
+var (
+	decoderBufPool = sync.Pool{
+		New: func() any {
+			return make([]byte, 160)
+		},
+	}
+)
+
 type PCMDecoder struct {
-	Source   io.Reader
-	Writer   io.Writer
-	Decoder  func(encoded []byte) (lpcm []byte)
-	buf      []byte
-	lastLPCM []byte
-	unread   int
+	Source    io.Reader
+	Writer    io.Writer
+	Decoder   func(encoded []byte) (lpcm []byte)
+	DecoderTo func(lpcm []byte, encoded []byte) (int, error)
+	buf       []byte
 }
 
 // PCM decoder is streamer implementing io.Reader. It reads from underhood reader and returns decoded
 // codec data
 func NewPCMDecoder(codec uint8, reader io.Reader) (*PCMDecoder, error) {
-	var decoder func(lpcm []byte) []byte
+	dec := &PCMDecoder{
+		Source: reader,
+	}
 	switch codec {
 	case FORMAT_TYPE_ULAW:
-		decoder = g711.DecodeUlaw // returns 16bit LPCM
+		dec.Decoder = g711.DecodeUlaw // returns 16bit LPCM
+		dec.DecoderTo = DecodeUlawTo
 	case FORMAT_TYPE_ALAW:
-		decoder = g711.DecodeAlaw // returns 16bit LPCM
+		dec.Decoder = g711.DecodeAlaw // returns 16bit LPCM
+		dec.DecoderTo = DecodeAlawTo
 	// case FORMAT_TYPE_PCM:
 	// 	decoder = func(lpcm []byte) []byte { return lpcm }
 	default:
 		return nil, fmt.Errorf("not supported codec %d", codec)
 	}
 
-	dec := &PCMDecoder{
-		Source:  reader,
-		Decoder: decoder,
-		buf:     make([]byte, 160), // Read at least 160 samples. Playback starts with 300
-	}
 	return dec, nil
 }
 
 func (d *PCMDecoder) Read(b []byte) (n int, err error) {
-	if d.unread > 0 {
-		ind := len(d.lastLPCM) - d.unread
-		n := copy(b, d.lastLPCM[ind:])
-		d.unread -= n
-		return n, nil
+
+	if d.buf == nil {
+		d.buf = make([]byte, len(b)/2)
 	}
 
 	n, err = d.Source.Read(d.buf)
@@ -74,14 +79,17 @@ func (d *PCMDecoder) Read(b []byte) (n int, err error) {
 		return n, err
 	}
 
-	// This creates allocation
-	lpcm := d.Decoder(d.buf[:n])
+	encoded := d.buf[:n]
+	n, err = d.DecoderTo(b, encoded)
+	if err != nil {
+		return 0, err
+	}
 
-	copied := copy(b, lpcm)
-	d.unread = len(lpcm) - copied
-	d.lastLPCM = lpcm
-	// fmt.Printf("Read playback=%d source=%d copied=%d unread=%d \n", len(b), n, copied, d.unread)
-	return copied, nil
+	if len(encoded)*2 < n {
+		return 0, io.ErrShortBuffer
+	}
+
+	return n, nil
 }
 
 func NewPCMDecoderReader(codec uint8, reader io.Reader) (*PCMDecoder, error) {
@@ -119,41 +127,61 @@ func (d *PCMDecoder) Write(b []byte) (n int, err error) {
 
 type PCMEncoder struct {
 	Destination io.Writer
-	Encoder     func(encoded []byte) (lpcm []byte)
+	Encoder     func(lpcm []byte) (encoded []byte)
+	EncoderTo   func(lpcm []byte, encoded []byte) (int, error)
+	buf         []byte
 }
 
 // PCMEncoder encodes data from pcm to codec and passes to writer
 func NewPCMEncoder(codec uint8, writer io.Writer) (*PCMEncoder, error) {
-	var encoder func(lpcm []byte) []byte
+	dec := &PCMEncoder{
+		Destination: writer,
+	}
 	switch codec {
 	case FORMAT_TYPE_ULAW:
-		encoder = g711.EncodeUlaw // returns 16bit LPCM
+		dec.Encoder = g711.EncodeUlaw
+		dec.EncoderTo = EncodeUlawTo
 	case FORMAT_TYPE_ALAW:
-		encoder = g711.EncodeAlaw // returns 16bit LPCM
+		dec.Encoder = g711.EncodeAlaw
+		dec.EncoderTo = EncodeAlawTo
 	// case FORMAT_TYPE_PCM:
 	// 	encoder = func(lpcm []byte) []byte { return lpcm }
 	default:
 		return nil, fmt.Errorf("not supported codec %d", codec)
 	}
 
-	dec := &PCMEncoder{
-		Destination: writer,
-		Encoder:     encoder,
-	}
 	return dec, nil
 }
 
-func (d *PCMEncoder) Write(b []byte) (n int, err error) {
-	// TODO avoid this allocation
-	lpcm := d.Encoder(b)
+func (d *PCMEncoder) Write(lpcm []byte) (n int, err error) {
+	if d.buf == nil {
+		// We expect constant rate
+		// TODO can we even remove this allocation
+		d.buf = make([]byte, len(lpcm)/2)
+	}
+
+	ind := 0
 	nn := 0
+	double := len(d.buf) * 2
 	for nn < len(lpcm) {
-		n, err = d.Destination.Write(lpcm)
+		max := min(double, len(lpcm[ind:]))
+		// EncoderTo avoids allocation
+		n, err := d.EncoderTo(d.buf, lpcm[ind:ind+max])
+		if err != nil {
+			return 0, err
+		}
+		ind = max
+
+		encoded := d.buf[:n]
+		n, err = d.Destination.Write(encoded)
 		if err != nil {
 			return nn, err
 		}
-		nn += n
-	}
+		if n < len(encoded) {
+			return nn, io.ErrShortWrite
+		}
 
-	return len(b), nil
+		nn += max
+	}
+	return nn, nil
 }
