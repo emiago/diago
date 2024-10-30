@@ -53,7 +53,9 @@ func start(ctx context.Context) error {
 	return tu.Serve(ctx, func(inDialog *diago.DialogServerSession) {
 		log.Info().Str("id", inDialog.ID).Msg("New dialog request")
 		defer log.Info().Str("id", inDialog.ID).Msg("Dialog finished")
-		Playback(inDialog)
+		if err := Playback(inDialog); err != nil {
+			log.Error().Err(err).Msg("Failed to play")
+		}
 	})
 }
 
