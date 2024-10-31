@@ -148,7 +148,7 @@ func BenchmarkIntegrationClientServer(t *testing.B) {
 						reader := dialog.mediaSession
 						for {
 							p := rtp.Packet{}
-							err := reader.ReadRTP(buf, &p)
+							_, err := reader.ReadRTP(buf, &p)
 							if err != nil {
 								return
 							}

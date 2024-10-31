@@ -6,7 +6,6 @@ require (
 	github.com/emiago/sipgo v0.24.2-0.20241009194434-f8762ab672dc
 	github.com/go-audio/riff v1.0.0
 	github.com/go-audio/wav v1.1.0
-	github.com/icholy/digest v0.1.22
 	github.com/pion/rtcp v1.2.14
 	github.com/pion/rtp v1.8.9
 	github.com/rs/zerolog v1.33.0
@@ -21,6 +20,7 @@ require (
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.3.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/icholy/digest v0.1.22 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

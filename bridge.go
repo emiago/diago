@@ -184,7 +184,7 @@ func (b *Bridge) proxyMediaRTP(m1 media.RTPReader, m2 media.RTPWriter) (written 
 	for {
 		p := rtp.Packet{}
 		// In case of recording we need to unmarshal RTP packet
-		err := m1.ReadRTP(buf, &p)
+		_, err := m1.ReadRTP(buf, &p)
 		if err != nil {
 			return total, err
 		}

@@ -62,7 +62,7 @@ func TestDiagoInviteCallerID(t *testing.T) {
 		req := <-reqCh
 
 		assert.Equal(t, dg.ua.Name(), req.From().Address.User)
-		assert.Equal(t, dg.ua.Hostname(), req.From().Address.Host)
+		assert.Equal(t, dg.client.GetHostname(), req.From().Address.Host)
 		assert.NotEmpty(t, req.From().Params["tag"])
 	})
 
