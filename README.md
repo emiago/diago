@@ -17,8 +17,8 @@ Quick links:
 - [API Docs](https://emiago.github.io/diago/docs/api_docs/)
 - [GO Docs](https://pkg.go.dev/github.com/emiago/diago)
 
-*If you find this project useful and you want to support/sponzor or need help in your projects, you can contact me on*
-[mail](mailto:emirfreelance91@gmail.com)
+*If you find this project useful and you want to support/sponzor or need help, you can contact me more on*
+[mail](mailto:emirfreelance91@gmail.com).
 
 Follow me on [X/Twitter](https://twitter.com/emiago123) for regular updates
 
