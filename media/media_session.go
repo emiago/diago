@@ -45,6 +45,9 @@ type MediaSession struct {
 	// Laddr our local address which has full IP and port after media session creation
 	Laddr *net.UDPAddr
 
+	// ExternalIP that should be used for building SDP
+	ExternalIP net.IP
+
 	rtpConn   net.PacketConn
 	rtcpConn  net.PacketConn
 	rtcpRaddr *net.UDPAddr
@@ -148,6 +151,9 @@ func (s *MediaSession) SetRemoteAddr(raddr *net.UDPAddr) {
 func (s *MediaSession) LocalSDP() []byte {
 	ip := s.Laddr.IP
 	rtpPort := s.Laddr.Port
+	if s.ExternalIP != nil {
+		ip = s.ExternalIP
+	}
 
 	return sdp.GenerateForAudio(ip, ip, rtpPort, s.Mode, s.Formats)
 }

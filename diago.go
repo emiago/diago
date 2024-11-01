@@ -51,8 +51,10 @@ type Transport struct {
 	BindHost  string
 	BindPort  int
 
-	ExternalHost string // SIP signaling and media external addr
-	ExternalPort int
+	// TODO change this externalHOst to IP to support better both IP versions
+	ExternalHost    string // SIP signaling and media external addr
+	ExternalPort    int
+	ExternalMediaIP net.IP
 	// ExternalMediaAddr string // External media addr
 
 	// In case TLS protocol
@@ -72,13 +74,15 @@ func WithTransport(t Transport) DiagoOption {
 		// Resolve unspecified IP for contact hdr
 		extIp := net.ParseIP(t.ExternalHost)
 		if t.ExternalHost == "" || (extIp != nil && extIp.IsUnspecified()) {
-			ip, _, err := sip.ResolveInterfacesIP(t.Transport, nil)
+			ip, _, err := sip.ResolveInterfacesIP("ipv4", nil)
 			if err != nil {
 				dg.log.Error().Err(err).Msg("Failed to resolve interface ip for contact header")
 			} else {
 				// We should follow udp4 tcp4 in future
 				t.ExternalHost = ip.To4().String()
+				extIp = ip
 			}
+
 		}
 
 		dg.transports = append(dg.transports, t)
@@ -451,10 +455,11 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 			transport = t
 		}
 	}
+	tran := dg.getTransport(transport)
 
 	dialogCli := sipgo.DialogUA{
 		Client:     dg.client,
-		ContactHDR: dg.getContactHDR(transport),
+		ContactHDR: dg.contactHDRFromTransport(tran),
 	}
 
 	d = &DialogClientSession{}
@@ -465,6 +470,7 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 	if err != nil {
 		return nil, err
 	}
+	sess.ExternalIP = tran.ExternalMediaIP
 
 	inviteReq := sip.NewRequest(sip.INVITE, recipient)
 	for _, h := range opts.Headers {
@@ -627,14 +633,12 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 
 func (dg *Diago) getContactHDR(transport string) sip.ContactHeader {
 	// Find contact hdr matching transport
-	tran := dg.transports[0]
+	tran := dg.getTransport(transport)
+	return dg.contactHDRFromTransport(tran)
+}
 
-	for _, t := range dg.transports[1:] {
-		if sip.NetworkToLower(transport) == t.Transport {
-			tran = t
-		}
-	}
-
+func (dg *Diago) contactHDRFromTransport(tran Transport) sip.ContactHeader {
+	// Find contact hdr matching transport
 	scheme := "sip"
 	if tran.TLSConf != nil {
 		scheme = "sips"
@@ -650,6 +654,17 @@ func (dg *Diago) getContactHDR(transport string) sip.ContactHeader {
 			Headers:   sip.NewParams(),
 		},
 	}
+}
+
+func (dg *Diago) getTransport(transport string) Transport {
+	// Find contact hdr matching transport
+	tran := dg.transports[0]
+	for _, t := range dg.transports[1:] {
+		if sip.NetworkToLower(transport) == t.Transport {
+			return t
+		}
+	}
+	return tran
 }
 
 type RegisterOptions struct {

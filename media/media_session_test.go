@@ -8,8 +8,10 @@ import (
 	"net"
 	"testing"
 
+	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/fakes"
 	"github.com/pion/rtcp"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -91,4 +93,25 @@ func TestReadRTCP(t *testing.T) {
 	require.IsType(t, &rtcp.SenderReport{}, pkts[0])
 	require.IsType(t, &rtcp.ReceiverReport{}, pkts[1])
 
+}
+
+func TestMediaSessionExternalIP(t *testing.T) {
+	m := &MediaSession{
+		Formats: sdp.Formats{
+			sdp.FORMAT_TYPE_ULAW, sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_TELEPHONE_EVENT,
+		},
+		Laddr:      &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
+		Mode:       sdp.ModeSendrecv,
+		ExternalIP: net.IPv4(1, 1, 1, 1),
+	}
+
+	data := m.LocalSDP()
+	sd := sdp.SessionDescription{}
+	err := sdp.Unmarshal(data, &sd)
+	require.NoError(t, err)
+
+	connInfo, err := sd.ConnectionInformation()
+	require.NoError(t, err)
+	assert.NotEmpty(t, connInfo.IP.To4())
+	assert.Equal(t, m.ExternalIP.To4(), connInfo.IP.To4())
 }
