@@ -62,18 +62,14 @@ func TestIntegrationPlaybackURL(t *testing.T) {
 
 	{
 		ua, _ := sipgo.NewUA()
-		// phone := sipgox.NewPhone(ua, sipgox.WithPhoneListenAddr(
-		// 	sipgox.ListenAddr{
-		// 		Network: "udp",
-		// 		Addr:    "127.0.0.100:15060",
-		// 	},
-		// ))
-
 		phone := NewDiago(ua, WithTransport(Transport{
 			Transport: "udp",
 			BindHost:  "127.0.0.100",
 			BindPort:  15060,
 		}))
+		// Just to have handled BYE
+		err := phone.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
+		require.NoError(t, err)
 
 		dialog, err := phone.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 15060}, InviteOptions{})
 		require.NoError(t, err)

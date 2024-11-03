@@ -152,15 +152,15 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 	r.PacketHeader = pkt.Header
 
 	// Is there better way to compare this?
+	payloadSize := rtpN - pkt.Header.MarshalSize() - int(pkt.PaddingSize)
 	if len(b) != len(unreadPayload) {
 		// We are not using passed buffer. We need to copy payload
-		payloadSize := rtpN - pkt.Header.MarshalSize() - int(pkt.PaddingSize)
 		pkt.Payload = pkt.Payload[:payloadSize]
 		n = r.readPayload(b, pkt.Payload)
 		return n, nil
 
 	}
-	return n, nil
+	return payloadSize, nil
 }
 
 func (r *RTPPacketReader) readPayload(b []byte, payload []byte) int {
