@@ -7,7 +7,7 @@ import (
 )
 
 func EncodeUlawTo(ulaw []byte, lpcm []byte) (n int, err error) {
-	if len(lpcm) < len(ulaw)*2 {
+	if len(lpcm) > len(ulaw)*2 {
 		return 0, io.ErrShortBuffer
 	}
 
@@ -32,7 +32,7 @@ func DecodeUlawTo(lpcm []byte, ulaw []byte) (n int, err error) {
 }
 
 func EncodeAlawTo(alaw []byte, lpcm []byte) (n int, err error) {
-	if len(lpcm) < len(alaw)*2 {
+	if len(lpcm) > len(alaw)*2 {
 		return 0, io.ErrShortBuffer
 	}
 

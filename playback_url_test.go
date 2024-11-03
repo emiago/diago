@@ -87,9 +87,10 @@ func TestIntegrationPlaybackURL(t *testing.T) {
 			dialog.Hangup(ctx)
 		}()
 		b := bytes.NewBuffer([]byte{})
-		_, err = media.CopyWithBuf(rtpReader, b, make([]byte, media.RTPBufSize))
-		// buf, err := io.ReadAll(rtpReader)
+		written, err := media.CopyWithBuf(rtpReader, b, make([]byte, media.RTPBufSize))
+		// bnf, err := io.ReadAll(rtpReader)
 		require.ErrorIs(t, err, io.EOF)
+		require.Greater(t, written, int64(10000))
 		require.Greater(t, b.Len(), 10000)
 	}
 
