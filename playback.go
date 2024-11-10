@@ -120,7 +120,7 @@ func (p *AudioPlayback) streamWav(body io.Reader, playWriter io.Writer) (int64, 
 	defer playBufPool.Put(buf)
 	payloadBuf := buf.([]byte)[:payloadSize] // 20 ms
 
-	enc, err := audio.NewPCMEncoder(codec.PayloadType, playWriter)
+	enc, err := audio.NewPCMEncoderWriter(codec.PayloadType, playWriter)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create PCM encoder: %w", err)
 	}
@@ -141,7 +141,7 @@ func (p *AudioPlayback) calcPlayoutSize() int {
 
 func streamWavRTP(body io.Reader, rtpWriter *media.RTPPacketWriter, codec media.Codec) (int64, error) {
 	pt := codec.PayloadType
-	enc, err := audio.NewPCMEncoder(pt, rtpWriter)
+	enc, err := audio.NewPCMEncoderWriter(pt, rtpWriter)
 	if err != nil {
 		return 0, err
 	}

@@ -65,7 +65,7 @@ func ReadMedia(inDialog *diago.DialogServerSession) error {
 		diago.WithAudioReaderMediaProps(&m),
 	)
 
-	decoder, err := audio.NewPCMDecoder(m.Codec.PayloadType, audioReader)
+	decoder, err := audio.NewPCMDecoderReader(m.Codec.PayloadType, audioReader)
 	if err != nil {
 		return err
 	}

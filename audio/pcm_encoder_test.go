@@ -36,7 +36,7 @@ func TestPCMEncoderWrite(t *testing.T) {
 			var outputBuffer bytes.Buffer
 
 			// Create the PCM encoder
-			encoder, err := NewPCMEncoder(tt.codec, &outputBuffer)
+			encoder, err := NewPCMEncoderWriter(tt.codec, &outputBuffer)
 			require.NoError(t, err)
 
 			// Write the PCM data
@@ -80,7 +80,7 @@ func TestPCMDecoderRead(t *testing.T) {
 			inputBuffer := bytes.NewReader(tt.input)
 
 			// Create the PCM decoder
-			decoder, err := NewPCMDecoder(tt.codec, inputBuffer)
+			decoder, err := NewPCMDecoderReader(tt.codec, inputBuffer)
 			require.NoError(t, err)
 
 			// Prepare a buffer to read the decoded PCM data into

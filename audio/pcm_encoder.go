@@ -8,6 +8,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/emiago/media"
 	"github.com/zaf/g711"
 )
 
@@ -39,19 +40,15 @@ var (
 )
 
 type PCMDecoder struct {
-	Source    io.Reader
-	Writer    io.Writer
-	Decoder   func(encoded []byte) (lpcm []byte)
+	Decoder func(encoded []byte) (lpcm []byte)
+	// DecoderTo Must know size in advance!
 	DecoderTo func(lpcm []byte, encoded []byte) (int, error)
-	buf       []byte
 }
 
 // PCM decoder is streamer implementing io.Reader. It reads from underhood reader and returns decoded
 // codec data
-func NewPCMDecoder(codec uint8, reader io.Reader) (*PCMDecoder, error) {
-	dec := &PCMDecoder{
-		Source: reader,
-	}
+func NewPCMDecoder(codec uint8) (*PCMDecoder, error) {
+	dec := &PCMDecoder{}
 	switch codec {
 	case FORMAT_TYPE_ULAW:
 		dec.Decoder = g711.DecodeUlaw // returns 16bit LPCM
@@ -64,17 +61,34 @@ func NewPCMDecoder(codec uint8, reader io.Reader) (*PCMDecoder, error) {
 	default:
 		return nil, fmt.Errorf("not supported codec %d", codec)
 	}
-
 	return dec, nil
 }
 
-func (d *PCMDecoder) Read(b []byte) (n int, err error) {
+type PCMDecoderReader struct {
+	PCMDecoder
+	Source io.Reader
+	buf    []byte
+}
 
-	if d.buf == nil {
-		d.buf = make([]byte, len(b)/2)
+func NewPCMDecoderReader(codec uint8, reader io.Reader) (*PCMDecoderReader, error) {
+	d, err := NewPCMDecoder(codec)
+	if err != nil {
+		return nil, err
 	}
 
-	n, err = d.Source.Read(d.buf)
+	return &PCMDecoderReader{
+		PCMDecoder: *d,
+		Source:     reader,
+	}, nil
+}
+
+func (d *PCMDecoderReader) Read(b []byte) (n int, err error) {
+	if d.buf == nil {
+		d.buf = make([]byte, media.RTPBufSize)
+	}
+	limit := min(len(b)/2, media.RTPBufSize)
+
+	n, err = d.Source.Read(d.buf[:limit])
 	if err != nil {
 		return n, err
 	}
@@ -92,25 +106,23 @@ func (d *PCMDecoder) Read(b []byte) (n int, err error) {
 	return n, nil
 }
 
-func NewPCMDecoderReader(codec uint8, reader io.Reader) (*PCMDecoder, error) {
-	d, err := NewPCMDecoder(codec, nil)
+type PCMDecoderWriter struct {
+	PCMDecoder
+	Writer io.Writer
+}
+
+func NewPCMDecoderWriter(codec uint8, writer io.Writer) (*PCMDecoderWriter, error) {
+	d, err := NewPCMDecoder(codec)
 	if err != nil {
 		return nil, err
 	}
-	d.Source = reader
-	return d, nil
+	return &PCMDecoderWriter{
+		PCMDecoder: *d,
+		Writer:     writer,
+	}, nil
 }
 
-func NewPCMDecoderWriter(codec uint8, writer io.Writer) (*PCMDecoder, error) {
-	d, err := NewPCMDecoder(codec, nil)
-	if err != nil {
-		return nil, err
-	}
-	d.Writer = writer
-	return d, nil
-}
-
-func (d *PCMDecoder) Write(b []byte) (n int, err error) {
+func (d *PCMDecoderWriter) Write(b []byte) (n int, err error) {
 	// TODO avoid this allocation
 	lpcm := d.Decoder(b)
 	nn := 0
@@ -126,17 +138,13 @@ func (d *PCMDecoder) Write(b []byte) (n int, err error) {
 }
 
 type PCMEncoder struct {
-	Destination io.Writer
-	Encoder     func(lpcm []byte) (encoded []byte)
-	EncoderTo   func(lpcm []byte, encoded []byte) (int, error)
-	buf         []byte
+	Encoder   func(lpcm []byte) (encoded []byte)
+	EncoderTo func(lpcm []byte, encoded []byte) (int, error)
 }
 
 // PCMEncoder encodes data from pcm to codec and passes to writer
-func NewPCMEncoder(codec uint8, writer io.Writer) (*PCMEncoder, error) {
-	dec := &PCMEncoder{
-		Destination: writer,
-	}
+func NewPCMEncoder(codec uint8) (*PCMEncoder, error) {
+	dec := &PCMEncoder{}
 	switch codec {
 	case FORMAT_TYPE_ULAW:
 		dec.Encoder = g711.EncodeUlaw
@@ -153,11 +161,29 @@ func NewPCMEncoder(codec uint8, writer io.Writer) (*PCMEncoder, error) {
 	return dec, nil
 }
 
-func (d *PCMEncoder) Write(lpcm []byte) (n int, err error) {
+type PCMEncoderWriter struct {
+	PCMEncoder
+	Destination io.Writer
+	buf         []byte
+}
+
+func NewPCMEncoderWriter(codec uint8, writer io.Writer) (*PCMEncoderWriter, error) {
+	d, err := NewPCMEncoder(codec)
+	if err != nil {
+		return nil, err
+	}
+	return &PCMEncoderWriter{
+		PCMEncoder:  *d,
+		Destination: writer,
+	}, nil
+}
+
+func (d *PCMEncoderWriter) Write(lpcm []byte) (n int, err error) {
 	if d.buf == nil {
 		// We expect constant rate
 		// TODO can we even remove this allocation
-		d.buf = make([]byte, len(lpcm)/2)
+		// d.buf = make([]byte, len(lpcm)/2)
+		d.buf = make([]byte, media.RTPBufSize)
 	}
 
 	ind := 0

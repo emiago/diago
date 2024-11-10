@@ -51,7 +51,7 @@ func TestIntegrationPlaybackStreamWAV(t *testing.T) {
 	rtpWriter := media.NewRTPPacketWriter(sess, codec)
 	sess.Raddr = &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
-	enc, err := audio.NewPCMEncoder(codec.PayloadType, rtpWriter)
+	enc, err := audio.NewPCMEncoderWriter(codec.PayloadType, rtpWriter)
 	require.NoError(t, err)
 
 	p := NewAudioPlayback(enc, codec)
