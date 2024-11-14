@@ -79,7 +79,11 @@ func WithTransport(t Transport) DiagoOption {
 		}
 
 		// Setup media IP
-		t.mediaBindIP = net.ParseIP(t.BindHost)
+		bindIP := net.ParseIP(t.BindHost)
+		if bindIP != nil && !bindIP.IsUnspecified() {
+			t.mediaBindIP = bindIP
+		}
+
 		if t.MediaExternalIP == nil && t.ExternalHost != "" {
 			// try to use external host as external media IP
 			if extIp != nil && !extIp.IsUnspecified() {
