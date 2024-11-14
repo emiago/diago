@@ -8,7 +8,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/emiago/media"
+	"github.com/emiago/diago/media"
 	"github.com/zaf/g711"
 )
 
