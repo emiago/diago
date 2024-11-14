@@ -480,7 +480,9 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		}
 	}
 	tran := dg.getTransport(transport)
+	contactHDR := dg.contactHDRFromTransport(tran)
 
+	// TODO: remove this alloc of UA each time
 	dialogCli := sipgo.DialogUA{
 		Client:     dg.client,
 		ContactHDR: dg.contactHDRFromTransport(tran),
@@ -569,6 +571,7 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		}
 	}
 
+	inviteReq.AppendHeader(&contactHDR)
 	inviteReq.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
 	inviteReq.SetBody(sess.LocalSDP())
 
