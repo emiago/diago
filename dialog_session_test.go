@@ -18,6 +18,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func dialogEcho(sess DialogSession) error {
+	audioR, err := sess.Media().AudioReader()
+	if err != nil {
+		return err
+	}
+
+	audioW, err := sess.Media().AudioWriter()
+	if err != nil {
+		return err
+	}
+
+	_, err = media.Copy(audioR, audioW)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func TestMain(m *testing.M) {
 	lev, err := zerolog.ParseLevel(os.Getenv("LOG_LEVEL"))
 	if err != nil || lev == zerolog.NoLevel {
@@ -57,6 +75,7 @@ func TestIntegrationInbound(t *testing.T) {
 			d.Ringing()
 			d.Answer()
 
+			dialogEcho(d)
 			<-d.Context().Done()
 			return
 		}
@@ -90,6 +109,16 @@ func TestIntegrationInbound(t *testing.T) {
 		require.NoError(t, err)
 		defer dialog.Close()
 
+		// Confirm media traveling
+		audioR, err := dialog.AudioReader()
+		require.NoError(t, err)
+
+		audioW, err := dialog.AudioWriter()
+		require.NoError(t, err)
+
+		writeN, _ := audioW.Write([]byte("my audio"))
+		readN, _ := audioR.Read(make([]byte, 100))
+		assert.Equal(t, writeN, readN, "media echo failed")
 		dialog.Hangup(ctx)
 	}
 }

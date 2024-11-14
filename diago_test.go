@@ -2,15 +2,17 @@ package diago
 
 import (
 	"context"
+	"net"
 	"testing"
 
+	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func testDiagoClient(t *testing.T, onRequest func(req *sip.Request) *sip.Response) *Diago {
+func testDiagoClient(t *testing.T, onRequest func(req *sip.Request) *sip.Response, opts ...DiagoOption) *Diago {
 	// Create client transaction request
 	cTxReq := &clientTxRequester{
 		onRequest: onRequest,
@@ -22,7 +24,9 @@ func testDiagoClient(t *testing.T, onRequest func(req *sip.Request) *sip.Respons
 	t.Cleanup(func() {
 		ua.Close()
 	})
-	return NewDiago(ua, WithClient(client))
+
+	opts = append(opts, WithClient(client))
+	return NewDiago(ua, opts...)
 }
 
 func TestDiagoRegister(t *testing.T) {
@@ -78,5 +82,82 @@ func TestDiagoInviteCallerID(t *testing.T) {
 
 	t.Run("SetCalleridWithBridgeOriginator", func(t *testing.T) {
 		t.Skip("NOT IMPLEMENTED")
+	})
+}
+
+func TestDiagoTransportConfs(t *testing.T) {
+	type testCase = struct {
+		tran                    Transport
+		expectedContactHostPort string
+		expectedMediaHost       string
+	}
+
+	doTest := func(tc testCase) {
+		tran := tc.tran
+		reqCh := make(chan *sip.Request)
+		dg := testDiagoClient(t, func(req *sip.Request) *sip.Response {
+			reqCh <- req
+			return sip.NewResponseFromRequest(req, 200, "OK", nil)
+		}, WithTransport(tran))
+
+		go dg.Invite(context.TODO(), sip.Uri{User: "alice", Host: "localhost"}, InviteOptions{})
+
+		// Now check our req passed on client
+		req := <-reqCh
+
+		// parse SDP
+		sd := sdp.SessionDescription{}
+		require.NoError(t, sdp.Unmarshal(req.Body(), &sd))
+		connInfo, err := sd.ConnectionInformation()
+		require.NoError(t, err)
+
+		assert.Equal(t, tc.expectedContactHostPort, req.Contact().Address.HostPort())
+		assert.Equal(t, tc.expectedMediaHost, connInfo.IP.String())
+	}
+
+	t.Run("ExternalHost", func(t *testing.T) {
+		tc := testCase{
+			tran: Transport{
+				Transport:    "udp",
+				BindHost:     "127.0.0.111",
+				BindPort:     15060,
+				ExternalHost: "1.2.3.4",
+			},
+			expectedContactHostPort: "1.2.3.4:15060",
+			expectedMediaHost:       "1.2.3.4",
+		}
+
+		doTest(tc)
+	})
+
+	t.Run("ExternalHostFQDN", func(t *testing.T) {
+		tc := testCase{
+			tran: Transport{
+				Transport:    "udp",
+				BindHost:     "127.0.0.111",
+				BindPort:     15060,
+				ExternalHost: "myhost.pbx.com",
+			},
+			expectedContactHostPort: "myhost.pbx.com:15060",
+			expectedMediaHost:       "127.0.0.111", // Hosts are not resolved so it goes with bind
+		}
+
+		doTest(tc)
+	})
+
+	t.Run("ExternalHostFQDNExternalMedia", func(t *testing.T) {
+		tc := testCase{
+			tran: Transport{
+				Transport:       "udp",
+				BindHost:        "127.0.0.111",
+				BindPort:        15060,
+				ExternalHost:    "myhost.pbx.com",
+				MediaExternalIP: net.IPv4(1, 2, 3, 4),
+			},
+			expectedContactHostPort: "myhost.pbx.com:15060",
+			expectedMediaHost:       "1.2.3.4", // Hosts are not resolved so it goes with bind
+		}
+
+		doTest(tc)
 	})
 }

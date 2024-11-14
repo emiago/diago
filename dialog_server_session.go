@@ -27,9 +27,8 @@ type DialogServerSession struct {
 	// We do not use sipgo as this needs mutex but also keeping original invite
 	lastInvite *sip.Request
 
-	contactHDR sip.ContactHeader
-
-	closed atomic.Uint32
+	mediaConf MediaConfig
+	closed    atomic.Uint32
 }
 
 func (d *DialogServerSession) Id() string {
@@ -80,21 +79,18 @@ func (d *DialogServerSession) RemoteContact() *sip.ContactHeader {
 }
 
 func (d *DialogServerSession) Respond(statusCode sip.StatusCode, reason string, body []byte, headers ...sip.Header) error {
-	// TODO fix this on dialog srv
-	headers = append(headers, &d.contactHDR)
 	return d.DialogServerSession.Respond(statusCode, reason, body, headers...)
 }
 
 func (d *DialogServerSession) RespondSDP(body []byte) error {
 	headers := []sip.Header{sip.NewHeader("Content-Type", "application/sdp")}
-	headers = append(headers, &d.contactHDR)
 	return d.DialogServerSession.Respond(200, "OK", body, headers...)
 }
 
 // Answer creates media session and answers
 // NOTE: Not final API
 func (d *DialogServerSession) Answer() error {
-	sess, err := d.createMediaSession(d.formats)
+	sess, err := d.createMediaSessionConf(d.mediaConf)
 	if err != nil {
 		return err
 	}
@@ -112,7 +108,7 @@ type AnswerOptions struct {
 //
 // NOTE: API may change
 func (d *DialogServerSession) AnswerOptions(opt AnswerOptions) error {
-	sess, err := d.createMediaSession(d.formats)
+	sess, err := d.createMediaSessionConf(d.mediaConf)
 	if err != nil {
 		return err
 	}

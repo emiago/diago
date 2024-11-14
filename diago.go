@@ -51,11 +51,12 @@ type Transport struct {
 	BindHost  string
 	BindPort  int
 
-	// TODO change this externalHOst to IP to support better both IP versions
-	ExternalHost    string // SIP signaling and media external addr
-	ExternalPort    int
-	ExternalMediaIP net.IP
-	// ExternalMediaAddr string // External media addr
+	ExternalHost string // SIP signaling and media external addr
+	ExternalPort int
+
+	// MediaExternalIP changes SDP IP, by default it tries to use external host if it is IP defined
+	MediaExternalIP net.IP
+	mediaBindIP     net.IP
 
 	// In case TLS protocol
 	TLSConf *tls.Config
@@ -63,17 +64,9 @@ type Transport struct {
 
 func WithTransport(t Transport) DiagoOption {
 	return func(dg *Diago) {
-		if t.ExternalHost == "" {
-			t.ExternalHost = t.BindHost
-			// If unspecified IP???
-		}
-		if t.ExternalPort == 0 {
-			t.ExternalPort = t.BindPort
-		}
-
 		// Resolve unspecified IP for contact hdr
 		extIp := net.ParseIP(t.ExternalHost)
-		if t.ExternalHost == "" || (extIp != nil && extIp.IsUnspecified()) {
+		if extIp != nil && extIp.IsUnspecified() {
 			ip, _, err := sip.ResolveInterfacesIP("ipv4", nil)
 			if err != nil {
 				dg.log.Error().Err(err).Msg("Failed to resolve interface ip for contact header")
@@ -85,6 +78,23 @@ func WithTransport(t Transport) DiagoOption {
 
 		}
 
+		// Setup media IP
+		t.mediaBindIP = net.ParseIP(t.BindHost)
+		if t.MediaExternalIP == nil && t.ExternalHost != "" {
+			// try to use external host as external media IP
+			if extIp != nil && !extIp.IsUnspecified() {
+				t.MediaExternalIP = extIp
+			}
+		}
+
+		if t.ExternalHost == "" {
+			t.ExternalHost = t.BindHost
+		}
+
+		if t.ExternalPort == 0 {
+			t.ExternalPort = t.BindPort
+		}
+
 		dg.transports = append(dg.transports, t)
 	}
 }
@@ -92,7 +102,11 @@ func WithTransport(t Transport) DiagoOption {
 type MediaConfig struct {
 	Formats sdp.Formats
 
-	// TODO
+	// Used internally
+	bindIP     net.IP
+	externalIP net.IP
+
+	// TODO, For now it is global on media package
 	// RTPPortStart int
 	// RTPPortEnd   int
 }
@@ -135,28 +149,35 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		o(dg)
 	}
 
+	if len(dg.transports) == 0 {
+		dg.transports = append(dg.transports, Transport{
+			Transport:       "udp",
+			BindHost:        "127.0.0.1",
+			BindPort:        5060,
+			ExternalHost:    "127.0.0.1",
+			ExternalPort:    5060,
+			mediaBindIP:     net.IPv4(127, 0, 0, 1),
+			MediaExternalIP: nil,
+		})
+	}
+
 	if dg.client == nil {
-		dg.client, _ = sipgo.NewClient(ua,
+		opts := []sipgo.ClientOption{
 			sipgo.WithClientNAT(),
-		)
+		}
+
+		// TODO this could be better. but for now we want to avoid client setting
+		// custom host
+		tran := dg.getTransport("")
+		if ip := net.ParseIP(tran.BindHost); ip != nil && !ip.IsUnspecified() {
+			opts = append(opts, sipgo.WithClientHostname(tran.BindHost))
+		}
+		dg.client, _ = sipgo.NewClient(ua, opts...)
 	}
 
 	if dg.server == nil {
 		dg.server, _ = sipgo.NewServer(ua)
 	}
-
-	if len(dg.transports) == 0 {
-		dg.transports = append(dg.transports, Transport{
-			Transport:    "udp",
-			BindHost:     "127.0.0.1",
-			BindPort:     5060,
-			ExternalHost: "127.0.0.1",
-			ExternalPort: 5060,
-		})
-	}
-
-	// Create our default contact hdr
-	contactHDR := dg.getContactHDR("")
 
 	server := dg.server
 	server.OnInvite(func(req *sip.Request, tx sip.ServerTransaction) {
@@ -167,10 +188,12 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			return
 		}
 
+		tran := dg.getTransport(req.Transport())
+
 		// Proceed as new call
 		dialogUA := sipgo.DialogUA{
 			Client:     dg.client,
-			ContactHDR: contactHDR,
+			ContactHDR: dg.contactHDRFromTransport(tran),
 		}
 
 		dialog, err := dialogUA.ReadInvite(req, tx)
@@ -183,8 +206,14 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		dWrap := &DialogServerSession{
 			DialogServerSession: dialog,
 			DialogMedia:         DialogMedia{},
+			// TODO we may actually just build media session with this conf here
+			mediaConf: MediaConfig{
+				Formats:    dg.mediaConf.Formats,
+				bindIP:     tran.mediaBindIP,
+				externalIP: tran.MediaExternalIP,
+			},
 		}
-		dg.initServerSession(dWrap)
+
 		defer dWrap.Close()
 
 		DialogsServerCache.DialogStore(dWrap.Context(), dWrap.ID, dWrap)
@@ -350,11 +379,6 @@ func (dg *Diago) handleReInvite(req *sip.Request, tx sip.ServerTransaction, id s
 	s.handleReInvite(req, tx)
 }
 
-func (dg *Diago) initServerSession(d *DialogServerSession) {
-	d.contactHDR = dg.getContactHDR(d.InviteRequest.Transport())
-	d.formats = dg.mediaConf.Formats
-}
-
 func (dg *Diago) Serve(ctx context.Context, f ServeDialogFunc) error {
 	server := dg.server
 	dg.HandleFunc(f)
@@ -466,11 +490,15 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 
 	// Create media
 	// TODO explicit media format passing
-	sess, err := d.createMediaSession(dg.mediaConf.Formats)
+	mediaConf := MediaConfig{
+		Formats:    dg.mediaConf.Formats,
+		bindIP:     tran.mediaBindIP,
+		externalIP: tran.MediaExternalIP,
+	}
+	sess, err := d.createMediaSessionConf(mediaConf)
 	if err != nil {
 		return nil, err
 	}
-	sess.ExternalIP = tran.ExternalMediaIP
 
 	inviteReq := sip.NewRequest(sip.INVITE, recipient)
 	for _, h := range opts.Headers {
@@ -657,7 +685,6 @@ func (dg *Diago) contactHDRFromTransport(tran Transport) sip.ContactHeader {
 }
 
 func (dg *Diago) getTransport(transport string) Transport {
-	// Find contact hdr matching transport
 	tran := dg.transports[0]
 	for _, t := range dg.transports[1:] {
 		if sip.NetworkToLower(transport) == t.Transport {

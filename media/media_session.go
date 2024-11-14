@@ -74,11 +74,19 @@ func NewMediaSession(laddr *net.UDPAddr) (s *MediaSession, e error) {
 		log:   log.With().Str("caller", "media").Logger(),
 	}
 
+	return s, s.createListeners(s.Laddr)
+}
+
+// Init should be called if session is created manually
+// Use NewMediaSession for default building
+func (s *MediaSession) Init() error {
+	s.log = log.With().Str("caller", "media").Logger()
+
 	// Try to listen on this ports
 	if err := s.createListeners(s.Laddr); err != nil {
-		return nil, err
+		return err
 	}
-	return s, nil
+	return nil
 }
 
 func (s *MediaSession) StopRTP(rw int8, dur time.Duration) error {

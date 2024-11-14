@@ -62,8 +62,6 @@ type DialogMedia struct {
 	audioReader io.Reader
 	audioWriter io.Writer
 
-	formats sdp.Formats
-
 	onClose func()
 
 	closed bool
@@ -124,17 +122,28 @@ func (d *DialogMedia) initMediaSessionUnsafe(m *media.MediaSession, r *media.RTP
 	d.RTPPacketWriter = w
 }
 
-func (d *DialogMedia) createMediaSession(formats sdp.Formats) (*media.MediaSession, error) {
-	// TODO we may want to give this control caller or try to figure out based on SIP routing
-	ip, _, err := sip.ResolveInterfacesIP("ip4", net.ParseIP("127.0.0.1"))
-	if err != nil {
-		return nil, err
+func (d *DialogMedia) createMediaSession(formats sdp.Formats, bindIP net.IP) (*media.MediaSession, error) {
+	if bindIP == nil {
+		var err error
+		bindIP, _, err = sip.ResolveInterfacesIP("ip4", nil)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	laddr := &net.UDPAddr{IP: ip, Port: 0}
+	laddr := &net.UDPAddr{IP: bindIP, Port: 0}
 	sess, err := media.NewMediaSession(laddr)
 	sess.Formats = formats
 	return sess, err
+}
+
+func (d *DialogMedia) createMediaSessionConf(conf MediaConfig) (*media.MediaSession, error) {
+	sess, err := d.createMediaSession(conf.Formats, conf.bindIP)
+	if err != nil {
+		return nil, err
+	}
+	sess.ExternalIP = conf.externalIP
+	return sess, nil
 }
 
 // Must be protected with lock
