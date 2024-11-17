@@ -73,7 +73,7 @@ func (w *RTPDtmfReader) processDTMFEvent(ev DTMFEvent) {
 		// select {
 		// case w.dtmfCh <- byte(ev.Event):
 		// default:
-		// 	log.Warn().Msg("DTMF event missed")
+		// 	log.Warn()d.Msg("DTMF event missed")
 		// }
 		// Reset last ev
 		w.lastEv = DTMFEvent{}

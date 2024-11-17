@@ -68,7 +68,7 @@ func RTPDTMFEncode(char rune) []DTMFEvent {
 		events[i] = d
 	}
 
-	// End events. Took this from linphone example, but not clear why sending this many
+	// End events with redudancy
 	for i := 4; i < 7; i++ {
 		d := DTMFEvent{
 			Event:      event,

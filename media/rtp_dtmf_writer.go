@@ -52,7 +52,7 @@ func (w *RTPDtmfWriter) writeDTMF(dtmf rune) error {
 	packetWriter := w.packetWriter
 
 	evs := RTPDTMFEncode(dtmf)
-	ticker := time.NewTicker(20 * time.Millisecond)
+	ticker := time.NewTicker(w.codec.SampleDur)
 	defer ticker.Stop()
 	for i, e := range evs {
 		data := DTMFEncode(e)

@@ -35,8 +35,8 @@ type RTPPacketWriter struct {
 	writer      RTPWriter
 	clockTicker *time.Ticker
 
-	// After each write this is set as packet.
-	LastPacket rtp.Packet
+	// After each write packet header is saved for more reading
+	PacketHeader rtp.Header
 	// SSRC is readOnly and it is not changed
 	SSRC uint32
 
@@ -132,7 +132,7 @@ func (p *RTPPacketWriter) WriteSamples(payload []byte, sampleRateTimestamp uint3
 		Payload: payload,
 	}
 
-	p.LastPacket = pkt
+	p.PacketHeader = pkt.Header
 	p.nextTimestamp += sampleRateTimestamp
 
 	err := writer.WriteRTP(&pkt)
