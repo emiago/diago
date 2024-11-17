@@ -351,6 +351,45 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		return tx.Respond(res)
 	}))
 
+	dg.server.OnRefer(func(req *sip.Request, tx sip.ServerTransaction) {
+		_, cd, err := MatchDialog(req)
+		if err != nil {
+			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
+				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
+				return
+
+			}
+			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+			return
+		}
+		if cd != nil {
+			cd.handleRefer(dg, req, tx)
+			return
+
+		}
+		// TODO server
+		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
+	})
+
+	dg.server.OnNotify(func(req *sip.Request, tx sip.ServerTransaction) {
+		// THIS should match now subscribtion instead dialog
+		sd, cd, err := MatchDialog(req)
+		if err != nil {
+			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
+				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
+				return
+
+			}
+			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+			return
+		}
+		if cd != nil {
+			// cd.handleRefer(dg, req, tx)
+			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
+			return
+		}
+		sd.handleReferNotify(req, tx)
+	})
 	// server.OnRefer(func(req *sip.Request, tx sip.ServerTransaction) {
 	// 	d, err := MatchDialogServer(req)
 	// 	if err != nil {
@@ -464,6 +503,7 @@ func (dg *Diago) HandleFunc(f ServeDialogFunc) {
 type InviteOptions struct {
 	OnResponse   func(res *sip.Response) error
 	OnRTPSession func(rtpSess *media.RTPSession)
+	OnRefer      func(referDialog *DialogClientSession)
 	// For digest authentication
 	Username string
 	Password string
@@ -528,7 +568,9 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 	}
 	dg.contactHDRFromTransport(tran, &dialogCli.ContactHDR)
 
-	d = &DialogClientSession{}
+	d = &DialogClientSession{
+		onReferDialog: opts.OnRefer,
+	}
 
 	// Create media
 	// TODO explicit media format passing

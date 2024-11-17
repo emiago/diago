@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -269,7 +270,7 @@ func (d *DialogServerSession) Refer(ctx context.Context, referTo sip.Uri) error 
 	// UASRequestBuild(req, d.InviteResponse)
 
 	// Invite request tags must be preserved but switched
-	req.AppendHeader(sip.NewHeader("Refer-to", referTo.String()))
+	req.AppendHeader(sip.NewHeader("Refer-To", referTo.String()))
 
 	res, err := d.Do(ctx, req)
 	if err != nil {
@@ -282,16 +283,33 @@ func (d *DialogServerSession) Refer(ctx context.Context, referTo sip.Uri) error 
 		}
 	}
 
-	// d.waitNotify = make(chan error)
-	return d.Hangup(ctx)
+	// TODO wait 200 OK via NOTIFY
+	return nil
+}
 
-	// // There is now implicit subscription
-	// select {
-	// case e := <-d.waitNotify:
-	// 	return e
-	// case <-d.Context().Done():
-	// 	return d.Context().Err()
-	// }
+func (d *DialogServerSession) handleReferNotify(req *sip.Request, tx sip.ServerTransaction) {
+	// TODO how to know this is refer
+	contentType := req.ContentType().Value()
+	// For now very basic check
+	if !strings.HasPrefix(contentType, "message/sipfrag;version=2.0") {
+		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil))
+		return
+	}
+
+	frag := string(req.Body())
+	if len(frag) < len("SIP/2.0 100 xx") {
+		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil))
+		return
+	}
+
+	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusOK, "OK", nil))
+
+	log.Info().Msg("Handling NOTIFY: " + string(req.Body()))
+	switch frag[:11] {
+	case "SIP/2.0 100":
+	case "SIP/2.0 200":
+		d.Hangup(d.Context())
+	}
 }
 
 func (d *DialogServerSession) handleReInvite(req *sip.Request, tx sip.ServerTransaction) error {
