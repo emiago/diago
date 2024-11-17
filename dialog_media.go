@@ -46,6 +46,10 @@ type DialogMedia struct {
 	// Only safe to use after dialog Answered (Completed state)
 	mediaSession *media.MediaSession
 
+	// rtp session is created for usage with RTPPacketReader and RTPPacketWriter
+	// it adds RTCP layer and RTP monitoring before passing packets to MediaSession
+	rtpSession *media.RTPSession
+
 	// Packet reader is default reader for RTP audio stream
 	// Use always AudioReader to get current Audio reader
 	// Use this only as read only
@@ -122,6 +126,13 @@ func (d *DialogMedia) initMediaSessionUnsafe(m *media.MediaSession, r *media.RTP
 	d.RTPPacketWriter = w
 }
 
+func (d *DialogMedia) initRTPSessionUnsafe(m *media.MediaSession, rtpSess *media.RTPSession) {
+	d.mediaSession = m
+	d.rtpSession = rtpSess
+	d.RTPPacketReader = media.NewRTPPacketReaderSession(rtpSess)
+	d.RTPPacketWriter = media.NewRTPPacketWriterSession(rtpSess)
+}
+
 func (d *DialogMedia) createMediaSession(formats sdp.Formats, bindIP net.IP) (*media.MediaSession, error) {
 	if bindIP == nil {
 		var err error
@@ -146,6 +157,14 @@ func (d *DialogMedia) createMediaSessionConf(conf MediaConfig) (*media.MediaSess
 	return sess, nil
 }
 
+// RTPSession returns underhood rtp session
+// NOTE: this can be nil
+func (d *DialogMedia) RTPSession() *media.RTPSession {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.rtpSession
+}
+
 // Must be protected with lock
 func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 	msess := d.mediaSession.Fork()
@@ -166,6 +185,9 @@ func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 	d.RTPPacketReader.UpdateRTPSession(rtpSess)
 	d.RTPPacketWriter.UpdateRTPSession(rtpSess)
 	rtpSess.MonitorBackground()
+
+	// hold the reference
+	d.rtpSession = rtpSess
 
 	log.Info().
 		Str("formats", msess.Formats.String()).

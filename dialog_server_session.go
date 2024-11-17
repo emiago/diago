@@ -139,11 +139,7 @@ func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
 	}
 
 	d.mu.Lock()
-	d.initMediaSessionUnsafe(
-		sess,
-		media.NewRTPPacketReaderSession(rtpSess),
-		media.NewRTPPacketWriterSession(rtpSess),
-	)
+	d.initRTPSessionUnsafe(sess, rtpSess)
 	// Close RTP session
 	d.onCloseUnsafe(func() {
 		if err := rtpSess.Close(); err != nil {

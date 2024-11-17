@@ -684,11 +684,7 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		}
 
 		d.mu.Lock()
-		d.initMediaSessionUnsafe(
-			sess,
-			media.NewRTPPacketReaderSession(rtpSess),
-			media.NewRTPPacketWriterSession(rtpSess),
-		)
+		d.initRTPSessionUnsafe(sess, rtpSess)
 		d.onCloseUnsafe(func() {
 			if err := rtpSess.Close(); err != nil {
 				log.Error().Err(err).Msg("Closing session")
