@@ -47,6 +47,7 @@ func WithAuth(auth sipgo.DigestAuth) DiagoOption {
 }
 
 type Transport struct {
+	// Transport must be udp,tcp or ws.
 	Transport string
 	BindHost  string
 	BindPort  int
@@ -399,46 +400,73 @@ func (dg *Diago) handleReInvite(req *sip.Request, tx sip.ServerTransaction, id s
 }
 
 func (dg *Diago) Serve(ctx context.Context, f ServeDialogFunc) error {
+	return dg.serve(ctx, f, func() {})
+}
+
+func (dg *Diago) serve(ctx context.Context, f ServeDialogFunc, readyCh func()) error {
 	server := dg.server
 	dg.HandleFunc(f)
 
-	// For multi transports start multi server
-	if len(dg.transports) > 1 {
-		errCh := make(chan error, len(dg.transports))
-		for _, tran := range dg.transports {
-			hostport := net.JoinHostPort(tran.BindHost, strconv.Itoa(tran.BindPort))
-			log.Info().Str("addr", hostport).Str("protocol", tran.Transport).Msg("Listening on transport")
-			go func(tran Transport) {
-				if tran.TLSConf != nil {
-					errCh <- server.ListenAndServeTLS(ctx, tran.Transport, hostport, tran.TLSConf)
-					return
-				}
+	errCh := make(chan error, len(dg.transports))
+	for i, tran := range dg.transports {
+		hostport := net.JoinHostPort(tran.BindHost, strconv.Itoa(tran.BindPort))
 
-				errCh <- server.ListenAndServe(ctx, tran.Transport, hostport)
-			}(tran)
-		}
-		return <-errCh
+		go func(i int, tran Transport) {
+			// Update transport
+			ctx = context.WithValue(ctx, sipgo.ListenReadyCtxKey, sipgo.ListenReadyFuncCtxValue(func(network, addr string) {
+				// This now fixes port for empheral binding
+				// Alternative to use is tp.GetListenPort but it squashes networks
+				_, port, _ := sip.ParseAddr(addr)
+				if tran.BindPort == 0 {
+					tran.BindPort = port
+					tran.ExternalPort = port
+					dg.transports[i] = tran
+				}
+				readyCh()
+
+				log.Info().Str("addr", addr).Str("protocol", tran.Transport).Msg("Listening on transport")
+			}))
+
+			if tran.TLSConf != nil {
+				errCh <- server.ListenAndServeTLS(ctx, tran.Transport, hostport, tran.TLSConf)
+				return
+			}
+
+			errCh <- server.ListenAndServe(ctx, tran.Transport, hostport)
+		}(i, tran)
 	}
 
-	tran := dg.transports[0]
-	hostport := net.JoinHostPort(tran.BindHost, strconv.Itoa(tran.BindPort))
-	log.Info().Str("addr", hostport).Str("protocol", tran.Transport).Msg("Listening on transport")
-	return server.ListenAndServe(ctx, tran.Transport, hostport)
+	// Returns first error
+	return <-errCh
+	// }
+
+	// tran := dg.transports[0]
+	// hostport := net.JoinHostPort(tran.BindHost, strconv.Itoa(tran.BindPort))
+	// log.Info().Str("addr", hostport).Str("protocol", tran.Transport).Msg("Listening on transport")
+	// return server.ListenAndServe(ctx, tran.Transport, hostport)
 }
 
 // Serve starts serving in background but waits server listener started before returning
 func (dg *Diago) ServeBackground(ctx context.Context, f ServeDialogFunc) error {
-	ch := make(chan struct{})
-	ctx = context.WithValue(ctx, sipgo.ListenReadyCtxKey, sipgo.ListenReadyCtxValue(ch))
-
-	go dg.Serve(ctx, f)
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-ch:
-		return nil
+	readyCh := make(chan struct{}, len(dg.transports))
+	ready := func() {
+		readyCh <- struct{}{}
 	}
+	chErr := make(chan error, 1)
+
+	go func() {
+		chErr <- dg.serve(ctx, f, ready)
+	}()
+
+	for range dg.transports {
+		select {
+		case err := <-chErr:
+			return err
+		case <-readyCh:
+			dg.log.Info().Msg("Network ready")
+		}
+	}
+	return nil
 }
 
 // HandleFunc registers you handler function for dialog. Must be called before serving request
