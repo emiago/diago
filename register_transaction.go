@@ -54,6 +54,14 @@ func newRegisterTransaction(client *sipgo.Client, recipient sip.Uri, contact sip
 		req.AppendHeader(sip.NewHeader("Allow", strings.Join(allowHDRS, ", ")))
 	}
 
+	// if opts.Username == "" {
+	// 	opts.Username = opts.UserAgent
+	// }
+
+	if opts.Username == "" {
+		opts.Username = client.Name()
+	}
+
 	t := &RegisterTransaction{
 		Origin: req, // origin maybe updated after first register
 		opts:   opts,

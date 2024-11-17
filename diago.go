@@ -773,8 +773,8 @@ type RegisterOptions struct {
 	AllowHeaders  []string
 
 	// Useragent default will be used on what is provided as NewUA()
-	UserAgent         string
-	UserAgentHostname string
+	// UserAgent         string
+	// UserAgentHostname string
 }
 
 // Register will create register transaction and keep registration ongoing until error is hit.
