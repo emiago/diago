@@ -60,13 +60,23 @@ type Transport struct {
 
 	// In case TLS protocol
 	TLSConf *tls.Config
+
+	RewriteContact bool
 }
 
 func WithTransport(t Transport) DiagoOption {
 	return func(dg *Diago) {
+		if t.ExternalHost == "" {
+			t.ExternalHost = t.BindHost
+		}
+
+		if t.ExternalPort == 0 {
+			t.ExternalPort = t.BindPort
+		}
+
 		// Resolve unspecified IP for contact hdr
 		extIp := net.ParseIP(t.ExternalHost)
-		if extIp != nil && extIp.IsUnspecified() {
+		if t.ExternalHost == "" || (extIp != nil && extIp.IsUnspecified()) {
 			ip, _, err := sip.ResolveInterfacesIP("ipv4", nil)
 			if err != nil {
 				dg.log.Error().Err(err).Msg("Failed to resolve interface ip for contact header")
@@ -89,14 +99,6 @@ func WithTransport(t Transport) DiagoOption {
 			if extIp != nil && !extIp.IsUnspecified() {
 				t.MediaExternalIP = extIp
 			}
-		}
-
-		if t.ExternalHost == "" {
-			t.ExternalHost = t.BindHost
-		}
-
-		if t.ExternalPort == 0 {
-			t.ExternalPort = t.BindPort
 		}
 
 		dg.transports = append(dg.transports, t)
@@ -135,6 +137,12 @@ func WithClient(client *sipgo.Client) DiagoOption {
 	}
 }
 
+func WithLogger(l zerolog.Logger) DiagoOption {
+	return func(dg *Diago) {
+		dg.log = l
+	}
+}
+
 // NewDiago construct b2b user agent that will act as server and client
 func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	dg := &Diago{
@@ -170,11 +178,17 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			sipgo.WithClientNAT(),
 		}
 
-		// TODO this could be better. but for now we want to avoid client setting
-		// custom host
-		tran := dg.getTransport("")
+		tran, hasUDP := dg.getTransport("udp")
+		if !hasUDP {
+			tran, _ = dg.getTransport("")
+		}
+
 		if ip := net.ParseIP(tran.BindHost); ip != nil && !ip.IsUnspecified() {
-			opts = append(opts, sipgo.WithClientHostname(tran.BindHost))
+			opts = append(opts, sipgo.WithClientHostname(ip.String()))
+			// Reuse UDP port and avoid extra connections
+			if hasUDP {
+				opts = append(opts, sipgo.WithClientPort(tran.BindPort))
+			}
 		}
 		dg.client, _ = sipgo.NewClient(ua, opts...)
 	}
@@ -192,12 +206,13 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			return
 		}
 
-		tran := dg.getTransport(req.Transport())
+		tran, _ := dg.getTransport(req.Transport())
 
 		// Proceed as new call
 		dialogUA := sipgo.DialogUA{
-			Client:     dg.client,
-			ContactHDR: dg.contactHDRFromTransport(tran),
+			Client:         dg.client,
+			ContactHDR:     dg.contactHDRFromTransport(tran),
+			RewriteContact: tran.RewriteContact,
 		}
 
 		dialog, err := dialogUA.ReadInvite(req, tx)
@@ -483,13 +498,17 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 			transport = t
 		}
 	}
-	tran := dg.getTransport(transport)
+	tran, exists := dg.getTransport(transport)
+	if !exists {
+		return nil, fmt.Errorf("transport %s does not exists", transport)
+	}
 	contactHDR := dg.contactHDRFromTransport(tran)
 
 	// TODO: remove this alloc of UA each time
 	dialogCli := sipgo.DialogUA{
-		Client:     dg.client,
-		ContactHDR: dg.contactHDRFromTransport(tran),
+		Client:         dg.client,
+		ContactHDR:     dg.contactHDRFromTransport(tran),
+		RewriteContact: tran.RewriteContact,
 	}
 
 	d = &DialogClientSession{}
@@ -507,6 +526,22 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 	}
 
 	inviteReq := sip.NewRequest(sip.INVITE, recipient)
+	inviteReq.SetTransport(sip.NetworkToUpper(transport))
+
+	// via := &sip.ViaHeader{
+	// 	ProtocolName:    "SIP",
+	// 	ProtocolVersion: "2.0",
+	// 	Transport:       inviteReq.Transport(),
+	// 	Host:            dg.client.Hostname(),
+	// 	Port:            0,
+	// 	Params:          sip.NewParams(),
+	// }
+	// via.Params.Add("branch", sip.GenerateBranchN(16))
+	// via.Params.Add("rport", "")
+	// if tran.Transport == "udp" {
+	// 	via.Port = tran.BindPort
+
+	// inviteReq.PrependHeader(via)
 	for _, h := range opts.Headers {
 		inviteReq.AppendHeader(h)
 	}
@@ -666,18 +701,13 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 	return d, nil
 }
 
-func (dg *Diago) getContactHDR(transport string) sip.ContactHeader {
-	// Find contact hdr matching transport
-	tran := dg.getTransport(transport)
-	return dg.contactHDRFromTransport(tran)
-}
-
 func (dg *Diago) contactHDRFromTransport(tran Transport) sip.ContactHeader {
 	// Find contact hdr matching transport
 	scheme := "sip"
 	if tran.TLSConf != nil {
 		scheme = "sips"
 	}
+
 	return sip.ContactHeader{
 		DisplayName: "", // TODO
 		Address: sip.Uri{
@@ -691,14 +721,16 @@ func (dg *Diago) contactHDRFromTransport(tran Transport) sip.ContactHeader {
 	}
 }
 
-func (dg *Diago) getTransport(transport string) Transport {
-	tran := dg.transports[0]
-	for _, t := range dg.transports[1:] {
+func (dg *Diago) getTransport(transport string) (Transport, bool) {
+	if transport == "" {
+		return dg.transports[0], true
+	}
+	for _, t := range dg.transports {
 		if sip.NetworkToLower(transport) == t.Transport {
-			return t
+			return t, true
 		}
 	}
-	return tran
+	return Transport{}, false
 }
 
 type RegisterOptions struct {
@@ -748,7 +780,12 @@ func (dg *Diago) RegisterTransaction(ctx context.Context, recipient sip.Uri, opt
 	if transport == "" {
 		transport = "udp"
 	}
-	contactHDR := dg.getContactHDR(transport)
+	tran, exists := dg.getTransport(transport)
+	if !exists {
+		return nil, fmt.Errorf("transport=%s does not exists", transport)
+	}
+
+	contactHDR := dg.contactHDRFromTransport(tran)
 
 	// client, err := sipgo.NewClient(dg.ua,
 	// 	sipgo.WithClientHostname(contactHDR.Address.Host),
