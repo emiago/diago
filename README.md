@@ -5,11 +5,12 @@
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/emiago/diago)
 
 Short of **dialog + GO**.  
-**Library for building communication (VOIP) solutions in GO!**
+**Library for building VOIP solutions in GO!**
 
-Built on top of optimized [SIPgo library]((https://emiago.github.io/diago))!
+Built on top of optimized [SIPgo library]((https://emiago.github.io/diago))!  
+In short it allows developing fast and easy testable VOIP apps to handle calls, registrations and more... 
 
-**For more information and documentation visit [the website](https://emiago.github.io/diago)**
+**For more information and documentation visit [the website](https://emiago.github.io/diago/docs)**
 
 Quick links:
 - [Getting started](https://emiago.github.io/diago/docs/getting_started/)
@@ -17,7 +18,7 @@ Quick links:
 - [API Docs](https://emiago.github.io/diago/docs/api_docs/)
 - [GO Docs](https://pkg.go.dev/github.com/emiago/diago)
 
-*If you find this project useful and you want to support/sponzor or need help, you can contact me more on*
+*If you find this project useful and you want to support/sponzor or need help with your projects, you can contact me more on*
 [mail](mailto:emirfreelance91@gmail.com).
 
 Follow me on [X/Twitter](https://twitter.com/emiago123) for regular updates
