@@ -49,7 +49,6 @@ type DialogMedia struct {
 	// rtp session is created for usage with RTPPacketReader and RTPPacketWriter
 	// it adds RTCP layer and RTP monitoring before passing packets to MediaSession
 	rtpSession *media.RTPSession
-
 	// Packet reader is default reader for RTP audio stream
 	// Use always AudioReader to get current Audio reader
 	// Use this only as read only
@@ -70,7 +69,8 @@ type DialogMedia struct {
 	// We do not use sipgo as this needs mutex but also keeping original invite
 	lastInvite *sip.Request
 
-	onClose func()
+	onClose       func()
+	onMediaUpdate func(*DialogMedia)
 
 	closed bool
 }
@@ -214,6 +214,10 @@ func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 
 	// hold the reference
 	d.rtpSession = rtpSess
+
+	if d.onMediaUpdate != nil {
+		d.onMediaUpdate(d)
+	}
 
 	log.Info().
 		Str("formats", msess.Formats.String()).

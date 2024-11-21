@@ -352,7 +352,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	}))
 
 	dg.server.OnRefer(func(req *sip.Request, tx sip.ServerTransaction) {
-		_, cd, err := MatchDialog(req)
+		sd, cd, err := MatchDialog(req)
 		if err != nil {
 			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
 				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
@@ -368,7 +368,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 
 		}
 		// TODO server
-		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
+		sd.handleRefer(dg, req, tx)
 	})
 
 	dg.server.OnNotify(func(req *sip.Request, tx sip.ServerTransaction) {
@@ -383,9 +383,9 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
 			return
 		}
+
 		if cd != nil {
-			// cd.handleRefer(dg, req, tx)
-			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
+			cd.handleReferNotify(req, tx)
 			return
 		}
 		sd.handleReferNotify(req, tx)
@@ -501,9 +501,11 @@ func (dg *Diago) HandleFunc(f ServeDialogFunc) {
 }
 
 type InviteOptions struct {
-	OnResponse   func(res *sip.Response) error
-	OnRTPSession func(rtpSess *media.RTPSession)
-	OnRefer      func(referDialog *DialogClientSession)
+	OnResponse func(res *sip.Response) error
+	// OnMediaUpdate called when media is changed. NOTE: you should not block this call
+	OnMediaUpdate func(d *DialogMedia)
+	OnRefer       func(referDialog *DialogClientSession)
+	OnPreInvite   func(inviteReq *sip.Request)
 	// For digest authentication
 	Username string
 	Password string
@@ -666,6 +668,9 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 			fromHDR.Address.Host = dg.ua.Hostname()
 		}
 	}
+	if opts.OnPreInvite != nil {
+		opts.OnPreInvite(inviteReq)
+	}
 
 	// Build here request
 	if err := sipgo.ClientRequestBuild(client, inviteReq); err != nil {
@@ -712,10 +717,6 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 
 		// Create RTP session. After this no media session configuration should be changed
 		rtpSess := media.NewRTPSession(sess)
-		if opts.OnRTPSession != nil {
-			opts.OnRTPSession(rtpSess)
-		}
-
 		d.mu.Lock()
 		d.initRTPSessionUnsafe(sess, rtpSess)
 		d.onCloseUnsafe(func() {

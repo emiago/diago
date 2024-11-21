@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -23,6 +22,8 @@ type DialogServerSession struct {
 
 	// MediaSession *media.MediaSession
 	DialogMedia
+
+	onReferDialog func(referDialog *DialogClientSession)
 
 	mediaConf MediaConfig
 	closed    atomic.Uint32
@@ -96,25 +97,24 @@ func (d *DialogServerSession) Answer() error {
 }
 
 type AnswerOptions struct {
-	OnRTPSession func(rtpSess *media.RTPSession)
+	// OnMediaUpdate triggers when media update happens. It is blocking func, so make sure you exit
+	OnMediaUpdate func(d *DialogMedia)
+	OnRefer       func(referDialog *DialogClientSession)
 }
 
 // Experimental
 //
 // NOTE: API may change
 func (d *DialogServerSession) AnswerOptions(opt AnswerOptions) error {
-	// d.mu.Lock()
-	// d.onReferDialog = opt.OnRefer
-	// d.onMediaUpdate = opt.OnMediaUpdate
-	// d.mu.Unlock()
+	d.mu.Lock()
+	d.onReferDialog = opt.OnRefer
+	d.onMediaUpdate = opt.OnMediaUpdate
+	d.mu.Unlock()
 
 	if err := d.initMediaSessionFromConf(d.mediaConf); err != nil {
 		return err
 	}
 	rtpSess := media.NewRTPSession(d.mediaSession)
-	if opt.OnRTPSession != nil {
-		opt.OnRTPSession(rtpSess)
-	}
 	return d.answerSession(rtpSess)
 }
 
@@ -264,52 +264,24 @@ func (d *DialogServerSession) ReInvite(ctx context.Context) error {
 
 // Refer tries todo refer (blind transfer) on call
 func (d *DialogServerSession) Refer(ctx context.Context, referTo sip.Uri) error {
-	// TODO check state of call
-
-	req := sip.NewRequest(sip.REFER, d.InviteRequest.Contact().Address)
-	// UASRequestBuild(req, d.InviteResponse)
-
-	// Invite request tags must be preserved but switched
-	req.AppendHeader(sip.NewHeader("Refer-To", referTo.String()))
-
-	res, err := d.Do(ctx, req)
-	if err != nil {
-		return err
-	}
-
-	if res.StatusCode != sip.StatusAccepted {
-		return sipgo.ErrDialogResponse{
-			Res: res,
-		}
-	}
-
-	// TODO wait 200 OK via NOTIFY
-	return nil
+	cont := d.InviteRequest.Contact()
+	return dialogRefer(ctx, d, cont.Address, referTo)
 }
 
 func (d *DialogServerSession) handleReferNotify(req *sip.Request, tx sip.ServerTransaction) {
-	// TODO how to know this is refer
-	contentType := req.ContentType().Value()
-	// For now very basic check
-	if !strings.HasPrefix(contentType, "message/sipfrag;version=2.0") {
-		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil))
+	dialogHandleReferNotify(d, req, tx)
+}
+
+func (d *DialogServerSession) handleRefer(dg *Diago, req *sip.Request, tx sip.ServerTransaction) {
+	d.mu.Lock()
+	onRefDialog := d.onReferDialog
+	d.mu.Unlock()
+	if onRefDialog == nil {
+		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
 		return
 	}
 
-	frag := string(req.Body())
-	if len(frag) < len("SIP/2.0 100 xx") {
-		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil))
-		return
-	}
-
-	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusOK, "OK", nil))
-
-	log.Info().Msg("Handling NOTIFY: " + string(req.Body()))
-	switch frag[:11] {
-	case "SIP/2.0 100":
-	case "SIP/2.0 200":
-		d.Hangup(d.Context())
-	}
+	dialogHandleRefer(d, dg, req, tx, onRefDialog)
 }
 
 func (d *DialogServerSession) handleReInvite(req *sip.Request, tx sip.ServerTransaction) error {
