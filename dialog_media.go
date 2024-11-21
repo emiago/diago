@@ -394,9 +394,11 @@ func (d *DialogMedia) ListenUntil(dur time.Duration) error {
 type DTMFReader struct {
 	mediaSession *media.MediaSession
 	dtmfReader   *media.RTPDtmfReader
+	onDTMF       func(dtmf rune) error
 }
 
 // AudioReaderDTMF is DTMF over RTP. It reads audio and provides hook for dtmf while listening for audio
+// Use Listen or OnDTMF after this call
 func (m *DialogMedia) AudioReaderDTMF() *DTMFReader {
 	return &DTMFReader{
 		dtmfReader:   media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, m.RTPPacketReader, m.getAudioReader()),
@@ -405,21 +407,33 @@ func (m *DialogMedia) AudioReaderDTMF() *DTMFReader {
 }
 
 func (d *DTMFReader) Listen(onDTMF func(dtmf rune) error, dur time.Duration) error {
+	d.onDTMF = onDTMF
 	buf := make([]byte, media.RTPBufSize)
 	for {
-		if _, err := d.AudioRead(buf, onDTMF, dur); err != nil {
+		if _, err := d.readDeadline(buf, dur); err != nil {
 			return err
 		}
 	}
 }
 
-func (d *DTMFReader) AudioRead(buf []byte, onDTMF func(dtmf rune) error, dur time.Duration) (n int, err error) {
+// readDeadline(reads RTP until
+func (d *DTMFReader) readDeadline(buf []byte, dur time.Duration) (n int, err error) {
 	mediaSession := d.mediaSession
 	if dur > 0 {
 		// Stop RTP
 		mediaSession.StopRTP(1, dur)
 		defer mediaSession.StartRTP(2)
 	}
+	return d.Read(buf)
+}
+
+// OnDTMF must be called before audio reading
+func (d *DTMFReader) OnDTMF(onDTMF func(dtmf rune) error) {
+	d.onDTMF = onDTMF
+}
+
+// Read exposes io.Reader that can be used as AudioReader
+func (d *DTMFReader) Read(buf []byte) (n int, err error) {
 	// This is optimal way of reading audio and DTMF
 	dtmfReader := d.dtmfReader
 	n, err = dtmfReader.Read(buf)
@@ -428,16 +442,11 @@ func (d *DTMFReader) AudioRead(buf []byte, onDTMF func(dtmf rune) error, dur tim
 	}
 
 	if dtmf, ok := dtmfReader.ReadDTMF(); ok {
-		if err := onDTMF(dtmf); err != nil {
+		if err := d.onDTMF(dtmf); err != nil {
 			return n, err
 		}
 	}
 	return n, nil
-}
-
-// AudioReader exposes audio reader with DTMF functionaly. You should use this for parallel audio processing
-func (d *DTMFReader) AudioReader() *media.RTPDtmfReader {
-	return d.dtmfReader
 }
 
 type DTMFWriter struct {
@@ -459,4 +468,9 @@ func (w *DTMFWriter) WriteDTMF(dtmf rune) error {
 // AudioReader exposes DTMF audio writer. You should use this for parallel audio processing
 func (w *DTMFWriter) AudioWriter() *media.RTPDtmfWriter {
 	return w.dtmfWriter
+}
+
+// Write exposes as io.Writer that can be used as AudioWriter
+func (w *DTMFWriter) Write(buf []byte) (n int, err error) {
+	return w.dtmfWriter.Write(buf)
 }

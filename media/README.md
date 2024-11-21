@@ -1,5 +1,10 @@
 # media
 
+Implemented:
+- [DTMF EVENT RFC2833](https://datatracker.ietf.org/doc/html/rfc2833)
+
+
+
 Everything is `io.Reader` and `io.Writer`
 
 We follow GO std lib and providing interface for Reader/Writer when it comes reading and writing media.   

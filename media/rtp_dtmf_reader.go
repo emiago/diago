@@ -6,6 +6,7 @@ package media
 import (
 	"io"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -55,9 +56,13 @@ func (w *RTPDtmfReader) Read(b []byte) (int, error) {
 }
 
 func (w *RTPDtmfReader) processDTMFEvent(ev DTMFEvent) {
-	log.Debug().Interface("ev", ev).Msg("Processing DTMF event")
-	if ev.EndOfEvent {
+	if log.Logger.GetLevel() == zerolog.DebugLevel {
+		// Expensive call on logger
+		log.Debug().Interface("ev", ev).Msg("Processing DTMF event")
+	}
+	if ev.EndOfEvent && w.lastEv.Duration > 0 {
 		// Does this match to our last ev
+		// Consider Event can be 0, that is why we check is also lastEv.Duration set
 		if w.lastEv.Event != ev.Event {
 			return
 		}
@@ -70,12 +75,6 @@ func (w *RTPDtmfReader) processDTMFEvent(ev DTMFEvent) {
 
 		w.dtmf = DTMFToRune(ev.Event)
 		w.dtmfSet = true
-		// select {
-		// case w.dtmfCh <- byte(ev.Event):
-		// default:
-		// 	log.Warn()d.Msg("DTMF event missed")
-		// }
-		// Reset last ev
 		w.lastEv = DTMFEvent{}
 		return
 	}
