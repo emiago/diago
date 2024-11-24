@@ -646,7 +646,7 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 	if fromHDR := inviteReq.From(); fromHDR != nil {
 		fromHDR.Params["tag"] = sip.GenerateTagN(16)
 		if fromHDR.Address.Host == "" { // IN case caller is set but not hostname
-			fromHDR.Address.Host = dg.client.Hostname()
+			fromHDR.Address.Host = dg.ua.Hostname()
 		}
 	}
 
