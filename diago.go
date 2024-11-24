@@ -633,7 +633,7 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 	via := inviteReq.Via()
 	if transport == "udp" && via.Port == 0 {
 		via.Host = tran.BindHost
-		via.Port = tran.BindPort
+		via.Port = dg.server.TransportLayer().GetListenPort("udp")
 	}
 
 	dialog, err := dialogCli.WriteInvite(ctx, inviteReq, func(c *sipgo.Client, req *sip.Request) error {
