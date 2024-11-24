@@ -179,18 +179,6 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			sipgo.WithClientNAT(),
 		}
 
-		tran, hasUDP := dg.getTransport("udp")
-		if !hasUDP {
-			tran, _ = dg.getTransport("")
-		}
-
-		if ip := net.ParseIP(tran.BindHost); ip != nil && !ip.IsUnspecified() {
-			opts = append(opts, sipgo.WithClientHostname(ip.String()))
-			// Reuse UDP port and avoid extra connections
-			if hasUDP {
-				opts = append(opts, sipgo.WithClientPort(tran.BindPort))
-			}
-		}
 		dg.client, _ = sipgo.NewClient(ua, opts...)
 	}
 
@@ -556,20 +544,6 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 	inviteReq := sip.NewRequest(sip.INVITE, recipient)
 	inviteReq.SetTransport(sip.NetworkToUpper(transport))
 
-	// via := &sip.ViaHeader{
-	// 	ProtocolName:    "SIP",
-	// 	ProtocolVersion: "2.0",
-	// 	Transport:       inviteReq.Transport(),
-	// 	Host:            dg.client.Hostname(),
-	// 	Port:            0,
-	// 	Params:          sip.NewParams(),
-	// }
-	// via.Params.Add("branch", sip.GenerateBranchN(16))
-	// via.Params.Add("rport", "")
-	// if tran.Transport == "udp" {
-	// 	via.Port = tran.BindPort
-
-	// inviteReq.PrependHeader(via)
 	for _, h := range opts.Headers {
 		inviteReq.AppendHeader(h)
 	}
@@ -650,7 +624,22 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		}
 	}
 
-	dialog, err := dialogCli.WriteInvite(ctx, inviteReq)
+	// Build here request
+	if err := sipgo.ClientRequestBuild(dg.client, inviteReq); err != nil {
+		return nil, err
+	}
+
+	// reuse UDP listener
+	via := inviteReq.Via()
+	if transport == "udp" && via.Port == 0 {
+		via.Host = tran.BindHost
+		via.Port = tran.BindPort
+	}
+
+	dialog, err := dialogCli.WriteInvite(ctx, inviteReq, func(c *sipgo.Client, req *sip.Request) error {
+		// Do nothing
+		return nil
+	})
 	if err != nil {
 		sess.Close()
 		return nil, err
