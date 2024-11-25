@@ -166,11 +166,10 @@ func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
 
 func (d *DialogServerSession) Hangup(ctx context.Context) error {
 	state := d.LoadState()
-	if state < sip.DialogStateConfirmed {
-		return d.Respond(sip.StatusTemporarilyUnavailable, "Temporarly unavailable", nil)
+	if state == sip.DialogStateConfirmed {
+		return d.Bye(ctx)
 	}
-
-	return d.Bye(ctx)
+	return d.Respond(sip.StatusTemporarilyUnavailable, "Temporarly unavailable", nil)
 }
 
 func (d *DialogServerSession) ReInvite(ctx context.Context) error {
