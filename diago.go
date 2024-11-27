@@ -739,7 +739,7 @@ func (dg *Diago) getTransport(transport string) (Transport, bool) {
 		return dg.transports[0], true
 	}
 	for _, t := range dg.transports {
-		if sip.NetworkToLower(transport) == t.Transport {
+		if sip.NetworkToLower(transport) == sip.NetworkToLower(t.Transport) {
 			return t, true
 		}
 	}
@@ -789,7 +789,7 @@ func (dg *Diago) Register(ctx context.Context, recipient sip.Uri, opts RegisterO
 // Register transaction creates register transaction object that can be used for Register Unregister requests
 func (dg *Diago) RegisterTransaction(ctx context.Context, recipient sip.Uri, opts RegisterOptions) (*RegisterTransaction, error) {
 	// Make our client reuse address
-	transport := recipient.Headers["transport"]
+	transport := recipient.UriParams["transport"]
 	if transport == "" {
 		transport = "udp"
 	}
