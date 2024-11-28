@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en"><head>
+<html lang="en"><head><script src="/diago/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=diago/livereload" data-no-instant defer></script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="robots" content="index, follow" />
+  <meta name="robots" content="noindex, nofollow" />
   <link rel="icon shortcut" href="/diago/favicon.ico" sizes="32x32" />
 <link rel="icon" href="/diago/favicon.svg" type="image/svg+xml" />
 <link rel="icon" href="/diago/favicon-dark.svg" type="image/svg+xml" media="(prefers-color-scheme: dark)" />
@@ -19,19 +19,25 @@ It intentionally distincts dialog received (Acting as server) and dialog created
 DialogServerSession when receving incoming dialog (SIP INVITE) and setups session (media) DialogClientSession when it creates outgoing dialog (SIP INVITE) and setups session (media) For best understanding here some docs with short code reference." />
 
   
-    <link rel="canonical" href="https://emiago.github.io/diago/docs/api_docs/" itemprop="url" />
+    <link rel="canonical" href="http://localhost:1313/diago/docs/api_docs/" itemprop="url" />
   
 
   
 
 <meta property="og:title" content="API Docs" />
-<meta property="og:description" content="Library API tries to be well documented through comments. For more reference visit GO DOC
+<meta property="og:description" content="Library API tries to be well documented through comments.
+For more reference visit GO DOC
 Here we explain some of main built in concepts and usage.
-Dialog Sessions diago can act as UAS(User Agent Server) and UAC(User Agent Client), and adds bridging capability to build B2BUA services.
+Dialog Sessions
+    diago can act as UAS(User Agent Server) and UAC(User Agent Client), and adds bridging capability to build B2BUA services.
 It intentionally distincts dialog received (Acting as server) and dialog created (Acting as client):
-DialogServerSession when receving incoming dialog (SIP INVITE) and setups session (media) DialogClientSession when it creates outgoing dialog (SIP INVITE) and setups session (media) For best understanding here some docs with short code reference." />
+
+DialogServerSession when receving incoming dialog (SIP INVITE) and setups session (media)
+DialogClientSession when it creates outgoing dialog (SIP INVITE) and setups session (media)
+
+For best understanding here some docs with short code reference." />
 <meta property="og:type" content="article" />
-<meta property="og:url" content="https://emiago.github.io/diago/docs/api_docs/" /><meta property="article:section" content="docs" />
+<meta property="og:url" content="http://localhost:1313/diago/docs/api_docs/" /><meta property="article:section" content="docs" />
 
 
 
@@ -51,16 +57,14 @@ Dialog Sessions diago can act as UAS(User Agent Server) and UAC(User Agent Clien
 It intentionally distincts dialog received (Acting as server) and dialog created (Acting as client):
 DialogServerSession when receving incoming dialog (SIP INVITE) and setups session (media) DialogClientSession when it creates outgoing dialog (SIP INVITE) and setups session (media) For best understanding here some docs with short code reference.">
 
-    <link rel="preload" href="/diago/css/compiled/main.min.c1fe2c80102c9dc9ddc66184191e646769052d36a21b38ac5ab5077713cf7a81.css" as="style" integrity="sha256-wf4sgBAsncndxmGEGR5kZ2kFLTaiGzisWrUHdxPPeoE=" />
-    <link href="/diago/css/compiled/main.min.c1fe2c80102c9dc9ddc66184191e646769052d36a21b38ac5ab5077713cf7a81.css" rel="stylesheet" integrity="sha256-wf4sgBAsncndxmGEGR5kZ2kFLTaiGzisWrUHdxPPeoE=" />
+    <link href="/diago/css/compiled/main.css" rel="stylesheet" />
 
 
 
-  <link href="/diago/css/custom.min.e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.css" rel="stylesheet" integrity="sha256-47DEQpj8HBSa&#43;/TImW&#43;5JCeuQeRkm5NMpJWZG3hSuFU=" />
+  <link href="/diago/css/custom.css" rel="stylesheet" />
 
 
 
-  
 
 
   <script>
@@ -103,6 +107,13 @@ DialogServerSession when receving incoming dialog (SIP INVITE) and setups sessio
             class="hx-text-sm contrast-more:hx-text-gray-700 contrast-more:dark:hx-text-gray-100 hx-relative -hx-ml-2 hx-hidden hx-whitespace-nowrap hx-p-2 md:hx-inline-block hx-font-medium"
           >
             <span class="hx-text-center">Documentation</span>
+          </a><a
+            title="Blog"
+            href="/diago/blog"
+            
+            class="hx-text-sm contrast-more:hx-text-gray-700 contrast-more:dark:hx-text-gray-100 hx-relative -hx-ml-2 hx-hidden hx-whitespace-nowrap hx-p-2 md:hx-inline-block hx-text-gray-600 hover:hx-text-gray-800 dark:hx-text-gray-400 dark:hover:hx-text-gray-200"
+          >
+            <span class="hx-text-center">Blog</span>
           </a><div class="search-wrapper hx-relative md:hx-w-64">
   <div class="hx-relative hx-flex hx-items-center hx-text-gray-900 contrast-more:hx-text-gray-800 dark:hx-text-gray-300 contrast-more:dark:hx-text-gray-300">
     <input
@@ -169,6 +180,24 @@ DialogServerSession when receving incoming dialog (SIP INVITE) and setups sessio
     <ul class="hx-flex hx-flex-col hx-gap-1 md:hx-hidden">
       
       
+          <li class=""><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/blog/"
+    
+  >Blog
+        <span class="hextra-sidebar-collapsible-button"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="hx-h-[18px] hx-min-w-[18px] hx-rounded-sm hx-p-0.5 hover:hx-bg-gray-800/5 dark:hover:hx-bg-gray-100/5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" class="hx-origin-center hx-transition-transform rtl:-hx-rotate-180"></path></svg></span>
+    </a><div class="ltr:hx-pr-0 hx-overflow-hidden">
+        <ul class='hx-relative hx-flex hx-flex-col hx-gap-1 before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] ltr:hx-ml-3 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-mr-3 rtl:hx-pr-3 rtl:before:hx-right-0 dark:before:hx-bg-neutral-800'><li class="hx-flex hx-flex-col "><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/blog/unit_testing/"
+    
+  >Unit Testing
+    </a>
+              
+            </li></ul>
+      </div></li>
           <li class="open"><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
       hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
@@ -445,8 +474,8 @@ For more reference visit <a href="https://pkg.go.dev/github.com/emiago/diago" ta
 <div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
   
 
-<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#a6e22e">ua</span>, <span style="color:#a6e22e">_</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">sipgo</span>.<span style="color:#a6e22e">NewUA</span>()
-</span></span><span style="display:flex;"><span><span style="color:#a6e22e">dg</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">NewDiago</span>(<span style="color:#a6e22e">ua</span>)</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
+<div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">ua</span><span class="p">,</span> <span class="nx">_</span> <span class="o">:=</span> <span class="nx">sipgo</span><span class="p">.</span><span class="nf">NewUA</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl"><span class="nx">dg</span> <span class="o">:=</span> <span class="nx">diago</span><span class="p">.</span><span class="nf">NewDiago</span><span class="p">(</span><span class="nx">ua</span><span class="p">)</span></span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
   <button
     class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
     title="Copy code"
@@ -464,14 +493,14 @@ Below example makes diago only listen for <code>TCP</code> SIP.</p>
 <div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
   
 
-<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#a6e22e">transportTCP</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">Transport</span>{
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">Transport</span>: <span style="color:#e6db74">&#34;tcp&#34;</span>,
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">BindHost</span>:  <span style="color:#e6db74">&#34;127.0.0.1&#34;</span>,
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">BindPort</span>:  <span style="color:#ae81ff">5060</span>,
-</span></span><span style="display:flex;"><span>}
-</span></span><span style="display:flex;"><span><span style="color:#a6e22e">dg</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">NewDiago</span>(<span style="color:#a6e22e">ua</span>,
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">WithTransport</span>(<span style="color:#a6e22e">transportTCP</span>),
-</span></span><span style="display:flex;"><span>)</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
+<div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">transportTCP</span> <span class="o">:=</span> <span class="nx">diago</span><span class="p">.</span><span class="nx">Transport</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">Transport</span><span class="p">:</span> <span class="s">&#34;tcp&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">BindHost</span><span class="p">:</span>  <span class="s">&#34;127.0.0.1&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">BindPort</span><span class="p">:</span>  <span class="mi">5060</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="nx">dg</span> <span class="o">:=</span> <span class="nx">diago</span><span class="p">.</span><span class="nf">NewDiago</span><span class="p">(</span><span class="nx">ua</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">diago</span><span class="p">.</span><span class="nf">WithTransport</span><span class="p">(</span><span class="nx">transportTCP</span><span class="p">),</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span></span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
   <button
     class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
     title="Copy code"
@@ -497,18 +526,18 @@ you routing by accessing dialog. Some of helpers are added</p>
 <div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
   
 
-<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span>
-</span></span><span style="display:flex;"><span><span style="color:#a6e22e">dg</span>.<span style="color:#a6e22e">Serve</span>(<span style="color:#a6e22e">ctx</span>, <span style="color:#66d9ef">func</span>(<span style="color:#a6e22e">inDialog</span> <span style="color:#f92672">*</span><span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">DialogServerSession</span>) {
-</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// - Do your call routing.
-</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#66d9ef">switch</span> <span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">ToUser</span>() {
-</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">case</span> <span style="color:#e6db74">&#34;answer&#34;</span>:
-</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">case</span> <span style="color:#e6db74">&#34;123456&#34;</span>
-</span></span><span style="display:flex;"><span>	}
-</span></span><span style="display:flex;"><span>
-</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// inDialog is scope limited, exiting this routine will Close dialog.
-</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">// Use Context to hold dialog in routine
-</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#f92672">&lt;-</span><span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">Context</span>().<span style="color:#a6e22e">Done</span>()
-</span></span><span style="display:flex;"><span>})</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
+<div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="nx">dg</span><span class="p">.</span><span class="nf">Serve</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">inDialog</span> <span class="o">*</span><span class="nx">diago</span><span class="p">.</span><span class="nx">DialogServerSession</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// - Do your call routing.
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="k">switch</span> <span class="nx">inDialog</span><span class="p">.</span><span class="nf">ToUser</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="k">case</span> <span class="s">&#34;answer&#34;</span><span class="p">:</span>
+</span></span><span class="line"><span class="cl">		<span class="k">case</span> <span class="s">&#34;123456&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// inDialog is scope limited, exiting this routine will Close dialog.
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>    <span class="c1">// Use Context to hold dialog in routine
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="o">&lt;-</span><span class="nx">inDialog</span><span class="p">.</span><span class="nf">Context</span><span class="p">().</span><span class="nf">Done</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl"><span class="p">})</span></span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
   <button
     class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
     title="Copy code"
@@ -529,16 +558,16 @@ Dialog created is scoped (Like HTTP request serving). Once dialog exists, it is 
 <div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
   
 
-<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#a6e22e">dialog</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">dg</span>.<span style="color:#a6e22e">Invite</span>(<span style="color:#a6e22e">ctx</span>, <span style="color:#a6e22e">recipient</span> <span style="color:#a6e22e">sip</span>.<span style="color:#a6e22e">Uri</span>, <span style="color:#a6e22e">opts</span> <span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">InviteOptions</span>)
-</span></span><span style="display:flex;"><span><span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#66d9ef">nil</span> {
-</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// Handle err. Special ErrDialogResponse is returned if non 200 is received
-</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>}
-</span></span><span style="display:flex;"><span><span style="color:#66d9ef">defer</span> <span style="color:#a6e22e">dialog</span>.<span style="color:#a6e22e">Close</span>() <span style="color:#75715e">// Closing outgoing dialog is needed
-</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
-</span></span><span style="display:flex;"><span><span style="color:#75715e">// Do something
-</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
-</span></span><span style="display:flex;"><span><span style="color:#75715e">// Hangup 
-</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#a6e22e">dialog</span>.<span style="color:#a6e22e">Hangup</span>()</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
+<div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">dialog</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">dg</span><span class="p">.</span><span class="nf">Invite</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">recipient</span> <span class="nx">sip</span><span class="p">.</span><span class="nx">Uri</span><span class="p">,</span> <span class="nx">opts</span> <span class="nx">diago</span><span class="p">.</span><span class="nx">InviteOptions</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// Handle err. Special ErrDialogResponse is returned if non 200 is received
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="k">defer</span> <span class="nx">dialog</span><span class="p">.</span><span class="nf">Close</span><span class="p">()</span> <span class="c1">// Closing outgoing dialog is needed
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl"><span class="c1">// Do something
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl"><span class="c1">// Hangup 
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="nx">dialog</span><span class="p">.</span><span class="nf">Hangup</span><span class="p">()</span></span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
   <button
     class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
     title="Copy code"
@@ -554,21 +583,21 @@ Dialog created is scoped (Like HTTP request serving). Once dialog exists, it is 
     <a href="#answering-call" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
   
 
-<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#66d9ef">func</span> <span style="color:#a6e22e">Answer</span>(<span style="color:#a6e22e">inDialog</span> <span style="color:#f92672">*</span><span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">DialogServerSession</span>) {
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">Progress</span>() <span style="color:#75715e">// Progress -&gt; 100 Trying
-</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">Ringing</span>()  <span style="color:#75715e">// Ringing -&gt; 180 Response
-</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
-</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">Answer</span>(); <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#66d9ef">nil</span> {
-</span></span><span style="display:flex;"><span>		<span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Failed to answer&#34;</span>, <span style="color:#a6e22e">err</span>)
-</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">return</span>
-</span></span><span style="display:flex;"><span>	}
-</span></span><span style="display:flex;"><span>
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">ctx</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">inDialog</span>.<span style="color:#a6e22e">Context</span>()
-</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">select</span> {
-</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">case</span> <span style="color:#f92672">&lt;-</span><span style="color:#a6e22e">ctx</span>.<span style="color:#a6e22e">Done</span>():
-</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">case</span> <span style="color:#f92672">&lt;-</span><span style="color:#a6e22e">time</span>.<span style="color:#a6e22e">After</span>(<span style="color:#ae81ff">1</span> <span style="color:#f92672">*</span> <span style="color:#a6e22e">time</span>.<span style="color:#a6e22e">Minute</span>):
-</span></span><span style="display:flex;"><span>	}
-</span></span><span style="display:flex;"><span>}</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
+<div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">Answer</span><span class="p">(</span><span class="nx">inDialog</span> <span class="o">*</span><span class="nx">diago</span><span class="p">.</span><span class="nx">DialogServerSession</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">inDialog</span><span class="p">.</span><span class="nf">Progress</span><span class="p">()</span> <span class="c1">// Progress -&gt; 100 Trying
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="nx">inDialog</span><span class="p">.</span><span class="nf">Ringing</span><span class="p">()</span>  <span class="c1">// Ringing -&gt; 180 Response
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">inDialog</span><span class="p">.</span><span class="nf">Answer</span><span class="p">();</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Failed to answer&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="k">return</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">ctx</span> <span class="o">:=</span> <span class="nx">inDialog</span><span class="p">.</span><span class="nf">Context</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="k">select</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="k">case</span> <span class="o">&lt;-</span><span class="nx">ctx</span><span class="p">.</span><span class="nf">Done</span><span class="p">():</span>
+</span></span><span class="line"><span class="cl">	<span class="k">case</span> <span class="o">&lt;-</span><span class="nx">time</span><span class="p">.</span><span class="nf">After</span><span class="p">(</span><span class="mi">1</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">):</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span></span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
   <button
     class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
     title="Copy code"
@@ -600,16 +629,16 @@ create playback</p>
 <div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
   
 
-<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span>	<span style="color:#a6e22e">pb</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">dialog</span>.<span style="color:#a6e22e">PlaybackCreate</span>()
-</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#66d9ef">nil</span> {
-</span></span><span style="display:flex;"><span>		<span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Failed to create playback&#34;</span>, <span style="color:#a6e22e">err</span>)
-</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">return</span>
-</span></span><span style="display:flex;"><span>	}
-</span></span><span style="display:flex;"><span>
-</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">pb</span>.<span style="color:#a6e22e">Play</span>(<span style="color:#a6e22e">playfile</span>, <span style="color:#e6db74">&#34;audio/wav&#34;</span>); <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#66d9ef">nil</span> {
-</span></span><span style="display:flex;"><span>		<span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Playing failed&#34;</span>, <span style="color:#a6e22e">err</span>)
-</span></span><span style="display:flex;"><span>	}
-</span></span><span style="display:flex;"><span>}</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
+<div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl">	<span class="nx">pb</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">dialog</span><span class="p">.</span><span class="nf">PlaybackCreate</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Failed to create playback&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="k">return</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">pb</span><span class="p">.</span><span class="nf">Play</span><span class="p">(</span><span class="nx">playfile</span><span class="p">,</span> <span class="s">&#34;audio/wav&#34;</span><span class="p">);</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Playing failed&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span></span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
   <button
     class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
     title="Copy code"
@@ -626,17 +655,17 @@ create playback</p>
 <div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
   
 
-<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span>	<span style="color:#a6e22e">pb</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">dialog</span>.<span style="color:#a6e22e">PlaybackControlCreate</span>()
-</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#66d9ef">nil</span> {
-</span></span><span style="display:flex;"><span>		<span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Failed to create playback&#34;</span>, <span style="color:#a6e22e">err</span>)
-</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">return</span>
-</span></span><span style="display:flex;"><span>	}
-</span></span><span style="display:flex;"><span>
-</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">go</span> <span style="color:#a6e22e">pb</span>.<span style="color:#a6e22e">Play</span>(<span style="color:#a6e22e">playfile</span>, <span style="color:#e6db74">&#34;audio/wav&#34;</span>) <span style="color:#75715e">// Note needs error handling
-</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
-</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">pb</span>.<span style="color:#a6e22e">Mute</span>(<span style="color:#66d9ef">true</span>) <span style="color:#75715e">// Mute/Unmute audio
-</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>	<span style="color:#a6e22e">pb</span>.<span style="color:#a6e22e">Stop</span>() <span style="color:#75715e">// Stop playing audio. This will make Play exit
-</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>}</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
+<div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl">	<span class="nx">pb</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">dialog</span><span class="p">.</span><span class="nf">PlaybackControlCreate</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Failed to create playback&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">		<span class="k">return</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="k">go</span> <span class="nx">pb</span><span class="p">.</span><span class="nf">Play</span><span class="p">(</span><span class="nx">playfile</span><span class="p">,</span> <span class="s">&#34;audio/wav&#34;</span><span class="p">)</span> <span class="c1">// Note needs error handling
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>
+</span></span><span class="line"><span class="cl">	<span class="nx">pb</span><span class="p">.</span><span class="nf">Mute</span><span class="p">(</span><span class="kc">true</span><span class="p">)</span> <span class="c1">// Mute/Unmute audio
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="nx">pb</span><span class="p">.</span><span class="nf">Stop</span><span class="p">()</span> <span class="c1">// Stop playing audio. This will make Play exit
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="p">}</span></span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
   <button
     class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
     title="Copy code"
@@ -654,9 +683,9 @@ are answered and have media sessions you can bridge them.</p>
 <div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
   
 
-<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#a6e22e">bridge</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">diago</span>.<span style="color:#a6e22e">NewBridge</span>()
-</span></span><span style="display:flex;"><span><span style="color:#a6e22e">bridge</span>.<span style="color:#a6e22e">AddDialogSession</span>(<span style="color:#a6e22e">d1</span>)
-</span></span><span style="display:flex;"><span><span style="color:#a6e22e">bridge</span>.<span style="color:#a6e22e">AddDialogSession</span>(<span style="color:#a6e22e">d2</span>)</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
+<div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="nx">bridge</span> <span class="o">:=</span> <span class="nx">diago</span><span class="p">.</span><span class="nf">NewBridge</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl"><span class="nx">bridge</span><span class="p">.</span><span class="nf">AddDialogSession</span><span class="p">(</span><span class="nx">d1</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="nx">bridge</span><span class="p">.</span><span class="nf">AddDialogSession</span><span class="p">(</span><span class="nx">d2</span><span class="p">)</span></span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
   <button
     class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
     title="Copy code"
@@ -699,11 +728,11 @@ are answered and have media sessions you can bridge them.</p>
   </div>
 </footer>
     
-    <script defer src="/diago/js/main.min.998f7d6b2520d6d9875145cbe14b35964b365b44b3b1bfa6b797a74a9c173b07.js" integrity="sha256-mY99ayUg1tmHUUXL4Us1lks2W0Szsb&#43;mt5enSpwXOwc="></script>
+    <script defer src="/diago/js/main.js" integrity=""></script>
 
 
 <script defer src="/diago/lib/flexsearch/flexsearch.bundle.min.0425860527cc9968f9f049421c7a56b39327d475e2e3a8f550416be3a9134327.js" integrity="sha256-BCWGBSfMmWj58ElCHHpWs5Mn1HXi46j1UEFr46kTQyc="></script>
-    <script defer src="/diago/en.search.min.00be893ae7283ef250b83069710b8608724b33a24cfcf573cb59d8b716baa772.js" integrity="sha256-AL6JOucoPvJQuDBpcQuGCHJLM6JM/PVzy1nYtxa6p3I="></script>
+    <script defer src="/diago/en.search.js" integrity=""></script>
 
 
   </body>

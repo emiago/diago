@@ -1,12 +1,12 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Diago – Guides</title>
-    <link>https://emiago.github.io/diago/docs/guides/</link>
+    <link>http://localhost:1313/diago/docs/guides/</link>
     <description>Recent content in Guides on Diago</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     
-	  <atom:link href="https://emiago.github.io/diago/docs/guides/index.xml" rel="self" type="application/rss+xml" />
+	  <atom:link href="http://localhost:1313/diago/docs/guides/index.xml" rel="self" type="application/rss+xml" />
     
     
       
@@ -16,10 +16,10 @@
     
     <item>
       <title>Understading SIP with Call Scenarios</title>
-      <link>https://emiago.github.io/diago/docs/guides/understanding_sip/</link>
+      <link>http://localhost:1313/diago/docs/guides/understanding_sip/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>https://emiago.github.io/diago/docs/guides/understanding_sip/</guid>
+      <guid>http://localhost:1313/diago/docs/guides/understanding_sip/</guid>
       <description>
         
         
@@ -41,16 +41,16 @@
 &lt;div class=&#34;hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code&#34;&gt;
   
 
-&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;INVITE sip:bob@127.0.0.1:5060 SIP/2.0
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;Via: SIP/2.0/udp 127.0.0.99:50725;branch&lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt;z9hG4bK.pgb382qZ312tyXIP
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;Content-Type: application/sdp
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;Content-Length: &lt;span style=&#34;color:#ae81ff&#34;&gt;235&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;Contact: &amp;lt;sip:alice@127.0.0.99:50725&amp;gt;;transport&lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt;udp
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;From: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;alice&amp;#34;&lt;/span&gt; &amp;lt;sip:alice@127.0.0.99&amp;gt;;tag&lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt;hImscoj6Jew8y6da
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;To: &amp;lt;sip:bob@127.0.0.1&amp;gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;Call-ID: 729cd7dd-96dc-419b-b339-327c60dfc2d7
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;CSeq: &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt; INVITE
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;Max-Forwards: &lt;span style=&#34;color:#ae81ff&#34;&gt;70&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0&#34;&gt;
+&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;INVITE sip:bob@127.0.0.1:5060 SIP/2.0
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;Via: SIP/2.0/udp 127.0.0.99:50725&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;branch&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;z9hG4bK.pgb382qZ312tyXIP
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;Content-Type: application/sdp
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;Content-Length: &lt;span class=&#34;m&#34;&gt;235&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;Contact: &amp;lt;sip:alice@127.0.0.99:50725&amp;gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;transport&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;udp
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;From: &lt;span class=&#34;s2&#34;&gt;&amp;#34;alice&amp;#34;&lt;/span&gt; &amp;lt;sip:alice@127.0.0.99&amp;gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;tag&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;hImscoj6Jew8y6da
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;To: &amp;lt;sip:bob@127.0.0.1&amp;gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;Call-ID: 729cd7dd-96dc-419b-b339-327c60dfc2d7
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;CSeq: &lt;span class=&#34;m&#34;&gt;1&lt;/span&gt; INVITE
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;Max-Forwards: &lt;span class=&#34;m&#34;&gt;70&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0&#34;&gt;
   &lt;button
     class=&#34;hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50&#34;
     title=&#34;Copy code&#34;
@@ -83,10 +83,10 @@ That is why 200 OK is replied&lt;/p&gt;
     
     <item>
       <title>SIP and Media</title>
-      <link>https://emiago.github.io/diago/docs/guides/sip_and_media/</link>
+      <link>http://localhost:1313/diago/docs/guides/sip_and_media/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>https://emiago.github.io/diago/docs/guides/sip_and_media/</guid>
+      <guid>http://localhost:1313/diago/docs/guides/sip_and_media/</guid>
       <description>
         
         

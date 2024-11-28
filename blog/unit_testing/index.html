@@ -11,69 +11,91 @@
 <link rel="apple-touch-icon" href="/diago/apple-touch-icon.png" sizes="180x180" />
 <link fetchpriority="low" href="/diago/site.webmanifest" rel="manifest" />
 
-  <title>Demo     Examples – Diago</title>
-  <meta name="description" content="CLI Softphone for testing For testing below scenarios, gophone as CLI softphone is used, but you can use any softphone you like.
-Visit the page and install: https://github.com/emiago/gophone
-Source code of examples is in library. You will need go compiler installed.
-Here we show couple of them
-Audio playback Audio playback with control DTMF " />
+  <title>Diago</title>
+  <meta name="description" content="How to UNIT test server First make sure you have imported siptest
+import &#34;github.com/emiago/sipgo/siptest&#34; Example with testing REGISTER request
+func handleRegister(req *sip.Request, tx sip.ServerTransaction) { res := sip.NewResponseFromRequest(req, sip.StatusBadRequest, &#34;Bad Request&#34;, nil) tx.Respond(res) } func TestServerHandlers(t *testing.T) { // Setup server uas, _ := sipgo.NewUA() srv, _ := sipgo.NewServer(uas) srv.OnRegister(handleRegister) // Create request req := sip.NewRequest(sip.REGISTER, sip.Uri{User: &#34;alice&#34;, Host: &#34;localhost&#34;}) // Use dummy client to build request headers uac, _ := sipgo.NewUA() client, _ := sipgo.NewClient(uac) sipgo.ClientRequestBuild(client, req) // Create transaction Recorder txRecord := siptest.NewServerTxRecorder(req) // Run handler and read response handleRegister(req, txRecord) responses := txRecord.Result() require.Len(t, responses, 1) assert.EqualValues(t, 400, responses[0].StatusCode) } " />
 
   
-    <link rel="canonical" href="http://localhost:1313/diago/docs/examples/" itemprop="url" />
+    <link rel="canonical" href="http://localhost:1313/diago/blog/unit_testing/" itemprop="url" />
   
 
   
 
-<meta property="og:title" content="Demo     Examples" />
-<meta property="og:description" content="CLI Softphone for testing
-    For testing below scenarios, gophone as CLI softphone is used, but you can use any softphone you like.
-Visit the page and install: https://github.com/emiago/gophone
-Source code of examples is in library.
-You will need go compiler installed.
-Here we show couple of them
-Audio playback
-    
+<meta property="og:title" content="" />
+<meta property="og:description" content="How to UNIT test server
+    First make sure you have imported siptest
 
-    
-    
-      
-    
+  
 
-Audio playback with control
+import &#34;github.com/emiago/sipgo/siptest&#34;
+  
     
+    
+  
 
-    
-    
-      
-    
 
-DTMF
-    
+  
 
+Example with testing REGISTER request
+
+  
+
+
+func handleRegister(req *sip.Request, tx sip.ServerTransaction) {
+  res := sip.NewResponseFromRequest(req, sip.StatusBadRequest, &#34;Bad Request&#34;, nil)
+  tx.Respond(res)
+}
+
+
+func TestServerHandlers(t *testing.T) {
+	// Setup server
+	uas, _ := sipgo.NewUA()
+	srv, _ := sipgo.NewServer(uas)
+	srv.OnRegister(handleRegister)
+	
+  // Create request
+	req := sip.NewRequest(sip.REGISTER, sip.Uri{User: &#34;alice&#34;, Host: &#34;localhost&#34;})
+
+	// Use dummy client to build request headers
+	uac, _ := sipgo.NewUA()
+	client, _ := sipgo.NewClient(uac)
+	sipgo.ClientRequestBuild(client, req)
+
+	// Create transaction Recorder
+	txRecord := siptest.NewServerTxRecorder(req)
+
+	// Run handler and read response
+	handleRegister(req, txRecord)
+	responses := txRecord.Result()
+	require.Len(t, responses, 1)
+	assert.EqualValues(t, 400, responses[0].StatusCode)
+} 
+
+  
     
     
-      
-    " />
+  
+
+
+  
+" />
 <meta property="og:type" content="article" />
-<meta property="og:url" content="http://localhost:1313/diago/docs/examples/" /><meta property="article:section" content="docs" />
+<meta property="og:url" content="http://localhost:1313/diago/blog/unit_testing/" /><meta property="article:section" content="blog" />
 
 
 
   
-  <meta itemprop="name" content="Demo     Examples">
-  <meta itemprop="description" content="CLI Softphone for testing For testing below scenarios, gophone as CLI softphone is used, but you can use any softphone you like.
-Visit the page and install: https://github.com/emiago/gophone
-Source code of examples is in library. You will need go compiler installed.
-Here we show couple of them
-Audio playback Audio playback with control DTMF">
-  <meta itemprop="wordCount" content="54">
+  <meta itemprop="name" content="Diago">
+  <meta itemprop="description" content="How to UNIT test server First make sure you have imported siptest
+import &#34;github.com/emiago/sipgo/siptest&#34; Example with testing REGISTER request
+func handleRegister(req *sip.Request, tx sip.ServerTransaction) { res := sip.NewResponseFromRequest(req, sip.StatusBadRequest, &#34;Bad Request&#34;, nil) tx.Respond(res) } func TestServerHandlers(t *testing.T) { // Setup server uas, _ := sipgo.NewUA() srv, _ := sipgo.NewServer(uas) srv.OnRegister(handleRegister) // Create request req := sip.NewRequest(sip.REGISTER, sip.Uri{User: &#34;alice&#34;, Host: &#34;localhost&#34;}) // Use dummy client to build request headers uac, _ := sipgo.NewUA() client, _ := sipgo.NewClient(uac) sipgo.ClientRequestBuild(client, req) // Create transaction Recorder txRecord := siptest.NewServerTxRecorder(req) // Run handler and read response handleRegister(req, txRecord) responses := txRecord.Result() require.Len(t, responses, 1) assert.EqualValues(t, 400, responses[0].StatusCode) }">
+  <meta itemprop="wordCount" content="103">
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Demo     Examples">
-  <meta name="twitter:description" content="CLI Softphone for testing For testing below scenarios, gophone as CLI softphone is used, but you can use any softphone you like.
-Visit the page and install: https://github.com/emiago/gophone
-Source code of examples is in library. You will need go compiler installed.
-Here we show couple of them
-Audio playback Audio playback with control DTMF">
+  <meta name="twitter:title" content="Diago">
+  <meta name="twitter:description" content="How to UNIT test server First make sure you have imported siptest
+import &#34;github.com/emiago/sipgo/siptest&#34; Example with testing REGISTER request
+func handleRegister(req *sip.Request, tx sip.ServerTransaction) { res := sip.NewResponseFromRequest(req, sip.StatusBadRequest, &#34;Bad Request&#34;, nil) tx.Respond(res) } func TestServerHandlers(t *testing.T) { // Setup server uas, _ := sipgo.NewUA() srv, _ := sipgo.NewServer(uas) srv.OnRegister(handleRegister) // Create request req := sip.NewRequest(sip.REGISTER, sip.Uri{User: &#34;alice&#34;, Host: &#34;localhost&#34;}) // Use dummy client to build request headers uac, _ := sipgo.NewUA() client, _ := sipgo.NewClient(uac) sipgo.ClientRequestBuild(client, req) // Create transaction Recorder txRecord := siptest.NewServerTxRecorder(req) // Run handler and read response handleRegister(req, txRecord) responses := txRecord.Result() require.Len(t, responses, 1) assert.EqualValues(t, 400, responses[0].StatusCode) }">
 
     <link href="/diago/css/compiled/main.css" rel="stylesheet" />
 
@@ -122,14 +144,14 @@ Audio playback Audio playback with control DTMF">
             title="Documentation"
             href="/diago/docs"
             
-            class="hx-text-sm contrast-more:hx-text-gray-700 contrast-more:dark:hx-text-gray-100 hx-relative -hx-ml-2 hx-hidden hx-whitespace-nowrap hx-p-2 md:hx-inline-block hx-font-medium"
+            class="hx-text-sm contrast-more:hx-text-gray-700 contrast-more:dark:hx-text-gray-100 hx-relative -hx-ml-2 hx-hidden hx-whitespace-nowrap hx-p-2 md:hx-inline-block hx-text-gray-600 hover:hx-text-gray-800 dark:hx-text-gray-400 dark:hover:hx-text-gray-200"
           >
             <span class="hx-text-center">Documentation</span>
           </a><a
             title="Blog"
             href="/diago/blog"
             
-            class="hx-text-sm contrast-more:hx-text-gray-700 contrast-more:dark:hx-text-gray-100 hx-relative -hx-ml-2 hx-hidden hx-whitespace-nowrap hx-p-2 md:hx-inline-block hx-text-gray-600 hover:hx-text-gray-800 dark:hx-text-gray-400 dark:hover:hx-text-gray-200"
+            class="hx-text-sm contrast-more:hx-text-gray-700 contrast-more:dark:hx-text-gray-100 hx-relative -hx-ml-2 hx-hidden hx-whitespace-nowrap hx-p-2 md:hx-inline-block hx-font-medium"
           >
             <span class="hx-text-center">Blog</span>
           </a><div class="search-wrapper hx-relative md:hx-w-64">
@@ -198,7 +220,7 @@ Audio playback Audio playback with control DTMF">
     <ul class="hx-flex hx-flex-col hx-gap-1 md:hx-hidden">
       
       
-          <li class=""><a
+          <li class="open"><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
       hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
     href="/diago/blog/"
@@ -206,17 +228,26 @@ Audio playback Audio playback with control DTMF">
   >Blog
         <span class="hextra-sidebar-collapsible-button"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="hx-h-[18px] hx-min-w-[18px] hx-rounded-sm hx-p-0.5 hover:hx-bg-gray-800/5 dark:hover:hx-bg-gray-100/5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" class="hx-origin-center hx-transition-transform rtl:-hx-rotate-180"></path></svg></span>
     </a><div class="ltr:hx-pr-0 hx-overflow-hidden">
-        <ul class='hx-relative hx-flex hx-flex-col hx-gap-1 before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] ltr:hx-ml-3 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-mr-3 rtl:hx-pr-3 rtl:before:hx-right-0 dark:before:hx-bg-neutral-800'><li class="hx-flex hx-flex-col "><a
+        <ul class='hx-relative hx-flex hx-flex-col hx-gap-1 before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] ltr:hx-ml-3 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-mr-3 rtl:hx-pr-3 rtl:before:hx-right-0 dark:before:hx-bg-neutral-800'><li class="hx-flex hx-flex-col open"><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+      sidebar-active-item hx-bg-primary-100 hx-font-semibold hx-text-primary-800 contrast-more:hx-border contrast-more:hx-border-primary-500 dark:hx-bg-primary-400/10 dark:hx-text-primary-600 contrast-more:dark:hx-border-primary-500"
     href="/diago/blog/unit_testing/"
     
   >Unit Testing
     </a>
+  
+    <ul class='hx-flex hx-flex-col hx-gap-1 hx-relative before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] dark:before:hx-bg-neutral-800 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-pr-3 rtl:before:hx-right-0 ltr:hx-ml-3 rtl:hx-mr-3'><li>
+              <a
+                href="#"
+                class="hx-flex hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [word-break:break-word] hx-cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] contrast-more:hx-border hx-gap-2 before:hx-opacity-25 before:hx-content-['#'] hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:hx-text-gray-900 contrast-more:dark:hx-text-gray-50 contrast-more:hx-border-transparent contrast-more:hover:hx-border-gray-900 contrast-more:dark:hover:hx-border-gray-50"
+              ></a>
+            </li>
+          </ul>
+  
               
             </li></ul>
       </div></li>
-          <li class="open"><a
+          <li class=""><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
       hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
     href="/diago/docs/"
@@ -259,40 +290,13 @@ Audio playback Audio playback with control DTMF">
   >Getting Started
     </a>
               
-            </li><li class="hx-flex hx-flex-col open"><a
+            </li><li class="hx-flex hx-flex-col "><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      sidebar-active-item hx-bg-primary-100 hx-font-semibold hx-text-primary-800 contrast-more:hx-border contrast-more:hx-border-primary-500 dark:hx-bg-primary-400/10 dark:hx-text-primary-600 contrast-more:dark:hx-border-primary-500"
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
     href="/diago/docs/examples/"
     
   >Demo     Examples
     </a>
-  
-    <ul class='hx-flex hx-flex-col hx-gap-1 hx-relative before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] dark:before:hx-bg-neutral-800 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-pr-3 rtl:before:hx-right-0 ltr:hx-ml-3 rtl:hx-mr-3'><li>
-              <a
-                href="#cli-softphone-for-testing"
-                class="hx-flex hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [word-break:break-word] hx-cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] contrast-more:hx-border hx-gap-2 before:hx-opacity-25 before:hx-content-['#'] hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:hx-text-gray-900 contrast-more:dark:hx-text-gray-50 contrast-more:hx-border-transparent contrast-more:hover:hx-border-gray-900 contrast-more:dark:hover:hx-border-gray-50"
-              >CLI Softphone for testing</a>
-            </li>
-          <li>
-              <a
-                href="#audio-playback"
-                class="hx-flex hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [word-break:break-word] hx-cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] contrast-more:hx-border hx-gap-2 before:hx-opacity-25 before:hx-content-['#'] hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:hx-text-gray-900 contrast-more:dark:hx-text-gray-50 contrast-more:hx-border-transparent contrast-more:hover:hx-border-gray-900 contrast-more:dark:hover:hx-border-gray-50"
-              >Audio playback</a>
-            </li>
-          <li>
-              <a
-                href="#audio-playback-with-control"
-                class="hx-flex hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [word-break:break-word] hx-cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] contrast-more:hx-border hx-gap-2 before:hx-opacity-25 before:hx-content-['#'] hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:hx-text-gray-900 contrast-more:dark:hx-text-gray-50 contrast-more:hx-border-transparent contrast-more:hover:hx-border-gray-900 contrast-more:dark:hover:hx-border-gray-50"
-              >Audio playback with control</a>
-            </li>
-          <li>
-              <a
-                href="#dtmf"
-                class="hx-flex hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [word-break:break-word] hx-cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] contrast-more:hx-border hx-gap-2 before:hx-opacity-25 before:hx-content-['#'] hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:hx-text-gray-900 contrast-more:dark:hx-text-gray-50 contrast-more:hx-border-transparent contrast-more:hover:hx-border-gray-900 contrast-more:dark:hover:hx-border-gray-50"
-              >DTMF</a>
-            </li>
-          </ul>
-  
               
             </li><li class="hx-flex hx-flex-col "><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
@@ -316,59 +320,12 @@ Audio playback Audio playback with control DTMF">
 
     <ul class="hx-flex hx-flex-col hx-gap-1 max-md:hx-hidden">
         
-          <li class=""><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/guides/"
-    
-  >Guides
-        <span class="hextra-sidebar-collapsible-button"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" class="hx-h-[18px] hx-min-w-[18px] hx-rounded-sm hx-p-0.5 hover:hx-bg-gray-800/5 dark:hover:hx-bg-gray-100/5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" class="hx-origin-center hx-transition-transform rtl:-hx-rotate-180"></path></svg></span>
-    </a><div class="ltr:hx-pr-0 hx-overflow-hidden">
-        <ul class='hx-relative hx-flex hx-flex-col hx-gap-1 before:hx-absolute before:hx-inset-y-1 before:hx-w-px before:hx-bg-gray-200 before:hx-content-[""] ltr:hx-ml-3 ltr:hx-pl-3 ltr:before:hx-left-0 rtl:hx-mr-3 rtl:hx-pr-3 rtl:before:hx-right-0 dark:before:hx-bg-neutral-800'><li class="hx-flex hx-flex-col "><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/guides/understanding_sip/"
-    
-  >Understading SIP with Call Scenarios
-    </a>
-              
-            </li><li class="hx-flex hx-flex-col "><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/guides/sip_and_media/"
-    
-  >SIP and Media
-    </a>
-              
-            </li></ul>
-      </div></li>
-          <li class=""><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/getting_started/"
-    
-  >Getting Started
-    </a></li>
           <li class="open"><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
       sidebar-active-item hx-bg-primary-100 hx-font-semibold hx-text-primary-800 contrast-more:hx-border contrast-more:hx-border-primary-500 dark:hx-bg-primary-400/10 dark:hx-text-primary-600 contrast-more:dark:hx-border-primary-500"
-    href="/diago/docs/examples/"
+    href="/diago/blog/unit_testing/"
     
-  >Demo     Examples
-    </a></li>
-          <li class=""><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/api_docs/"
-    
-  >API Docs
-    </a></li>
-          <li class=""><a
-    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
-    href="/diago/docs/why_diago/"
-    
-  >Why Diago
+  >Unit Testing
     </a></li>
         
       </ul>
@@ -389,19 +346,7 @@ Audio playback Audio playback with control DTMF">
 <nav class="hextra-toc hx-order-last hx-hidden hx-w-64 hx-shrink-0 xl:hx-block print:hx-hidden hx-px-4" aria-label="table of contents">
     <div class="hextra-scrollbar hx-sticky hx-top-16 hx-overflow-y-auto hx-pr-4 hx-pt-6 hx-text-sm [hyphens:auto] hx-max-h-[calc(100vh-var(--navbar-height)-env(safe-area-inset-bottom))] ltr:hx--mr-4 rtl:hx--ml-4"><p class="hx-mb-4 hx-font-semibold hx-tracking-tight">On this page</p><ul>
       <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
-        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#cli-softphone-for-testing">CLI Softphone for testing
-        </a>
-      </li>
-      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
-        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#audio-playback">Audio playback
-        </a>
-      </li>
-      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
-        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#audio-playback-with-control">Audio playback with control
-        </a>
-      </li>
-      <li class="hx-my-2 hx-scroll-my-6 hx-scroll-py-6">
-        <a class="hx-font-semibold hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#dtmf">DTMF
+        <a class="ltr:hx-pl-4 rtl:hx-pr-4 hx-inline-block hx-text-gray-500 hover:hx-text-gray-900 dark:hx-text-gray-400 dark:hover:hx-text-gray-300 contrast-more:hx-text-gray-900 contrast-more:hx-underline contrast-more:dark:hx-text-gray-50 hx-w-full hx-break-words" href="#how-to-unit-test-server">How to UNIT test server
         </a>
       </li></ul>
       <div class="hx-mt-8 hx-border-t hx-bg-white hx-pt-8 hx-shadow-[0_-12px_16px_white] dark:hx-bg-dark dark:hx-shadow-[0_-12px_16px_#111] hx-sticky hx-bottom-0 hx-flex hx-flex-col hx-items-start hx-gap-2 hx-pb-8 dark:hx-border-neutral-800 contrast-more:hx-border-t contrast-more:hx-border-neutral-400 contrast-more:hx-shadow-none contrast-more:dark:hx-border-neutral-400">
@@ -421,57 +366,79 @@ Audio playback Audio playback with control DTMF">
         
   <div class="hx-mt-1.5 hx-flex hx-items-center hx-gap-1 hx-overflow-hidden hx-text-sm hx-text-gray-500 dark:hx-text-gray-400 contrast-more:hx-text-current">
         <div class="hx-whitespace-nowrap hx-transition-colors hx-min-w-[24px] hx-overflow-hidden hx-text-ellipsis hover:hx-text-gray-900 dark:hover:hx-text-gray-100">
-          <a href="/diago/docs/">Docs</a>
-        </div><svg class="hx-w-3.5 hx-shrink-0 rtl:-hx-rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg><div class="hx-whitespace-nowrap hx-transition-colors hx-font-medium hx-text-gray-700 contrast-more:hx-font-bold contrast-more:hx-text-current dark:hx-text-gray-100 contrast-more:dark:hx-text-current">Demo     Examples</div>
+          <a href="/diago/blog/">Blog</a>
+        </div><svg class="hx-w-3.5 hx-shrink-0 rtl:-hx-rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg><div class="hx-whitespace-nowrap hx-transition-colors hx-font-medium hx-text-gray-700 contrast-more:hx-font-bold contrast-more:hx-text-current dark:hx-text-gray-100 contrast-more:dark:hx-text-current">Unit Testing</div>
   </div>
 
         <div class="content">
-          <h1>Demo     Examples</h1>
-          <h2>CLI Softphone for testing<span class="hx-absolute -hx-mt-20" id="cli-softphone-for-testing"></span>
-    <a href="#cli-softphone-for-testing" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>For testing below scenarios, <strong>gophone</strong> as CLI softphone is used, but you can use any softphone you like.</p>
-<p>Visit the page and install: <a href="https://github.com/emiago/gophone" target="_blank" rel="noopener">https://github.com/emiago/gophone</a></p>
-<p><strong>Source code of examples</strong> is in library.
-You will need go compiler installed.</p>
-<p>Here we show couple of them</p>
-<h2>Audio playback<span class="hx-absolute -hx-mt-20" id="audio-playback"></span>
-    <a href="#audio-playback" class="subheading-anchor" aria-label="Permalink for this section"></a></h2>
+          
+          <h3>How to UNIT test server<span class="hx-absolute -hx-mt-20" id="how-to-unit-test-server"></span>
+    <a href="#how-to-unit-test-server" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>First make sure you have imported siptest</p>
+<div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
+  
 
-    
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
-      <iframe allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen="allowfullscreen" loading="eager" referrerpolicy="strict-origin-when-cross-origin" src="https://www.youtube.com/embed/_cMvvhZNX-4?autoplay=0&controls=1&end=0&loop=0&mute=0&start=0" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" title="YouTube video"
-      ></iframe>
-    </div>
+<div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">import</span> <span class="s">&#34;github.com/emiago/sipgo/siptest&#34;</span></span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
+  <button
+    class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
+    title="Copy code"
+  >
+    <div class="copy-icon group-[.copied]/copybtn:hx-hidden hx-pointer-events-none hx-h-4 hx-w-4"></div>
+    <div class="success-icon hx-hidden group-[.copied]/copybtn:hx-block hx-pointer-events-none hx-h-4 hx-w-4"></div>
+  </button>
+</div>
 
-<h2>Audio playback with control<span class="hx-absolute -hx-mt-20" id="audio-playback-with-control"></span>
-    <a href="#audio-playback-with-control" class="subheading-anchor" aria-label="Permalink for this section"></a></h2>
+  
+</div>
+<p>Example with testing REGISTER request</p>
+<div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
+  
 
-    
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
-      <iframe allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen="allowfullscreen" loading="eager" referrerpolicy="strict-origin-when-cross-origin" src="https://www.youtube.com/embed/-JtuGlai2yA?autoplay=0&controls=1&end=0&loop=0&mute=0&start=0" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" title="YouTube video"
-      ></iframe>
-    </div>
+<div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">handleRegister</span><span class="p">(</span><span class="nx">req</span> <span class="o">*</span><span class="nx">sip</span><span class="p">.</span><span class="nx">Request</span><span class="p">,</span> <span class="nx">tx</span> <span class="nx">sip</span><span class="p">.</span><span class="nx">ServerTransaction</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">  <span class="nx">res</span> <span class="o">:=</span> <span class="nx">sip</span><span class="p">.</span><span class="nf">NewResponseFromRequest</span><span class="p">(</span><span class="nx">req</span><span class="p">,</span> <span class="nx">sip</span><span class="p">.</span><span class="nx">StatusBadRequest</span><span class="p">,</span> <span class="s">&#34;Bad Request&#34;</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">  <span class="nx">tx</span><span class="p">.</span><span class="nf">Respond</span><span class="p">(</span><span class="nx">res</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">TestServerHandlers</span><span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// Setup server
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="nx">uas</span><span class="p">,</span> <span class="nx">_</span> <span class="o">:=</span> <span class="nx">sipgo</span><span class="p">.</span><span class="nf">NewUA</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">srv</span><span class="p">,</span> <span class="nx">_</span> <span class="o">:=</span> <span class="nx">sipgo</span><span class="p">.</span><span class="nf">NewServer</span><span class="p">(</span><span class="nx">uas</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">srv</span><span class="p">.</span><span class="nf">OnRegister</span><span class="p">(</span><span class="nx">handleRegister</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	
+</span></span><span class="line"><span class="cl">  <span class="c1">// Create request
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="nx">req</span> <span class="o">:=</span> <span class="nx">sip</span><span class="p">.</span><span class="nf">NewRequest</span><span class="p">(</span><span class="nx">sip</span><span class="p">.</span><span class="nx">REGISTER</span><span class="p">,</span> <span class="nx">sip</span><span class="p">.</span><span class="nx">Uri</span><span class="p">{</span><span class="nx">User</span><span class="p">:</span> <span class="s">&#34;alice&#34;</span><span class="p">,</span> <span class="nx">Host</span><span class="p">:</span> <span class="s">&#34;localhost&#34;</span><span class="p">})</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// Use dummy client to build request headers
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="nx">uac</span><span class="p">,</span> <span class="nx">_</span> <span class="o">:=</span> <span class="nx">sipgo</span><span class="p">.</span><span class="nf">NewUA</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">client</span><span class="p">,</span> <span class="nx">_</span> <span class="o">:=</span> <span class="nx">sipgo</span><span class="p">.</span><span class="nf">NewClient</span><span class="p">(</span><span class="nx">uac</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">sipgo</span><span class="p">.</span><span class="nf">ClientRequestBuild</span><span class="p">(</span><span class="nx">client</span><span class="p">,</span> <span class="nx">req</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// Create transaction Recorder
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="nx">txRecord</span> <span class="o">:=</span> <span class="nx">siptest</span><span class="p">.</span><span class="nf">NewServerTxRecorder</span><span class="p">(</span><span class="nx">req</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// Run handler and read response
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span>	<span class="nf">handleRegister</span><span class="p">(</span><span class="nx">req</span><span class="p">,</span> <span class="nx">txRecord</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">responses</span> <span class="o">:=</span> <span class="nx">txRecord</span><span class="p">.</span><span class="nf">Result</span><span class="p">()</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">require</span><span class="p">.</span><span class="nf">Len</span><span class="p">(</span><span class="nx">t</span><span class="p">,</span> <span class="nx">responses</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">assert</span><span class="p">.</span><span class="nf">EqualValues</span><span class="p">(</span><span class="nx">t</span><span class="p">,</span> <span class="mi">400</span><span class="p">,</span> <span class="nx">responses</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="nx">StatusCode</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span> 
+</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0">
+  <button
+    class="hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50"
+    title="Copy code"
+  >
+    <div class="copy-icon group-[.copied]/copybtn:hx-hidden hx-pointer-events-none hx-h-4 hx-w-4"></div>
+    <div class="success-icon hx-hidden group-[.copied]/copybtn:hx-block hx-pointer-events-none hx-h-4 hx-w-4"></div>
+  </button>
+</div>
 
-<h2>DTMF<span class="hx-absolute -hx-mt-20" id="dtmf"></span>
-    <a href="#dtmf" class="subheading-anchor" aria-label="Permalink for this section"></a></h2>
-
-    
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
-      <iframe allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen="allowfullscreen" loading="eager" referrerpolicy="strict-origin-when-cross-origin" src="https://www.youtube.com/embed/-zO_dRptgmY?autoplay=0&controls=1&end=0&loop=0&mute=0&start=0" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" title="YouTube video"
-      ></iframe>
-    </div>
-
+  
+</div>
 
         </div>
         <div class="hx-mt-16"></div>
-        <div class="hx-mb-8 hx-flex hx-items-center hx-border-t hx-pt-8 dark:hx-border-neutral-800 contrast-more:hx-border-neutral-400 dark:contrast-more:hx-border-neutral-400 print:hx-hidden"><a
-        href="/diago/docs/getting_started/"
-        title="Getting Started"
-        class="hx-flex hx-max-w-[50%] hx-items-center hx-gap-1 hx-py-4 hx-text-base hx-font-medium hx-text-gray-600 hx-transition-colors [word-break:break-word] hover:hx-text-primary-600 dark:hx-text-gray-300 md:hx-text-lg ltr:hx-pr-4 rtl:hx-pl-4"
-      ><svg class="hx-inline hx-h-5 hx-shrink-0 ltr:hx-rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>Getting Started</a><a
-        href="/diago/docs/api_docs/"
-        title="API Docs"
-        class="hx-flex hx-max-w-[50%] hx-items-center hx-gap-1 hx-py-4 hx-text-base hx-font-medium hx-text-gray-600 hx-transition-colors [word-break:break-word] hover:hx-text-primary-600 dark:hx-text-gray-300 md:hx-text-lg ltr:hx-ml-auto ltr:hx-pl-4 ltr:hx-text-right rtl:hx-mr-auto rtl:hx-pr-4 rtl:hx-text-left"
-      >API Docs<svg class="hx-inline hx-h-5 hx-shrink-0 rtl:-hx-rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></a></div>
+        
         
       </main>
     </article>
