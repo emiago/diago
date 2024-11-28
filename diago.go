@@ -47,6 +47,8 @@ func WithAuth(auth sipgo.DigestAuth) DiagoOption {
 }
 
 type Transport struct {
+	ID string
+
 	// Transport must be udp,tcp or ws.
 	Transport string
 	BindHost  string
@@ -485,7 +487,8 @@ type InviteOptions struct {
 	Password string
 
 	// Custom headers to pass. DO NOT SET THIS to nil
-	Headers []sip.Header
+	Headers     []sip.Header
+	TransportID string
 }
 
 // func (o InviteOptions) SetCaller(displayName string, callerID string) {
@@ -529,7 +532,8 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 			transport = t
 		}
 	}
-	tran, exists := dg.getTransport(transport)
+
+	tran, exists := dg.findTransport(opts.TransportID, transport)
 	if !exists {
 		return nil, fmt.Errorf("transport %s does not exists", transport)
 	}
@@ -757,11 +761,24 @@ func (dg *Diago) getTransport(transport string) (Transport, bool) {
 		return dg.transports[0], true
 	}
 	for _, t := range dg.transports {
-		if sip.NetworkToLower(transport) == sip.NetworkToLower(t.Transport) {
+		if sip.NetworkToLower(transport) == t.Transport {
 			return t, true
 		}
 	}
 	return Transport{}, false
+}
+
+func (dg *Diago) findTransport(id string, transport string) (Transport, bool) {
+	if id != "" {
+		for _, t := range dg.transports {
+			if id == t.ID {
+				return t, true
+			}
+		}
+		return Transport{}, false
+	}
+
+	return dg.getTransport(transport)
 }
 
 type RegisterOptions struct {
