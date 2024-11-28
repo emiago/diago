@@ -51,6 +51,7 @@ type Transport struct {
 	Transport string
 	BindHost  string
 	BindPort  int
+	bindIP    net.IP
 
 	ExternalHost string // SIP signaling and media external addr
 	ExternalPort int
@@ -67,8 +68,28 @@ type Transport struct {
 
 func WithTransport(t Transport) DiagoOption {
 	return func(dg *Diago) {
+		bindIP := net.ParseIP(t.BindHost)
+		if bindIP != nil && bindIP.IsUnspecified() {
+			network := "ip4"
+			if bindIP.To4() == nil {
+				network = "ip6"
+			}
+			ip, _, err := sip.ResolveInterfacesIP(network, nil)
+			if err != nil {
+				dg.log.Error().Err(err).Msg("failed to resolve real IP")
+			} else {
+				t.mediaBindIP = ip
+			}
+		} else {
+			t.mediaBindIP = bindIP
+		}
+
 		if t.ExternalHost == "" {
 			t.ExternalHost = t.BindHost
+			// External host should match media IP
+			if t.mediaBindIP != nil {
+				t.ExternalHost = t.mediaBindIP.String()
+			}
 		}
 
 		if t.ExternalPort == 0 {
@@ -78,7 +99,7 @@ func WithTransport(t Transport) DiagoOption {
 		// Resolve unspecified IP for contact hdr
 		extIp := net.ParseIP(t.ExternalHost)
 		if t.ExternalHost == "" || (extIp != nil && extIp.IsUnspecified()) {
-			ip, _, err := sip.ResolveInterfacesIP("ipv4", nil)
+			ip, _, err := sip.ResolveInterfacesIP("ip4", nil)
 			if err != nil {
 				dg.log.Error().Err(err).Msg("Failed to resolve interface ip for contact header")
 			} else {
@@ -86,13 +107,6 @@ func WithTransport(t Transport) DiagoOption {
 				t.ExternalHost = ip.To4().String()
 				extIp = ip
 			}
-
-		}
-
-		// Setup media IP
-		bindIP := net.ParseIP(t.BindHost)
-		if bindIP != nil && !bindIP.IsUnspecified() {
-			t.mediaBindIP = bindIP
 		}
 
 		if t.MediaExternalIP == nil && t.ExternalHost != "" {
@@ -101,6 +115,8 @@ func WithTransport(t Transport) DiagoOption {
 				t.MediaExternalIP = extIp
 			}
 		}
+
+		t.Transport = sip.NetworkToLower(t.Transport)
 
 		dg.transports = append(dg.transports, t)
 	}
@@ -419,7 +435,6 @@ func (dg *Diago) serve(ctx context.Context, f ServeDialogFunc, readyCh func()) e
 				errCh <- server.ListenAndServeTLS(ctx, tran.Transport, hostport, tran.TLSConf)
 				return
 			}
-
 			errCh <- server.ListenAndServe(ctx, tran.Transport, hostport)
 		}(i, tran)
 	}
@@ -630,11 +645,14 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 	}
 
 	// reuse UDP listener
-	via := inviteReq.Via()
-	if transport == "udp" && via.Port == 0 {
-		via.Host = tran.BindHost
-		via.Port = dg.server.TransportLayer().GetListenPort("udp")
-	}
+	// Problem if listener is unspecified IP sipgo will not map this to listener
+	// Code below only works if our bind host is specified
+	// For now let SIPgo create 1 UDP connection and it will reuse it
+	// via := inviteReq.Via()
+	// if transport == "udp" && via.Port == 0 && via.Host == "" {
+	// 	via.Host = tran.mediaBindIP.String()
+	// 	via.Port = dg.server.TransportLayer().GetListenPort("udp")
+	// }
 
 	dialog, err := dialogCli.WriteInvite(ctx, inviteReq, func(c *sipgo.Client, req *sip.Request) error {
 		// Do nothing
