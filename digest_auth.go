@@ -41,18 +41,6 @@ func NewDigestServer() *DigestAuthServer {
 	return t
 }
 
-func (s *DigestAuthServer) Authorize(d *DialogServerSession, auth DigestAuth) error {
-	if auth.Realm == "" {
-		auth.Realm = "sipgo"
-	}
-
-	// https://www.rfc-editor.org/rfc/rfc2617#page-6
-	req := d.InviteRequest
-	res, err := s.AuthorizeRequest(req, auth)
-
-	return errors.Join(err, d.WriteResponse(res))
-}
-
 var (
 	ErrDigestAuthNoChallenge = errors.New("no challenge")
 	ErrDigestAuthBadCreds    = errors.New("bad credentials")
@@ -119,6 +107,17 @@ func (s *DigestAuthServer) AuthorizeRequest(req *sip.Request, auth DigestAuth) (
 	}
 
 	return sip.NewResponseFromRequest(req, sip.StatusOK, "OK", nil), nil
+}
+
+func (s *DigestAuthServer) AuthorizeDialog(d *DialogServerSession, auth DigestAuth) error {
+	if auth.Realm == "" {
+		auth.Realm = "sipgo"
+	}
+
+	// https://www.rfc-editor.org/rfc/rfc2617#page-6
+	req := d.InviteRequest
+	res, err := s.AuthorizeRequest(req, auth)
+	return errors.Join(err, d.WriteResponse(res))
 }
 
 func generateNonce() (string, error) {
