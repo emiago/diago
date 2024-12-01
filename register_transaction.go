@@ -81,7 +81,7 @@ func (t *RegisterTransaction) Register(ctx context.Context) error {
 
 	// Send request and parse response
 	// req.SetDestination(*dst)
-	log.Info().Str("uri", req.Recipient.String()).Int("expiry", int(expiry)).Msg("sending request")
+	log.Info().Str("uri", req.Recipient.String()).Int("expiry", int(expiry)).Msg("REGISTER")
 	tx, err := client.TransactionRequest(ctx, req)
 	if err != nil {
 		return fmt.Errorf("fail to create transaction req=%q: %w", req.StartLine(), err)

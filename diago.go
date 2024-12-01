@@ -798,7 +798,9 @@ func (dg *Diago) Register(ctx context.Context, recipient sip.Uri, opts RegisterO
 		err := t.Unregister(ctx)
 		if err != nil {
 			log.Error().Err(err).Msg("Fail to unregister")
+			return
 		}
+		dg.log.Debug().Msg("Unregister successfull")
 	}()
 
 	return t.QualifyLoop(ctx)
