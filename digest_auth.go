@@ -51,69 +51,6 @@ func (s *DigestAuthServer) Authorize(d *DialogServerSession, auth DigestAuth) er
 	res, err := s.AuthorizeRequest(req, auth)
 
 	return errors.Join(err, d.WriteResponse(res))
-	// h := req.GetHeader("Authorization")
-
-	// if h == nil {
-	// 	nonce, err := generateNonce()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-
-	// 	chal := &digest.Challenge{
-	// 		Realm: auth.Realm,
-	// 		Nonce: nonce,
-	// 		// Opaque:    "sipgo",
-	// 		Algorithm: "MD5",
-	// 	}
-
-	// 	res := sip.NewResponseFromRequest(req, 401, "Unathorized", nil)
-	// 	res.AppendHeader(sip.NewHeader("WWW-Authenticate", chal.String()))
-	// 	if err := d.WriteResponse(res); err != nil {
-	// 		return err
-	// 	}
-
-	// 	s.mu.Lock()
-	// 	s.cache[nonce] = chal
-	// 	s.mu.Unlock()
-	// 	time.AfterFunc(auth.expire(), func() {
-	// 		s.mu.Lock()
-	// 		delete(s.cache, nonce)
-	// 		s.mu.Unlock()
-	// 	})
-
-	// 	return fmt.Errorf("challenged")
-	// }
-
-	// cred, err := digest.ParseCredentials(h.Value())
-	// if err != nil {
-	// 	d.Respond(sip.StatusBadRequest, "Bad credentials", nil)
-	// 	return fmt.Errorf("Parsing creds failed: %w", err)
-	// }
-
-	// chal, exists := s.cache[cred.Nonce]
-	// if !exists {
-	// 	return fmt.Errorf("challenge not found")
-	// }
-
-	// // Make digest and compare response
-	// digCred, err := digest.Digest(chal, digest.Options{
-	// 	Method:   "INVITE",
-	// 	URI:      cred.URI,
-	// 	Username: auth.Username,
-	// 	Password: auth.Password,
-	// })
-
-	// if err != nil {
-	// 	log.Error().Err(err).Msg("Calc digest failed")
-	// 	d.Respond(sip.StatusUnauthorized, "Bad credentials", nil)
-	// 	return fmt.Errorf("digest calculation failed: %w", err)
-	// }
-
-	// if cred.Response != digCred.Response {
-	// 	d.Respond(401, "Unathorized", nil)
-	// 	return fmt.Errorf("non matching creds, unathorized")
-	// }
-	// return nil
 }
 
 var (
