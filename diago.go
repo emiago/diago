@@ -637,9 +637,6 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 	// via := inviteReq.Via()
 	// if via.Host == "" {
 	// }
-
-	fmt.Println(inviteReq.Via().Host, "Aaaaaaaaaaaaaaaaaaa")
-
 	dialog, err := dialogCli.WriteInvite(ctx, inviteReq, func(c *sipgo.Client, req *sip.Request) error {
 		// Do nothing
 		return nil
