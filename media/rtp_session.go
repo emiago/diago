@@ -67,9 +67,10 @@ type RTPReadStats struct {
 	lastSeq                RTPExtendedSequenceNumber
 	// tracks first pkt seq in this interval to calculate loss of packets
 	IntervalFirstPktSeqNum uint16
-	IntervalTotalPackets   uint16
+	IntervalPacketsCount   uint16
 
-	TotalPackets uint64
+	PacketsCount uint64
+	OctetCount   uint64
 
 	// RTP reading stats
 	SampleRate       uint32
@@ -95,8 +96,8 @@ type RTPWriteStats struct {
 	sampleRate          uint32
 
 	// RTCP stats
-	PacketsCount uint32
-	OctetCount   uint32
+	PacketsCount uint64
+	OctetCount   uint64
 }
 
 // RTP session creates new RTP reader/writer from session
@@ -180,8 +181,11 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 		}
 		stats.jitter = stats.jitter + (D-stats.jitter)/16
 	}
-	stats.IntervalTotalPackets++
-	stats.TotalPackets++
+	payloadSize := n - readPkt.Header.MarshalSize() - int(readPkt.PaddingSize)
+
+	stats.IntervalPacketsCount++
+	stats.PacketsCount++
+	stats.OctetCount += uint64(payloadSize)
 	stats.LastSequenceNumber = readPkt.SequenceNumber
 	// stats.clockRTPTimestamp+=
 
@@ -231,7 +235,7 @@ func (s *RTPSession) WriteRTP(pkt *rtp.Packet) error {
 	}
 
 	writeStats.PacketsCount++
-	writeStats.OctetCount += uint32(len(pkt.Payload))
+	writeStats.OctetCount += uint64(len(pkt.Payload))
 	writeStats.lastPacketTime = time.Now()
 	writeStats.lastPacketTimestamp = pkt.Timestamp
 
@@ -249,6 +253,18 @@ func (s *RTPSession) WriteRTPRaw(buf []byte) (int, error) {
 	// In this case just proxy RTP. RTP Session can not work without full RTP decoded
 	// It is expected that RTCP is also proxied
 	return s.Sess.WriteRTCPRaw(buf)
+}
+
+func (s *RTPSession) ReadStats() RTPReadStats {
+	s.rtcpMU.Lock()
+	defer s.rtcpMU.Unlock()
+	return s.readStats
+}
+
+func (s *RTPSession) WriteStats() RTPWriteStats {
+	s.rtcpMU.Lock()
+	defer s.rtcpMU.Unlock()
+	return s.writeStats
 }
 
 // Monitor starts reading RTCP and monitoring media quality
@@ -433,7 +449,7 @@ func (s *RTPSession) writeRTCP(now time.Time) error {
 
 	// Reset any current reading interval stats
 	s.readStats.IntervalFirstPktSeqNum = 0
-	s.readStats.IntervalTotalPackets = 0
+	s.readStats.IntervalPacketsCount = 0
 
 	// Add interceptor
 	if s.OnWriteRTCP != nil {
@@ -469,8 +485,8 @@ func (s *RTPSession) parseSenderReport(senderReport *rtcp.SenderReport, now time
 		SSRC:        ssrc,
 		NTPTime:     NTPTimestamp(now),
 		RTPTime:     writeStats.lastPacketTimestamp + uint32(rtpTimestampOffset),
-		PacketCount: writeStats.PacketsCount,
-		OctetCount:  writeStats.OctetCount,
+		PacketCount: uint32(min(writeStats.PacketsCount, 1<<32)), // Saturate to largest 32 bit value
+		OctetCount:  uint32(min(writeStats.OctetCount, 1<<32)),
 	}
 
 	if s.readStats.SSRC > 0 {
@@ -490,7 +506,7 @@ func (s *RTPSession) parseReceptionReport(receptionReport *rtcp.ReceptionReport,
 	// fraction loss is caluclated as packets loss / number expected in interval as fixed point number with point number at the left edge
 	receivedLastSeq := int64(lastExtendedSeq.ReadExtendedSeq())
 	readIntervalExpectedPkts := receivedLastSeq - int64(readStats.IntervalFirstPktSeqNum)
-	readIntervalLost := max(readIntervalExpectedPkts-int64(readStats.IntervalTotalPackets), 0)
+	readIntervalLost := max(readIntervalExpectedPkts-int64(readStats.IntervalPacketsCount), 0)
 	fractionLost := float64(readIntervalLost) / float64(readIntervalExpectedPkts) // Can be negative
 
 	// Watch OUT FOR -1
@@ -510,7 +526,7 @@ func (s *RTPSession) parseReceptionReport(receptionReport *rtcp.ReceptionReport,
 	*receptionReport = rtcp.ReceptionReport{
 		SSRC:               readStats.SSRC,
 		FractionLost:       uint8(max(fractionLost*256, 0)),                         // Can be negative. Saturate to zero
-		TotalLost:          uint32(min(expectedPkts-readStats.TotalPackets, 1<<32)), // Saturate to largest 32 bit value
+		TotalLost:          uint32(min(expectedPkts-readStats.PacketsCount, 1<<32)), // Saturate to largest 32 bit value
 		LastSequenceNumber: uint32(sequenceCycles)<<16 + uint32(readStats.LastSequenceNumber),
 		Jitter:             uint32(readStats.jitter),                    // TODO
 		LastSenderReport:   uint32(readStats.lastSenderReportNTP >> 16), // LSR

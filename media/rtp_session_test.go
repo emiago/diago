@@ -109,7 +109,7 @@ func TestRTPSessionReading(t *testing.T) {
 	expectedPkts := len(rtpStream) + lostPackets
 
 	// rtpSess.readStats.firstPktSequenceNumber
-	assert.Equal(t, len(rtpStream), int(rtpSessRead.readStats.IntervalTotalPackets))
+	assert.Equal(t, len(rtpStream), int(rtpSessRead.readStats.IntervalPacketsCount))
 	// assert.Equal(t, Npkts, int(rtpSess.readStats.intervalTotalPackets))
 
 	// Now make a sender report
