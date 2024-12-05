@@ -214,6 +214,19 @@ func WithAudioReaderMediaProps(p *MediaProps) AudioReaderOption {
 	}
 }
 
+// WithAudioReaderRTPStats creates RTP Statistics interceptor on audio reader
+func WithAudioReaderRTPStats(hook media.OnRTPReadStats) AudioReaderOption {
+	return func(d *DialogMedia) error {
+		r := &media.RTPStatsReader{
+			Reader:         d.getAudioReader(),
+			RTPSession:     d.rtpSession,
+			OnRTPReadStats: hook,
+		}
+		d.audioReader = r
+		return nil
+	}
+}
+
 // AudioReader gets current audio reader. It MUST be called after Answer.
 // Use AuidioListen for optimized reading.
 // Reading buffer should be equal or bigger of media.RTPBufSize
@@ -260,6 +273,19 @@ func WithAudioWriterMediaProps(p *MediaProps) AudioWriterOption {
 		p.Codec = media.CodecFromSession(d.mediaSession)
 		p.Laddr = d.mediaSession.Laddr.String()
 		p.Raddr = d.mediaSession.Raddr.String()
+		return nil
+	}
+}
+
+// WithAudioReaderRTPStats creates RTP Statistics interceptor on audio reader
+func WithAudioWriterRTPStatsHook(hook media.OnRTPWriteStats) AudioWriterOption {
+	return func(d *DialogMedia) error {
+		w := media.RTPStatsWriter{
+			Writer:          d.getAudioWriter(),
+			RTPSession:      d.rtpSession,
+			OnRTPWriteStats: hook,
+		}
+		d.audioWriter = &w
 		return nil
 	}
 }

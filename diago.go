@@ -753,6 +753,16 @@ func (dg *Diago) getClient(tran *Transport) *sipgo.Client {
 	if hostIP != nil {
 		hostname = hostIP.String()
 	}
+
+	if tran.Transport == "udp" {
+		client, _ := sipgo.NewClient(dg.ua,
+			sipgo.WithClientNAT(),
+			sipgo.WithClientHostname(hostname),
+			sipgo.WithClientPort(tran.BindPort),
+		)
+		return client
+	}
+
 	client, _ := sipgo.NewClient(dg.ua,
 		sipgo.WithClientNAT(),
 		sipgo.WithClientHostname(hostname),
