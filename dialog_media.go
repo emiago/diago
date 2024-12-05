@@ -278,7 +278,7 @@ func WithAudioWriterMediaProps(p *MediaProps) AudioWriterOption {
 }
 
 // WithAudioReaderRTPStats creates RTP Statistics interceptor on audio reader
-func WithAudioWriterRTPStatsHook(hook media.OnRTPWriteStats) AudioWriterOption {
+func WithAudioWriterRTPStats(hook media.OnRTPWriteStats) AudioWriterOption {
 	return func(d *DialogMedia) error {
 		w := media.RTPStatsWriter{
 			Writer:          d.getAudioWriter(),
