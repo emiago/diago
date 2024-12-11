@@ -60,7 +60,10 @@ func (w *RTPDtmfReader) processDTMFEvent(ev DTMFEvent) {
 		// Expensive call on logger
 		log.Debug().Interface("ev", ev).Msg("Processing DTMF event")
 	}
-	if ev.EndOfEvent && w.lastEv.Duration > 0 {
+	if ev.EndOfEvent {
+		if w.lastEv.Duration == 0 {
+			return
+		}
 		// Does this match to our last ev
 		// Consider Event can be 0, that is why we check is also lastEv.Duration set
 		if w.lastEv.Event != ev.Event {
@@ -78,7 +81,7 @@ func (w *RTPDtmfReader) processDTMFEvent(ev DTMFEvent) {
 		w.lastEv = DTMFEvent{}
 		return
 	}
-	if w.lastEv.Event == ev.Event {
+	if w.lastEv.Duration > 0 && w.lastEv.Event == ev.Event {
 		return
 	}
 	w.lastEv = ev
