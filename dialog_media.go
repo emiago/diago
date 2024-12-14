@@ -257,9 +257,22 @@ func WithAudioReaderRTPStats(hook media.OnRTPReadStats) AudioReaderOption {
 	}
 }
 
+// WithAudioReaderDTMF creates DTMF interceptor
+func WithAudioReaderDTMF(r *DTMFReader) AudioReaderOption {
+	return func(d *DialogMedia) error {
+		r.dtmfReader = media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, d.RTPPacketReader, d.getAudioReader())
+		r.mediaSession = d.mediaSession
+
+		d.audioReader = r
+		return nil
+	}
+}
+
 // AudioReader gets current audio reader. It MUST be called after Answer.
 // Use AuidioListen for optimized reading.
 // Reading buffer should be equal or bigger of media.RTPBufSize
+// Options allow more intercepting audio reading like Stats or DTMF
+// NOTE that this interceptors will stay,
 func (d *DialogMedia) AudioReader(opts ...AudioReaderOption) (io.Reader, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -316,6 +329,16 @@ func WithAudioWriterRTPStats(hook media.OnRTPWriteStats) AudioWriterOption {
 			OnRTPWriteStats: hook,
 		}
 		d.audioWriter = &w
+		return nil
+	}
+}
+
+// WithAudioWriterDTMF creates DTMF interceptor
+func WithAudioWriterDTMF(r *DTMFWriter) AudioReaderOption {
+	return func(d *DialogMedia) error {
+		r.dtmfWriter = media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, d.RTPPacketWriter, d.getAudioWriter())
+		r.mediaSession = d.mediaSession
+		d.audioWriter = r
 		return nil
 	}
 }
