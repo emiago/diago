@@ -99,7 +99,6 @@ func (p *AudioPlayback) stream(body io.Reader, playWriter io.Writer) (int64, err
 }
 
 func (p *AudioPlayback) streamWav(body io.Reader, playWriter io.Writer) (int64, error) {
-	// dec := audio.NewWavDecoderStreamer(body)
 	codec := &p.codec
 	dec := audio.NewWavReader(body)
 	if err := dec.ReadHeaders(); err != nil {
