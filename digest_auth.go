@@ -117,6 +117,9 @@ func (s *DigestAuthServer) AuthorizeDialog(d *DialogServerSession, auth DigestAu
 	// https://www.rfc-editor.org/rfc/rfc2617#page-6
 	req := d.InviteRequest
 	res, err := s.AuthorizeRequest(req, auth)
+	if err == nil && res.StatusCode != 200 {
+		err = fmt.Errorf("not authorized")
+	}
 	return errors.Join(err, d.WriteResponse(res))
 }
 
