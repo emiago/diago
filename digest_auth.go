@@ -119,8 +119,9 @@ func (s *DigestAuthServer) AuthorizeDialog(d *DialogServerSession, auth DigestAu
 	res, err := s.AuthorizeRequest(req, auth)
 	if err == nil && res.StatusCode != 200 {
 		err = fmt.Errorf("not authorized")
+		return errors.Join(err, d.WriteResponse(res))
 	}
-	return errors.Join(err, d.WriteResponse(res))
+	return errors.Join(err, nil)
 }
 
 func generateNonce() (string, error) {

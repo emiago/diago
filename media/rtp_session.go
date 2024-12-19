@@ -296,9 +296,9 @@ func (s *RTPSession) Monitor() error {
 
 // MonitorBackground is helper to keep monitoring in background
 // MUST Be called after session REMOTE SDP is parsed
-func (s *RTPSession) MonitorBackground() {
+func (s *RTPSession) MonitorBackground() error {
 	if s.Sess.Raddr == nil || s.Sess.rtcpRaddr == nil {
-		panic("raddr of RTP is not present. You must call this after RemoteSDP is parsed")
+		return fmt.Errorf("raddr of RTP is not present. Is RemoteSDP called. Monitor RTP Session failed")
 	}
 
 	go func() {
@@ -342,6 +342,7 @@ func (s *RTPSession) MonitorBackground() {
 			}
 		}
 	}()
+	return nil
 }
 
 func (s *RTPSession) readRTCP() error {

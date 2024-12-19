@@ -5,6 +5,7 @@ package diago
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -160,8 +161,81 @@ func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
 			if state == sip.DialogStateConfirmed {
 				return nil
 			}
+			if state == sip.DialogStateEnded {
+				return fmt.Errorf("dialog ended on ack")
+			}
 		}
 	}
+}
+
+// AnswerLate does answer with Late offer.
+func (d *DialogServerSession) AnswerLate() error {
+	sess, err := d.createMediaSessionConf(d.mediaConf)
+	if err != nil {
+		return err
+	}
+	rtpSess := media.NewRTPSession(sess)
+	localSDP := sess.LocalSDP()
+
+	d.mu.Lock()
+	d.initRTPSessionUnsafe(sess, rtpSess)
+	// Close RTP session
+	d.onCloseUnsafe(func() {
+		if err := rtpSess.Close(); err != nil {
+			log.Error().Err(err).Msg("Closing session")
+		}
+	})
+	d.mu.Unlock()
+
+	if err := d.RespondSDP(localSDP); err != nil {
+		return err
+	}
+	// Wait ACK
+	// It is expected that on ReadACK SDP will be updated
+	for {
+		select {
+		case <-time.After(10 * time.Second):
+			return fmt.Errorf("no ACK received")
+		case state := <-d.StateRead():
+			if state == sip.DialogStateConfirmed {
+				// Must be called after media and reader writer is setup
+				return rtpSess.MonitorBackground()
+			}
+			if state == sip.DialogStateEnded {
+				return fmt.Errorf("dialog ended on ack")
+			}
+		}
+	}
+}
+
+func (d *DialogServerSession) ReadAck(req *sip.Request, tx sip.ServerTransaction) error {
+	// Check do we have some session
+	err := func() error {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		sess := d.mediaSession
+		if sess == nil {
+			return nil
+		}
+		contentType := req.ContentType()
+		if contentType == nil {
+			return nil
+		}
+		body := req.Body()
+		if body != nil && contentType.Value() == "application/sdp" {
+			// This is Late offer response
+			if err := sess.RemoteSDP(body); err != nil {
+				return err
+			}
+		}
+		return nil
+	}()
+	if err != nil {
+		e := d.Hangup(d.Context())
+		return errors.Join(err, e)
+	}
+
+	return d.DialogServerSession.ReadAck(req, tx)
 }
 
 func (d *DialogServerSession) Hangup(ctx context.Context) error {
