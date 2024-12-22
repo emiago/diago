@@ -13,8 +13,10 @@ import (
 )
 
 var (
+	// Here are some codec constants that can be reused
 	CodecAudioUlaw          = Codec{PayloadType: 0, SampleRate: 8000, SampleDur: 20 * time.Millisecond}
 	CodecAudioAlaw          = Codec{PayloadType: 8, SampleRate: 8000, SampleDur: 20 * time.Millisecond}
+	CodecAudioOpus          = Codec{PayloadType: 96, SampleRate: 48000, SampleDur: 20 * time.Millisecond}
 	CodecTelephoneEvent8000 = Codec{PayloadType: 101, SampleRate: 8000, SampleDur: 20 * time.Millisecond}
 )
 
@@ -49,6 +51,8 @@ func mapSupportedCodec(f string) Codec {
 		return CodecAudioAlaw
 	case sdp.FORMAT_TYPE_ULAW:
 		return CodecAudioUlaw
+	case sdp.FORMAT_TYPE_OPUS:
+		return CodecAudioOpus
 	case sdp.FORMAT_TYPE_TELEPHONE_EVENT:
 		return CodecTelephoneEvent8000
 	default:

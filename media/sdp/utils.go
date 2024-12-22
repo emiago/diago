@@ -40,17 +40,39 @@ func GenerateForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode Mo
 	formatsMap := []string{}
 	for _, f := range fmts {
 		switch f {
-		case "0":
+		case FORMAT_TYPE_ULAW:
 			formatsMap = append(formatsMap, "a=rtpmap:0 PCMU/8000")
-		case "8":
+		case FORMAT_TYPE_ALAW:
 			formatsMap = append(formatsMap, "a=rtpmap:8 PCMA/8000")
-		case "101":
+		case FORMAT_TYPE_OPUS:
+			formatsMap = append(formatsMap, "a=rtpmap:96 opus/48000/2")
+			// Providing 0 when FEC cannot be used on the receiving side is RECOMMENDED.
+			// https://datatracker.ietf.org/doc/html/rfc7587
+			formatsMap = append(formatsMap, "a=fmtp:96 useinbandfec=0")
+		case FORMAT_TYPE_TELEPHONE_EVENT:
 			formatsMap = append(formatsMap, "a=rtpmap:101 telephone-event/8000")
 			formatsMap = append(formatsMap, "a=fmtp:101 0-16")
-			// TODO add more here
 		}
 	}
+
+	// v=0
+	// o=- 3323 3810 IN IP4 127.0.0.1
+	// s=Asterisk
+	// c=IN IP4 127.0.0.1
+	// t=0 0
+	// m=audio 13566 RTP/AVP 96 0 8 97
+	// a=rtpmap:96 opus/48000/2
+	// a=fmtp:96 useinbandfec=1
+	// a=rtpmap:0 PCMU/8000
+	// a=rtpmap:8 PCMA/8000
+	// a=rtpmap:97 telephone-event/8000
+	// a=fmtp:97 0-16
+	// a=ptime:20
+	// a=maxptime:20
+	// a=sendrecv
+
 	// Support only ulaw and alaw
+	// TODO optimize this with string builder
 	s := []string{
 		"v=0",
 		fmt.Sprintf("o=user1 %d %d IN IP4 %s", ntpTime, ntpTime, originIP),
@@ -77,7 +99,10 @@ func GenerateForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode Mo
 	}
 
 	s = append(s, formatsMap...)
-
+	s = append(s,
+		"a=ptime:20", // Needed for opus
+		"a=maxptime:20",
+	)
 	// s := []string{
 	// 	"v=0",
 	// 	fmt.Sprintf("o=- %d %d IN IP4 %s", ntpTime, ntpTime, originIP),

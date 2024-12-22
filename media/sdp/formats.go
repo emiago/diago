@@ -11,6 +11,7 @@ import (
 const (
 	FORMAT_TYPE_ULAW            = "0"
 	FORMAT_TYPE_ALAW            = "8"
+	FORMAT_TYPE_OPUS            = "96"
 	FORMAT_TYPE_TELEPHONE_EVENT = "101"
 )
 
@@ -38,10 +39,12 @@ func (fmts Formats) String() string {
 	out := make([]string, len(fmts))
 	for i, v := range fmts {
 		switch v {
-		case "0":
+		case FORMAT_TYPE_ULAW:
 			out[i] = "0(ulaw)"
-		case "8":
+		case FORMAT_TYPE_ALAW:
 			out[i] = "8(alaw)"
+		case FORMAT_TYPE_OPUS:
+			out[i] = "96(opus)"
 		default:
 			// Unknown then just use as number
 			out[i] = v
