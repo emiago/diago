@@ -58,6 +58,7 @@ type MediaSession struct {
 	// SDP stuff
 	// Depending of negotiation this can change.
 	// Formats will always try to match remote, to avoid different codec matching
+	// TODO: we need to extend this or change to list of codecs as we need to match also sample rate and ptime
 	Formats sdp.Formats
 	Mode    sdp.Mode
 

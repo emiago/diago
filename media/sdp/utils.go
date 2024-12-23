@@ -55,54 +55,23 @@ func GenerateForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode Mo
 		}
 	}
 
-	// v=0
-	// o=- 3323 3810 IN IP4 127.0.0.1
-	// s=Asterisk
-	// c=IN IP4 127.0.0.1
-	// t=0 0
-	// m=audio 13566 RTP/AVP 96 0 8 97
-	// a=rtpmap:96 opus/48000/2
-	// a=fmtp:96 useinbandfec=1
-	// a=rtpmap:0 PCMU/8000
-	// a=rtpmap:8 PCMA/8000
-	// a=rtpmap:97 telephone-event/8000
-	// a=fmtp:97 0-16
-	// a=ptime:20
-	// a=maxptime:20
-	// a=sendrecv
-
 	// Support only ulaw and alaw
 	// TODO optimize this with string builder
 	s := []string{
 		"v=0",
-		fmt.Sprintf("o=user1 %d %d IN IP4 %s", ntpTime, ntpTime, originIP),
+		fmt.Sprintf("o=- %d %d IN IP4 %s", ntpTime, ntpTime, originIP),
 		"s=Sip Go Media",
 		// "b=AS:84",
 		fmt.Sprintf("c=IN IP4 %s", connectionIP),
 		"t=0 0",
 		fmt.Sprintf("m=audio %d RTP/AVP %s", rtpPort, strings.Join(fmts, " ")),
-		"a=" + string(mode),
-		// "a=ssrc:111222 cname:user@example.com",
-		// "a=rtpmap:0 PCMU/8000",
-		// "a=rtpmap:8 PCMA/8000",
-		// THIS is FOR DTMF
-		// "a=rtpmap:101 telephone-event/8000",
-		// "a=fmtp:101 0-16",
-		// "",
-		// "a=rtpmap:120 telephone-event/16000",
-		// "a=fmtp:120 0-16",
-		// "a=rtpmap:121 telephone-event/8000",
-		// "a=fmtp:121 0-16",
-		// "a=rtpmap:122 telephone-event/32000",
-		// "a=rtcp-mux",
-		// fmt.Sprintf("a=rtcp:%d IN IP4 %s", rtpPort+1, connectionIP),
 	}
 
 	s = append(s, formatsMap...)
 	s = append(s,
 		"a=ptime:20", // Needed for opus
 		"a=maxptime:20",
-	)
+		"a="+string(mode))
 	// s := []string{
 	// 	"v=0",
 	// 	fmt.Sprintf("o=- %d %d IN IP4 %s", ntpTime, ntpTime, originIP),

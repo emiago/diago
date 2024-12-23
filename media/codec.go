@@ -46,6 +46,8 @@ func CodecFromPayloadType(payloadType uint8) Codec {
 }
 
 func mapSupportedCodec(f string) Codec {
+	// TODO: Here we need to be more explicit like matching sample rate, channels and other
+
 	switch f {
 	case sdp.FORMAT_TYPE_ALAW:
 		return CodecAudioAlaw
