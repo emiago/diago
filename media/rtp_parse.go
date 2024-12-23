@@ -4,11 +4,16 @@
 package media
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
+)
+
+var (
+	errRTCPFailedToUnmarshal = errors.New("rtcp: failed to unmarshal")
 )
 
 // Experimental
@@ -61,12 +66,13 @@ func RTCPUnmarshal(data []byte, packets []rtcp.Packet) (n int, err error) {
 
 		err = h.Unmarshal(data)
 		if err != nil {
-			return 0, fmt.Errorf("unmarshal RTCP error: %w", err)
+			// fmt.Errorf("unmarshal RTCP error: %w", err)
+			return 0, errors.Join(err, errRTCPFailedToUnmarshal)
 		}
 
 		pktLen := int(h.Length+1) * 4
 		if pktLen > len(data) {
-			return 0, fmt.Errorf("packet too short")
+			return 0, fmt.Errorf("packet too short: %w", errRTCPFailedToUnmarshal)
 		}
 		inPacket := data[:pktLen]
 

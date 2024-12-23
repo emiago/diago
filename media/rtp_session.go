@@ -354,6 +354,10 @@ func (s *RTPSession) readRTCP() error {
 	for {
 		n, err := sess.ReadRTCP(buf, rtcpBuf)
 		if err != nil {
+			if errors.Is(err, errRTCPFailedToUnmarshal) {
+				s.log.Err(err).Msg("RTCP Unmarshal error. Continue listen")
+				continue
+			}
 			return err
 		}
 
