@@ -14,11 +14,10 @@ import (
 
 	"github.com/emiago/diago/audio"
 	"github.com/emiago/diago/media"
-	"github.com/go-audio/riff"
 )
 
 var (
-	PlaybackBufferSize = 320
+	PlaybackBufferSize = 3840
 )
 
 var playBufPool = sync.Pool{
@@ -114,17 +113,20 @@ func (p *AudioPlayback) streamWav(body io.Reader, playWriter io.Writer) (int64, 
 	// We need to read and packetize to 20 ms
 	sampleDurMS := int(codec.SampleDur.Milliseconds())
 	payloadSize := int(dec.BitsPerSample) / 8 * int(dec.NumChannels) * int(dec.SampleRate) / 1000 * sampleDurMS
+	// payloadSize = 1920 // For opus
 
 	buf := playBufPool.Get()
 	defer playBufPool.Put(buf)
 	payloadBuf := buf.([]byte)[:payloadSize] // 20 ms
 
+	fmt.Println("Play fileeee")
 	enc, err := audio.NewPCMEncoderWriter(codec.PayloadType, playWriter)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create PCM encoder: %w", err)
 	}
 
-	written, err := wavCopy(dec, enc, payloadBuf)
+	written, err := media.CopyWithBuf(dec, enc, payloadBuf)
+	// written, err := wavCopy(dec, enc, payloadBuf)
 	return written, err
 }
 
@@ -152,24 +154,25 @@ func streamWavRTP(body io.Reader, rtpWriter *media.RTPPacketWriter, codec media.
 	return p.Play(body, "audio/wav")
 }
 
-func wavCopy(dec *audio.WavReader, playWriter io.Writer, payloadBuf []byte) (int64, error) {
-	var totalWritten int64
-	for {
-		ch, err := dec.NextChunk()
-		if err != nil {
-			return totalWritten, err
-		}
+// func wavCopy(dec *audio.WavReader, playWriter io.Writer, payloadBuf []byte) (int64, error) {
+// 	var totalWritten int64
+// 	for {
+// 		ch, err := dec.NextChunk()
+// 		if err != nil {
+// 			return totalWritten, err
+// 		}
+// 		fmt.Println("Chunk wav", ch)
+// 		if ch.ID != riff.DataFormatID && ch.ID != [4]byte{} {
+// 			// Until we reach data chunk we will draining
+// 			ch.Drain()
+// 			continue
+// 		}
 
-		if ch.ID != riff.DataFormatID && ch.ID != [4]byte{} {
-			// Until we reach data chunk we will draining
-			ch.Drain()
-			continue
-		}
-
-		n, err := copyWithBuf(ch, playWriter, payloadBuf)
-		totalWritten += n
-		if err != nil {
-			return totalWritten, err
-		}
-	}
-}
+// 		fmt.Println("copy buf", len(payloadBuf))
+// 		n, err := copyWithBuf(ch, playWriter, payloadBuf)
+// 		totalWritten += n
+// 		if err != nil {
+// 			return totalWritten, err
+// 		}
+// 	}
+// }
