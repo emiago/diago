@@ -46,7 +46,7 @@ func NewAudioPlayback(writer io.Writer, codec media.Codec) AudioPlayback {
 		writer:      writer,
 		codec:       codec,
 		BitDepth:    16,
-		NumChannels: 2,
+		NumChannels: codec.NumChannels,
 	}
 }
 
@@ -109,17 +109,19 @@ func (p *AudioPlayback) streamWav(body io.Reader, playWriter io.Writer) (int64, 
 	if dec.SampleRate != codec.SampleRate {
 		return 0, fmt.Errorf("wav file samplerate=%d does not match expected=%d", dec.SampleRate, codec.SampleRate)
 	}
+	if dec.NumChannels != uint16(codec.NumChannels) {
+		return 0, fmt.Errorf("wav file numchannels=%d does not match expected=%d", dec.NumChannels, codec.NumChannels)
+	}
 
 	// We need to read and packetize to 20 ms
-	sampleDurMS := int(codec.SampleDur.Milliseconds())
-	payloadSize := int(dec.BitsPerSample) / 8 * int(dec.NumChannels) * int(dec.SampleRate) / 1000 * sampleDurMS
-	// payloadSize = 1920 // For opus
+	// sampleDurMS := int(codec.SampleDur.Milliseconds())
+	// payloadSize := int(dec.BitsPerSample) / 8 * int(dec.NumChannels) * int(dec.SampleRate) / 1000 * sampleDurMS
+	payloadSize := p.codec.SamplesPCM(int(dec.BitsPerSample))
 
 	buf := playBufPool.Get()
 	defer playBufPool.Put(buf)
 	payloadBuf := buf.([]byte)[:payloadSize] // 20 ms
 
-	fmt.Println("Play fileeee")
 	enc, err := audio.NewPCMEncoderWriter(codec.PayloadType, playWriter)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create PCM encoder: %w", err)

@@ -58,7 +58,9 @@ type MediaSession struct {
 	// SDP stuff
 	// Depending of negotiation this can change.
 	// Formats will always try to match remote, to avoid different codec matching
-	// TODO: we need to extend this or change to list of codecs as we need to match also sample rate and ptime
+	// TODO:
+	// 1. make this list of codecs as we need to match also sample rate and ptime
+	// 2. rtp session when matching incoming packet sample rate for RTCP should use this
 	Formats sdp.Formats
 	Mode    sdp.Mode
 

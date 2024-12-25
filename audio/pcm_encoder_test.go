@@ -9,9 +9,9 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
-	"os"
 	"testing"
 
+	"github.com/emiago/diago/media"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zaf/g711"
@@ -133,7 +133,7 @@ func TestPCMEncoderOpus(t *testing.T) {
 	// Expected decoded output
 	pcm := testGeneratePCM16(48000)
 	pcmInt16 := make([]int16, len(pcm)/2)
-	n := samplesByteToInt16(pcm, pcmInt16)
+	n, _ := samplesByteToInt16(pcm, pcmInt16)
 	require.Equal(t, len(pcmInt16), n)
 
 	enc, err := opus.NewEncoder(48000, 2, opus.AppVoIP)
@@ -185,7 +185,7 @@ func TestPCMEncoderOpus(t *testing.T) {
 
 	expectedPCM := pcmInt16[:n*2]
 	expectedLpcm := make([]byte, len(expectedPCM)*2)
-	n = samplesInt16ToBytes(expectedPCM, expectedLpcm)
+	n, _ = samplesInt16ToBytes(expectedPCM, expectedLpcm)
 	require.Equal(t, n, len(expectedLpcm))
 
 	t.Run("Decode", func(t *testing.T) {
@@ -197,18 +197,19 @@ func TestPCMEncoderOpus(t *testing.T) {
 		require.NoError(t, err)
 
 		// Prepare a buffer to read the decoded PCM data into
-		decodedPCM := make([]byte, 10000)
-
+		decodedPCM := make([]byte, media.CodecAudioOpus.Samples16())
+		fullPCM := make([]byte, 0, len(expectedLpcm))
 		// Read the data
-		n, err := decoder.Read(decodedPCM)
-		require.NoError(t, err)
-		if n != len(expectedLpcm) {
-			t.Fatalf("expected to read %d bytes, but read %d", len(expectedLpcm), n)
+		for {
+			n, err := decoder.Read(decodedPCM)
+			if err != nil {
+				break
+			}
+			fullPCM = append(fullPCM, decodedPCM[:n]...)
 		}
 
 		// Verify the decoded output matches the expected PCM data
-		decodedPCM = decodedPCM[:n]
-		assert.Equal(t, expectedLpcm, decodedPCM)
+		assert.Equal(t, expectedLpcm, fullPCM)
 	})
 
 	t.Run("DecodeWithSmallBuffer", func(t *testing.T) {
@@ -219,29 +220,10 @@ func TestPCMEncoderOpus(t *testing.T) {
 		decoder, err := NewPCMDecoderReader(FORMAT_TYPE_OPUS, inputBuffer)
 		require.NoError(t, err)
 
-		// Prepare a buffer to read the decoded PCM data into
-		decodedPCM := make([]byte, 10000)
-		tmpPCM := make([]byte, 512)
-
-		// Read the data
-		var n int
-		for {
-			nn, err := decoder.Read(tmpPCM)
-			if err != nil {
-				require.ErrorIs(t, err, io.EOF)
-				break
-			}
-			tmpN := copy(decodedPCM[n:], tmpPCM[:nn])
-
-			n += tmpN
-		}
-		if n != len(expectedLpcm) {
-			t.Fatalf("expected to read %d bytes, but read %d", len(expectedLpcm), n)
-		}
-
-		// Verify the decoded output matches the expected PCM data
-		decodedPCM = decodedPCM[:n]
-		assert.Equal(t, expectedLpcm, decodedPCM)
+		decodedPCM := make([]byte, 512)
+		_, err = decoder.Read(decodedPCM)
+		require.Error(t, err)
+		require.ErrorIs(t, err, io.ErrShortBuffer)
 	})
 }
 
@@ -262,37 +244,6 @@ func extractWavPcm(t *testing.T, fname string) []int16 {
 		samples[i] += int16(bytes[wavHeaderSize+i*2+1]) << 8
 	}
 	return samples
-}
-
-func TestOpusPCM(t *testing.T) {
-	f, err := os.Open("./testdata/output_opus.raw")
-	require.NoError(t, err)
-
-	// dec, err := NewPCMDecoderReader(96, f)
-	// require.NoError(t, err)
-
-	d, err := opus.NewDecoder(48000, 1)
-	require.NoError(t, err)
-	// decOpus := &OpusDecoder{Decoder: d, pcmInt16: make([]int16, 48000*0.02*2), numChannels: 1}
-	// dec.DecoderTo = decOpus.DecodeTo
-
-	data, err := io.ReadAll(f)
-	require.NoError(t, err)
-	t.Log("Len data", len(data))
-
-	buf := make([]int16, 1000000)
-	n, err := d.Decode(data, buf)
-	require.NoError(t, err)
-
-	opuspcm := buf[:n]
-
-	// opuspcm, err := io.ReadAll(dec)
-	// require.NoError(t, err)
-
-	wavpcm := extractWavPcm(t, "./testdata/speech_8.wav")
-	if len(opuspcm) != len(wavpcm) {
-		t.Fatalf("Unexpected length of decoded opus file: %d (.wav: %d)", len(opuspcm), len(wavpcm))
-	}
 }
 
 func TestPCM16ToByte(t *testing.T) {
