@@ -47,7 +47,6 @@ type PCMDecoder struct {
 	codec       uint8
 	samplesSize int
 
-	Decoder func(encoded []byte) (lpcm []byte)
 	// DecoderTo Must know size in advance!
 	DecoderTo func(lpcm []byte, encoded []byte) (int, error)
 }
@@ -70,10 +69,8 @@ func (dec *PCMDecoder) Init(codec media.Codec) error {
 
 	switch codec.PayloadType {
 	case FORMAT_TYPE_ULAW:
-		dec.Decoder = g711.DecodeUlaw // returns 16bit LPCM
 		dec.DecoderTo = DecodeUlawTo
 	case FORMAT_TYPE_ALAW:
-		dec.Decoder = g711.DecodeAlaw // returns 16bit LPCM
 		dec.DecoderTo = DecodeAlawTo
 	case FORMAT_TYPE_OPUS:
 		// opusDec, err := opus.NewDecoder(48000, 2)
@@ -139,6 +136,7 @@ func (d *PCMDecoderReader) Read(b []byte) (n int, err error) {
 type PCMDecoderWriter struct {
 	PCMDecoder
 	Writer io.Writer
+	buf    []byte
 }
 
 func NewPCMDecoderWriter(codec uint8, writer io.Writer) (*PCMDecoderWriter, error) {
@@ -153,8 +151,16 @@ func NewPCMDecoderWriter(codec uint8, writer io.Writer) (*PCMDecoderWriter, erro
 }
 
 func (d *PCMDecoderWriter) Write(b []byte) (n int, err error) {
+	if d.buf == nil {
+		d.buf = make([]byte, media.RTPBufSize)
+	}
 	// TODO avoid this allocation
-	lpcm := d.Decoder(b)
+	n, err = d.DecoderTo(d.buf, b)
+	if err != nil {
+		return 0, err
+	}
+	lpcm := d.buf[:n]
+
 	nn := 0
 	for nn < len(lpcm) {
 		n, err = d.Writer.Write(lpcm)
