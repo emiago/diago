@@ -192,6 +192,10 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	s.SetRemoteAddr(raddr)
 
 	s.updateRemoteFormats(md.Formats)
+	if len(s.Formats) == 0 {
+		return fmt.Errorf("no supported codecs found")
+	}
+
 	return nil
 }
 
