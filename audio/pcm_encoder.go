@@ -12,7 +12,6 @@ import (
 	"github.com/emiago/diago/media"
 	"github.com/rs/zerolog/log"
 	"github.com/zaf/g711"
-	"gopkg.in/hraban/opus.v2"
 )
 
 /*
@@ -73,21 +72,11 @@ func (dec *PCMDecoder) Init(codec media.Codec) error {
 	case FORMAT_TYPE_ALAW:
 		dec.DecoderTo = DecodeAlawTo
 	case FORMAT_TYPE_OPUS:
-		// opusDec, err := opus.NewDecoder(48000, 2)
-		sampleRate := int(codec.SampleRate)
-		numChannels := codec.NumChannels
-		opusDec := opus.Decoder{}
-		if err := opusDec.Init(int(codec.SampleRate), numChannels); err != nil {
+		opusDec := OpusDecoder{}
+		if err := opusDec.Init(int(codec.SampleRate), codec.NumChannels, codec.Samples16()); err != nil {
 			return fmt.Errorf("failed to create opus decoder: %w", err)
 		}
-
-		size := float64(sampleRate) * codec.SampleDur.Seconds() * float64(numChannels)
-		opusWrap := OpusDecoder{
-			Decoder:     opusDec,
-			pcmInt16:    make([]int16, int(size)), // 20ms= 960 samples/1920 stereo
-			numChannels: numChannels,
-		}
-		dec.DecoderTo = opusWrap.DecodeTo
+		dec.DecoderTo = opusDec.DecodeTo
 	default:
 		return fmt.Errorf("not supported codec %d", codec)
 	}
@@ -203,19 +192,11 @@ func (enc *PCMEncoder) Init(codec media.Codec) error {
 
 	case FORMAT_TYPE_OPUS:
 		// TODO handle mono
-		sampleRate := int(codec.SampleRate)
-		numChannels := codec.NumChannels
-
-		opusEnc := opus.Encoder{}
-		if err := opusEnc.Init(sampleRate, numChannels, opus.AppVoIP); err != nil {
+		opusEnc := OpusEncoder{}
+		if err := opusEnc.Init(int(codec.SampleRate), codec.NumChannels, codec.Samples16()); err != nil {
 			return fmt.Errorf("failed to create opus decoder: %w", err)
 		}
-		opusWrap := OpusEncoder{
-			Encoder:     opusEnc,
-			pcmInt16:    make([]int16, 48000*0.02*numChannels),
-			numChannels: numChannels,
-		}
-		enc.EncoderTo = opusWrap.EncodeTo
+		enc.EncoderTo = opusEnc.EncodeTo
 
 	default:
 		return fmt.Errorf("not supported codec %d", codec)

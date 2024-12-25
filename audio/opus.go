@@ -15,6 +15,17 @@ type OpusEncoder struct {
 	numChannels int
 }
 
+func (enc *OpusEncoder) Init(sampleRate int, numChannels int, samplesSize int) error {
+	enc.numChannels = numChannels
+	enc.pcmInt16 = make([]int16, samplesSize)
+
+	if err := enc.Encoder.Init(sampleRate, numChannels, opus.AppVoIP); err != nil {
+		return fmt.Errorf("failed to create opus decoder: %w", err)
+	}
+
+	return nil
+}
+
 func (enc *OpusEncoder) EncodeTo(data []byte, lpcm []byte) (int, error) {
 	n, err := samplesByteToInt16(lpcm, enc.pcmInt16)
 	if err != nil {
@@ -33,6 +44,17 @@ type OpusDecoder struct {
 	opus.Decoder
 	pcmInt16    []int16
 	numChannels int
+}
+
+func (enc *OpusDecoder) Init(sampleRate int, numChannels int, samplesSize int) error {
+	enc.numChannels = numChannels
+	enc.pcmInt16 = make([]int16, samplesSize)
+
+	if err := enc.Decoder.Init(sampleRate, numChannels); err != nil {
+		return fmt.Errorf("failed to create opus decoder: %w", err)
+	}
+
+	return nil
 }
 
 func (dec *OpusDecoder) DecodeTo(lpcm []byte, data []byte) (int, error) {
