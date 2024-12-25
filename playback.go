@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	PlaybackBufferSize = 1920 // For now largest we support. 48000 sample rate with 2 channels
+	PlaybackBufferSize = 3840 // For now largest we support. 48000 sample rate with 2 channels
 )
 
 var playBufPool = sync.Pool{
