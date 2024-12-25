@@ -244,8 +244,8 @@ func (d *PCMEncoderWriter) Write(lpcm []byte) (int, error) {
 	// We need to have fixed frame sizes due to encoders
 
 	sampleSize := d.samplesSize
-	if len(lpcm) != sampleSize {
-		log.Warn().Int("pcm", len(lpcm)).Msg("Size of pcm samples does not match our frame")
+	if len(lpcm) > sampleSize {
+		log.Warn().Int("pcm", len(lpcm)).Int("expected", sampleSize).Msg("Size of pcm samples does not match our frame")
 	}
 
 	// for i := 0; ; i = i + d.samplesSize {
