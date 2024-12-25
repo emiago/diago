@@ -755,6 +755,8 @@ func (dg *Diago) getClient(tran *Transport) *sipgo.Client {
 	}
 
 	if tran.Transport == "udp" {
+		// TODO, forcing port here makes more problem when listener is not started
+		// ex register and then serve
 		client, _ := sipgo.NewClient(dg.ua,
 			sipgo.WithClientNAT(),
 			sipgo.WithClientHostname(hostname),

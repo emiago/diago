@@ -4,12 +4,12 @@
 package diago
 
 import (
+	"bytes"
 	"io"
 	"net"
 	"os"
 	"testing"
 
-	"github.com/emiago/diago/audio"
 	"github.com/emiago/diago/media"
 	"github.com/emiago/diago/media/sdp"
 	"github.com/stretchr/testify/assert"
@@ -35,7 +35,10 @@ func TestIntegrationStreamWAV(t *testing.T) {
 		io.ReadAll(udpDump)
 	}()
 
-	written, err := streamWavRTP(fh, rtpWriter, codec)
+	p := NewAudioPlayback(rtpWriter, codec)
+
+	written, err := p.Play(fh, "audio/wav")
+	// written, err := streamWavRTP(fh, rtpWriter, codec)
 	require.NoError(t, err)
 	require.Greater(t, written, int64(10000))
 }
@@ -48,13 +51,9 @@ func TestIntegrationPlaybackStreamWAV(t *testing.T) {
 	defer sess.Close()
 
 	codec := media.CodecFromSession(sess)
-	rtpWriter := media.NewRTPPacketWriter(sess, codec)
 	sess.Raddr = &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
-	enc, err := audio.NewPCMEncoderWriter(codec.PayloadType, rtpWriter)
-	require.NoError(t, err)
-
-	p := NewAudioPlayback(enc, codec)
+	p := NewAudioPlayback(bytes.NewBuffer(make([]byte, 0)), codec)
 
 	udpDump, err := net.ListenUDP("udp4", sess.Raddr)
 	require.NoError(t, err)

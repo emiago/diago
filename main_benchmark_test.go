@@ -57,6 +57,7 @@ func BenchmarkIntegrationClientServer(t *testing.B) {
 		BindPort:  5060,
 	}
 	ua, _ := sipgo.NewUA()
+	defer ua.Close()
 	srv := NewDiago(ua, WithTransport(tran))
 
 	err := srv.ServeBackground(ctx, func(d *DialogServerSession) {

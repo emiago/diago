@@ -62,6 +62,7 @@ func TestIntegrationPlaybackURL(t *testing.T) {
 
 	{
 		ua, _ := sipgo.NewUA()
+		defer ua.Close()
 		phone := NewDiago(ua, WithTransport(Transport{
 			Transport: "udp",
 			BindHost:  "127.0.0.100",

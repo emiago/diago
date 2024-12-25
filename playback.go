@@ -10,14 +10,13 @@ import (
 	"os"
 	"path"
 	"sync"
-	"time"
 
 	"github.com/emiago/diago/audio"
 	"github.com/emiago/diago/media"
 )
 
 var (
-	PlaybackBufferSize = 3840
+	PlaybackBufferSize = 1920 // For now largest we support. 48000 sample rate with 2 channels
 )
 
 var playBufPool = sync.Pool{
@@ -140,20 +139,6 @@ func (p *AudioPlayback) calcPlayoutSize() int {
 	numChannels := p.NumChannels
 	sampleRate := codec.SampleRate
 	return int(bitsPerSample) / 8 * int(numChannels) * int(sampleRate) / 1000 * sampleDurMS
-}
-
-func streamWavRTP(body io.Reader, rtpWriter *media.RTPPacketWriter, codec media.Codec) (int64, error) {
-	pt := codec.PayloadType
-	enc, err := audio.NewPCMEncoderWriter(pt, rtpWriter)
-	if err != nil {
-		return 0, err
-	}
-
-	p := NewAudioPlayback(enc, media.Codec{
-		SampleRate: codec.SampleRate,
-		SampleDur:  20 * time.Millisecond,
-	})
-	return p.Play(body, "audio/wav")
 }
 
 // func wavCopy(dec *audio.WavReader, playWriter io.Writer, payloadBuf []byte) (int64, error) {

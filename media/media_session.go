@@ -38,6 +38,8 @@ var (
 // Design:
 // - It identfies single session Laddr <-> Raddr
 // - With multi descriptions, or reinvites it should be forked and create new media Session
+//
+// NOTE: Not thread safe, read only after SDP negotiation or have locking in place
 type MediaSession struct {
 	// Raddr is our target remote address. Normally it is resolved by SDP parsing.
 	// Checkout SetRemoteAddr

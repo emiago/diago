@@ -18,6 +18,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func newDialer(ua *sipgo.UserAgent) *Diago {
+	return NewDiago(ua, WithTransport(Transport{Transport: "udp", BindHost: "127.0.0.1", BindPort: 0}))
+}
+
 func dialogEcho(sess DialogSession) error {
 	audioR, err := sess.Media().AudioReader()
 	if err != nil {
@@ -97,11 +101,13 @@ func TestIntegrationInbound(t *testing.T) {
 		ua, _ := sipgo.NewUA()
 		defer ua.Close()
 
-		phone := NewDiago(ua)
-		// phone := sipgox.NewPhone(ua)
+		phone := newDialer(ua)
+		// Start listener in order to reuse UDP listener
+		err := phone.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
+		require.NoError(t, err)
 
 		// Forbiddden
-		_, err := phone.Invite(context.TODO(), sip.Uri{User: "noroute", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
+		_, err = phone.Invite(context.TODO(), sip.Uri{User: "noroute", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
 		require.Error(t, err)
 
 		// Answered call
@@ -213,7 +219,9 @@ func TestIntegrationBridging(t *testing.T) {
 
 	{
 		ua, _ := sipgo.NewUA()
-		dg := NewDiago(ua)
+		defer ua.Close()
+
+		dg := newDialer(ua)
 		dialog, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
 		require.NoError(t, err)
 		defer dialog.Close()
@@ -258,7 +266,9 @@ func TestDialogClientReinvite(t *testing.T) {
 	ua, _ := sipgo.NewUA()
 	defer ua.Close()
 
-	dg := NewDiago(ua)
+	dg := newDialer(ua)
+	err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
+	require.NoError(t, err)
 
 	dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15060}, InviteOptions{})
 	require.NoError(t, err)
@@ -350,7 +360,9 @@ func TestIntegrationDialogCancel(t *testing.T) {
 		ua, _ := sipgo.NewUA()
 		defer ua.Close()
 
-		dg := NewDiago(ua)
+		dg := newDialer(ua)
+		dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
+
 		ctx, cancel := context.WithCancel(context.Background())
 		_, err := dg.Invite(ctx, sip.Uri{User: "test", Host: "127.0.0.1", Port: 15060}, InviteOptions{
 			OnResponse: func(res *sip.Response) error {
