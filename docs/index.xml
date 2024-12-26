@@ -1,12 +1,12 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Diago – </title>
-    <link>http://localhost:1313/diago/docs/</link>
+    <link>https://emiago.github.io/diago/docs/</link>
     <description>Recent content on Diago</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     
-	  <atom:link href="http://localhost:1313/diago/docs/index.xml" rel="self" type="application/rss+xml" />
+	  <atom:link href="https://emiago.github.io/diago/docs/index.xml" rel="self" type="application/rss+xml" />
     
     
       
@@ -16,10 +16,10 @@
     
     <item>
       <title></title>
-      <link>http://localhost:1313/diago/docs/getting_started/</link>
+      <link>https://emiago.github.io/diago/docs/getting_started/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>http://localhost:1313/diago/docs/getting_started/</guid>
+      <guid>https://emiago.github.io/diago/docs/getting_started/</guid>
       <description>
         
         
@@ -89,10 +89,10 @@ or change to whatever you want&lt;/p&gt;
     
     <item>
       <title>Demo     Examples</title>
-      <link>http://localhost:1313/diago/docs/examples/</link>
+      <link>https://emiago.github.io/diago/docs/examples/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>http://localhost:1313/diago/docs/examples/</guid>
+      <guid>https://emiago.github.io/diago/docs/examples/</guid>
       <description>
         
         
@@ -135,10 +135,10 @@ You will need go compiler installed.&lt;/p&gt;
     
     <item>
       <title>API Docs</title>
-      <link>http://localhost:1313/diago/docs/api_docs/</link>
+      <link>https://emiago.github.io/diago/docs/api_docs/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>http://localhost:1313/diago/docs/api_docs/</guid>
+      <guid>https://emiago.github.io/diago/docs/api_docs/</guid>
       <description>
         
         
@@ -392,10 +392,10 @@ are answered and have media sessions you can bridge them.&lt;/p&gt;
     
     <item>
       <title>Understading SIP with Call Scenarios</title>
-      <link>http://localhost:1313/diago/docs/guides/understanding_sip/</link>
+      <link>https://emiago.github.io/diago/docs/guides/understanding_sip/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>http://localhost:1313/diago/docs/guides/understanding_sip/</guid>
+      <guid>https://emiago.github.io/diago/docs/guides/understanding_sip/</guid>
       <description>
         
         
@@ -459,10 +459,105 @@ That is why 200 OK is replied&lt;/p&gt;
     
     <item>
       <title></title>
-      <link>http://localhost:1313/diago/docs/why_diago/</link>
+      <link>https://emiago.github.io/diago/docs/media_codecs/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>http://localhost:1313/diago/docs/why_diago/</guid>
+      <guid>https://emiago.github.io/diago/docs/media_codecs/</guid>
+      <description>
+        
+        
+        &lt;p&gt;Diago for now is only built for audio processing to target VOIP needs, but it may support video as well.&lt;/p&gt;
+&lt;h3&gt;SDP negotiation&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;sdp-negotiation&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#sdp-negotiation&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;You can control codecs support with media conf and there order.
+Checkout for &lt;code&gt;diago.MediaConfig&lt;/code&gt; which can be passed on creating diago.&lt;/p&gt;
+&lt;p&gt;If you need transcoding library for now supports this codecs:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;PCMU (ulaw)&lt;/li&gt;
+&lt;li&gt;PCMA (alaw)&lt;/li&gt;
+&lt;li&gt;opus&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Opus&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;opus&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#opus&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Library uses opus C binding and it is not enabled by default
+You need to have installed opus development files before compiling.&lt;/p&gt;
+&lt;p&gt;Example for linux:&lt;/p&gt;
+&lt;p&gt;Ubuntu:&lt;/p&gt;
+&lt;div class=&#34;hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code&#34;&gt;
+  
+
+&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;sudo apt-get install pkg-config libopus-dev libopusfile-dev&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0&#34;&gt;
+  &lt;button
+    class=&#34;hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50&#34;
+    title=&#34;Copy code&#34;
+  &gt;
+    &lt;div class=&#34;copy-icon group-[.copied]/copybtn:hx-hidden hx-pointer-events-none hx-h-4 hx-w-4&#34;&gt;&lt;/div&gt;
+    &lt;div class=&#34;success-icon hx-hidden group-[.copied]/copybtn:hx-block hx-pointer-events-none hx-h-4 hx-w-4&#34;&gt;&lt;/div&gt;
+  &lt;/button&gt;
+&lt;/div&gt;
+
+  
+&lt;/div&gt;
+&lt;p&gt;Fedora:&lt;/p&gt;
+&lt;div class=&#34;hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code&#34;&gt;
+  
+
+&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;sudo dnf install opus-devel opusfile-devel&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0&#34;&gt;
+  &lt;button
+    class=&#34;hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50&#34;
+    title=&#34;Copy code&#34;
+  &gt;
+    &lt;div class=&#34;copy-icon group-[.copied]/copybtn:hx-hidden hx-pointer-events-none hx-h-4 hx-w-4&#34;&gt;&lt;/div&gt;
+    &lt;div class=&#34;success-icon hx-hidden group-[.copied]/copybtn:hx-block hx-pointer-events-none hx-h-4 hx-w-4&#34;&gt;&lt;/div&gt;
+  &lt;/button&gt;
+&lt;/div&gt;
+
+  
+&lt;/div&gt;
+&lt;h4&gt;Opus compile&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;opus-compile&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#opus-compile&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h4&gt;&lt;p&gt;To enable opus compile you need to place build tags.&lt;/p&gt;
+&lt;div class=&#34;hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code&#34;&gt;
+  
+
+&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;go build -tags with_opus_c .&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0&#34;&gt;
+  &lt;button
+    class=&#34;hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50&#34;
+    title=&#34;Copy code&#34;
+  &gt;
+    &lt;div class=&#34;copy-icon group-[.copied]/copybtn:hx-hidden hx-pointer-events-none hx-h-4 hx-w-4&#34;&gt;&lt;/div&gt;
+    &lt;div class=&#34;success-icon hx-hidden group-[.copied]/copybtn:hx-block hx-pointer-events-none hx-h-4 hx-w-4&#34;&gt;&lt;/div&gt;
+  &lt;/button&gt;
+&lt;/div&gt;
+
+  
+&lt;/div&gt;
+&lt;p&gt;Make sure you have enabled opus with &lt;code&gt;diago.MediaConfig&lt;/code&gt; and passing &lt;code&gt;sdp.FORMAT_TYPE_OPUS&lt;/code&gt;. Example:&lt;/p&gt;
+&lt;div class=&#34;hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code&#34;&gt;
+  
+
+&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;nx&#34;&gt;diago&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;MediaConfig&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;    &lt;span class=&#34;nx&#34;&gt;Formats&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[]&lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;string&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;sdp&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;FORMAT_TYPE_OPUS&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;sdp&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;FORMAT_TYPE_ALAW&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nx&#34;&gt;sdp&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;FORMAT_TYPE_ULAW&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;),&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class=&#34;line&#34;&gt;&lt;span class=&#34;cl&#34;&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx-opacity-0 hx-transition group-hover/code:hx-opacity-100 hx-flex hx-gap-1 hx-absolute hx-m-[11px] hx-right-0 hx-top-0&#34;&gt;
+  &lt;button
+    class=&#34;hextra-code-copy-btn hx-group/copybtn hx-transition-all active:hx-opacity-50 hx-bg-primary-700/5 hx-border hx-border-black/5 hx-text-gray-600 hover:hx-text-gray-900 hx-rounded-md hx-p-1.5 dark:hx-bg-primary-300/10 dark:hx-border-white/10 dark:hx-text-gray-400 dark:hover:hx-text-gray-50&#34;
+    title=&#34;Copy code&#34;
+  &gt;
+    &lt;div class=&#34;copy-icon group-[.copied]/copybtn:hx-hidden hx-pointer-events-none hx-h-4 hx-w-4&#34;&gt;&lt;/div&gt;
+    &lt;div class=&#34;success-icon hx-hidden group-[.copied]/copybtn:hx-block hx-pointer-events-none hx-h-4 hx-w-4&#34;&gt;&lt;/div&gt;
+  &lt;/button&gt;
+&lt;/div&gt;
+
+  
+&lt;/div&gt;
+&lt;p&gt;For more on how to compile checkout this package &lt;a href=&#34;https://github.com/hraban/opus&#34; target=&#34;_blank&#34; rel=&#34;noopener&#34;&gt;https://github.com/hraban/opus&lt;/a&gt;&lt;/p&gt;
+
+      </description>
+    </item>
+    
+    <item>
+      <title></title>
+      <link>https://emiago.github.io/diago/docs/why_diago/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>https://emiago.github.io/diago/docs/why_diago/</guid>
       <description>
         
         
@@ -476,10 +571,10 @@ Diago try to offer more modern Stack and put you closer to protocol,network,medi
     
     <item>
       <title>SIP and Media</title>
-      <link>http://localhost:1313/diago/docs/guides/sip_and_media/</link>
+      <link>https://emiago.github.io/diago/docs/guides/sip_and_media/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>http://localhost:1313/diago/docs/guides/sip_and_media/</guid>
+      <guid>https://emiago.github.io/diago/docs/guides/sip_and_media/</guid>
       <description>
         
         
@@ -532,10 +627,10 @@ Publishing local IP like above is problem for NAT and there different approaches
     
     <item>
       <title></title>
-      <link>http://localhost:1313/diago/blog/unit_testing/</link>
+      <link>https://emiago.github.io/diago/blog/unit_testing/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>http://localhost:1313/diago/blog/unit_testing/</guid>
+      <guid>https://emiago.github.io/diago/blog/unit_testing/</guid>
       <description>
         
         
