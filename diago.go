@@ -801,6 +801,7 @@ type RegisterOptions struct {
 	// Digest auth
 	Username string
 	Password string
+	Proxy string
 
 	// Expiry is for Expire header
 	Expiry time.Duration
