@@ -161,3 +161,23 @@ func TestDiagoTransportConfs(t *testing.T) {
 		doTest(tc)
 	})
 }
+
+func TestIntegrationDiagoTransportEmpheralPort(t *testing.T) {
+	tran := Transport{
+		Transport: "udp",
+		BindHost:  "127.0.0.1",
+		BindPort:  0,
+	}
+
+	ua, _ := sipgo.NewUA()
+	defer ua.Close()
+
+	dg := NewDiago(ua, WithTransport(tran))
+
+	err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
+	require.NoError(t, err)
+
+	newTran, _ := dg.getTransport("udp")
+	t.Log("port assigned", newTran.BindPort)
+	assert.NotEmpty(t, newTran.BindPort)
+}

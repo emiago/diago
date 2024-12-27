@@ -66,6 +66,8 @@ type Transport struct {
 	TLSConf *tls.Config
 
 	RewriteContact bool
+
+	client *sipgo.Client
 }
 
 func WithTransport(t Transport) DiagoOption {
@@ -112,6 +114,8 @@ func WithTransport(t Transport) DiagoOption {
 
 		t.Transport = sip.NetworkToLower(t.Transport)
 
+		// we want to handle SIP networking better per each transport
+		t.client = dg.createClient(t)
 		dg.transports = append(dg.transports, t)
 	}
 }
@@ -407,6 +411,7 @@ func (dg *Diago) serve(ctx context.Context, f ServeDialogFunc, readyCh func()) e
 				if tran.BindPort == 0 {
 					tran.BindPort = port
 					tran.ExternalPort = port
+					tran.client = dg.createClient(tran)
 					dg.transports[i] = tran
 				}
 				readyCh()
@@ -738,38 +743,11 @@ func (dg *Diago) contactHDRFromTransport(tran Transport) sip.ContactHeader {
 
 func (dg *Diago) getClient(tran *Transport) *sipgo.Client {
 	if dg.client != nil {
+		// Use global one if exists
 		return dg.client
 	}
 
-	// When transport is not binding to specific IP
-	hostIP := tran.bindIP
-	if hostIP != nil {
-		if hostIP.IsUnspecified() && tran.mediaBindIP != nil {
-			hostIP = tran.mediaBindIP
-		}
-	}
-
-	hostname := ""
-	if hostIP != nil {
-		hostname = hostIP.String()
-	}
-
-	if tran.Transport == "udp" {
-		// TODO, forcing port here makes more problem when listener is not started
-		// ex register and then serve
-		client, _ := sipgo.NewClient(dg.ua,
-			sipgo.WithClientNAT(),
-			sipgo.WithClientHostname(hostname),
-			sipgo.WithClientPort(tran.BindPort),
-		)
-		return client
-	}
-
-	client, _ := sipgo.NewClient(dg.ua,
-		sipgo.WithClientNAT(),
-		sipgo.WithClientHostname(hostname),
-	)
-	return client
+	return tran.client
 }
 
 func (dg *Diago) getTransport(transport string) (Transport, bool) {
@@ -864,4 +842,42 @@ func (dg *Diago) RegisterTransaction(ctx context.Context, recipient sip.Uri, opt
 	// }
 	client := dg.getClient(&tran)
 	return newRegisterTransaction(client, recipient, contactHDR, opts), nil
+}
+
+func (dg *Diago) createClient(tran Transport) (client *sipgo.Client) {
+	ua := dg.ua
+	// When transport is not binding to specific IP
+	hostIP := tran.bindIP
+	if hostIP != nil {
+		if hostIP.IsUnspecified() && tran.mediaBindIP != nil {
+			hostIP = tran.mediaBindIP
+		}
+	}
+
+	hostname := ""
+	if hostIP != nil {
+		hostname = hostIP.String()
+	}
+
+	bindPort := 0
+	if tran.Transport == "udp" {
+		// Forcing port here makes more problem when listener is not started
+		// ex register and then serve
+		// We check that user started to listen port
+		ports := ua.TransportLayer().ListenPorts("udp")
+		if len(ports) > 0 {
+			bindPort = tran.BindPort
+		}
+	}
+
+	cli, err := sipgo.NewClient(ua,
+		sipgo.WithClientNAT(),
+		sipgo.WithClientHostname(hostname),
+		sipgo.WithClientPort(bindPort),
+	)
+	if err != nil {
+		dg.log.Error().Err(err).Msg("Failed to create transport client")
+		cli, _ = sipgo.NewClient(ua) // Make some defaut
+	}
+	return cli
 }
