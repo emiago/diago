@@ -330,6 +330,20 @@ func (d *DialogMedia) Media() *DialogMedia {
 	return d
 }
 
+// Echo does audio echo for you
+func (d *DialogMedia) Echo() error {
+	audioR, err := d.AudioReader()
+	if err != nil {
+		return err
+	}
+	audioW, err := d.AudioWriter()
+	if err != nil {
+		return err
+	}
+	_, err = media.Copy(audioR, audioW)
+	return err
+}
+
 // PlaybackCreate creates playback for audio
 func (d *DialogMedia) PlaybackCreate() (AudioPlayback, error) {
 	mprops := MediaProps{}
