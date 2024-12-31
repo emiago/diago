@@ -4,6 +4,7 @@
 package media
 
 import (
+	"errors"
 	"io"
 	"net"
 	"time"
@@ -103,6 +104,35 @@ func generateSilentAudioFrame() []byte {
 	}
 
 	return frame
+}
+
+func ReadAll(reader io.Reader, sampleSize int) ([]byte, error) {
+	total := []byte{}
+	buf := make([]byte, sampleSize)
+	for {
+		n, err := reader.Read(buf)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, err
+		}
+		total = append(total, buf[:n]...)
+	}
+	return total, nil
+}
+
+func WriteAll(w io.Writer, data []byte, sampleSize int) (int64, error) {
+	var total int64
+	for i := 0; i < len(data); i += sampleSize {
+		off := min(len(data), i+sampleSize)
+		n, err := w.Write(data[i:off])
+		if err != nil {
+			return 0, err
+		}
+		total += int64(n)
+	}
+	return total, nil
 }
 
 // Copy is like io.Copy but it uses buffer size needed for RTP
