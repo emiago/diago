@@ -47,8 +47,8 @@ func newRegisterTransaction(client *sipgo.Client, recipient sip.Uri, contact sip
 	req := sip.NewRequest(sip.REGISTER, recipient)
 	req.AppendHeader(&contact)
 
-	if opts.Proxy != "" {
-		req.SetDestination(opts.Proxy)
+	if opts.ProxyHost != "" {
+		req.SetDestination(opts.ProxyHost)
 	}
 	if expiry > 0 {
 		expires := sip.ExpiresHeader(expiry.Seconds())
