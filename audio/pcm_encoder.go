@@ -125,25 +125,43 @@ func (d *PCMDecoderReader) Read(b []byte) (n int, err error) {
 type PCMDecoderWriter struct {
 	PCMDecoder
 	Writer io.Writer
-	buf    []byte
+	// DecodeBuf should be increased if you are writing bigger chunk of samples
+	DecodeBuf int
+	buf       []byte
 }
 
 func NewPCMDecoderWriter(codec uint8, writer io.Writer) (*PCMDecoderWriter, error) {
-	d, err := NewPCMDecoder(codec)
+	cod, err := media.CodecAudioFromPayloadType(codec)
 	if err != nil {
 		return nil, err
 	}
-	return &PCMDecoderWriter{
-		PCMDecoder: *d,
-		Writer:     writer,
-	}, nil
+	// d, err := NewPCMDecoder(codec)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// return &PCMDecoderWriter{
+	// 	PCMDecoder: *d,
+	// 	Writer:     writer,
+	// }, nil
+
+	dec := &PCMDecoderWriter{}
+	return dec, dec.Init(cod, writer)
+}
+
+func (d *PCMDecoderWriter) Init(codec media.Codec, writer io.Writer) error {
+	d.Writer = writer
+	if d.DecodeBuf == 0 {
+		d.DecodeBuf = media.RTPBufSize
+	}
+	return d.PCMDecoder.Init(codec)
 }
 
 func (d *PCMDecoderWriter) Write(b []byte) (n int, err error) {
 	if d.buf == nil {
-		d.buf = make([]byte, media.RTPBufSize)
+		d.buf = make([]byte, d.DecodeBuf)
 	}
-	// TODO avoid this allocation
+
+	// Note size of samples will be decoded
 	n, err = d.DecoderTo(d.buf, b)
 	if err != nil {
 		return 0, err
