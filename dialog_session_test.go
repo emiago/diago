@@ -364,10 +364,12 @@ func TestIntegrationDialogCancel(t *testing.T) {
 		dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
 
 		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		_, err := dg.Invite(ctx, sip.Uri{User: "test", Host: "127.0.0.1", Port: 15060}, InviteOptions{
 			OnResponse: func(res *sip.Response) error {
 				if res.StatusCode == sip.StatusRinging {
 					cancel()
+					// return context.Canceled
 				}
 				return nil
 			},

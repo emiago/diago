@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/emiago/diago/media"
-	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/sip"
 	"github.com/rs/zerolog/log"
 )
@@ -133,28 +132,34 @@ func (d *DialogMedia) initRTPSessionUnsafe(m *media.MediaSession, rtpSess *media
 	d.RTPPacketWriter = media.NewRTPPacketWriterSession(rtpSess)
 }
 
-func (d *DialogMedia) createMediaSession(formats sdp.Formats, bindIP net.IP) (*media.MediaSession, error) {
+func (d *DialogMedia) initMediaSessionFromConf(conf MediaConfig) error {
+	if d.mediaSession != nil {
+		// To allow testing or customizing current underhood session, this may be
+		// precreated, so we want to return if already initialized.
+		// Ex: To fake IO on RTP connection or different media stacks
+		return nil
+	}
+
+	bindIP := conf.bindIP
 	if bindIP == nil {
 		var err error
 		bindIP, _, err = sip.ResolveInterfacesIP("ip4", nil)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	laddr := &net.UDPAddr{IP: bindIP, Port: 0}
-	sess, err := media.NewMediaSession(laddr)
-	sess.Formats = formats
-	return sess, err
-}
-
-func (d *DialogMedia) createMediaSessionConf(conf MediaConfig) (*media.MediaSession, error) {
-	sess, err := d.createMediaSession(conf.Formats, conf.bindIP)
-	if err != nil {
-		return nil, err
+	sess := &media.MediaSession{
+		Formats:    conf.Formats,
+		Laddr:      &net.UDPAddr{IP: bindIP, Port: 0},
+		ExternalIP: conf.externalIP,
 	}
-	sess.ExternalIP = conf.externalIP
-	return sess, nil
+
+	if err := sess.Init(); err != nil {
+		return err
+	}
+	d.mediaSession = sess
+	return nil
 }
 
 // RTPSession returns underhood rtp session
@@ -340,6 +345,7 @@ func (d *DialogMedia) Echo() error {
 	if err != nil {
 		return err
 	}
+
 	_, err = media.Copy(audioR, audioW)
 	return err
 }
@@ -429,6 +435,14 @@ func (d *DialogMedia) ListenUntil(dur time.Duration) error {
 			return err
 		}
 	}
+}
+
+func (d *DialogMedia) StopRTP(rw int8, dur time.Duration) {
+	d.mediaSession.StopRTP(rw, dur)
+}
+
+func (d *DialogMedia) StartRTP(rw int8, dur time.Duration) {
+	d.mediaSession.StartRTP(rw)
 }
 
 type DTMFReader struct {

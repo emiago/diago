@@ -91,13 +91,11 @@ func (d *DialogServerSession) RespondSDP(body []byte) error {
 // Answer creates media session and answers
 // NOTE: Not final API
 func (d *DialogServerSession) Answer() error {
-	sess, err := d.createMediaSessionConf(d.mediaConf)
-	if err != nil {
+	if err := d.initMediaSessionFromConf(d.mediaConf); err != nil {
 		return err
 	}
 
-	rtpSess := media.NewRTPSession(sess)
-
+	rtpSess := media.NewRTPSession(d.mediaSession)
 	return d.answerSession(rtpSess)
 }
 
@@ -109,16 +107,18 @@ type AnswerOptions struct {
 //
 // NOTE: API may change
 func (d *DialogServerSession) AnswerOptions(opt AnswerOptions) error {
-	sess, err := d.createMediaSessionConf(d.mediaConf)
-	if err != nil {
+	// d.mu.Lock()
+	// d.onReferDialog = opt.OnRefer
+	// d.onMediaUpdate = opt.OnMediaUpdate
+	// d.mu.Unlock()
+
+	if err := d.initMediaSessionFromConf(d.mediaConf); err != nil {
 		return err
 	}
-
-	rtpSess := media.NewRTPSession(sess)
+	rtpSess := media.NewRTPSession(d.mediaSession)
 	if opt.OnRTPSession != nil {
 		opt.OnRTPSession(rtpSess)
 	}
-
 	return d.answerSession(rtpSess)
 }
 
@@ -170,10 +170,10 @@ func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
 
 // AnswerLate does answer with Late offer.
 func (d *DialogServerSession) AnswerLate() error {
-	sess, err := d.createMediaSessionConf(d.mediaConf)
-	if err != nil {
+	if err := d.initMediaSessionFromConf(d.mediaConf); err != nil {
 		return err
 	}
+	sess := d.mediaSession
 	rtpSess := media.NewRTPSession(sess)
 	localSDP := sess.LocalSDP()
 

@@ -203,9 +203,9 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		// Proceed as new call
 		dialogUA := sipgo.DialogUA{
 			Client:         dg.getClient(&tran),
-			ContactHDR:     dg.contactHDRFromTransport(tran),
 			RewriteContact: tran.RewriteContact,
 		}
+		dg.contactHDRFromTransport(tran, &dialogUA.ContactHDR)
 
 		dialog, err := dialogUA.ReadInvite(req, tx)
 		if err != nil {
@@ -523,15 +523,14 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 	if !exists {
 		return nil, fmt.Errorf("transport %s does not exists", transport)
 	}
-	contactHDR := dg.contactHDRFromTransport(tran)
 
 	// TODO: remove this alloc of UA each time
 	client := dg.getClient(&tran)
 	dialogCli := sipgo.DialogUA{
 		Client:         client,
-		ContactHDR:     dg.contactHDRFromTransport(tran),
 		RewriteContact: tran.RewriteContact,
 	}
+	dg.contactHDRFromTransport(tran, &dialogCli.ContactHDR)
 
 	d = &DialogClientSession{}
 
@@ -542,10 +541,10 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		bindIP:     tran.mediaBindIP,
 		externalIP: tran.MediaExternalIP,
 	}
-	sess, err := d.createMediaSessionConf(mediaConf)
-	if err != nil {
+	if err := d.initMediaSessionFromConf(mediaConf); err != nil {
 		return nil, err
 	}
+	sess := d.mediaSession
 
 	inviteReq := sip.NewRequest(sip.INVITE, recipient)
 	inviteReq.SetTransport(sip.NetworkToUpper(transport))
@@ -618,7 +617,7 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		}
 	}
 
-	inviteReq.AppendHeader(&contactHDR)
+	inviteReq.AppendHeader(&dialogCli.ContactHDR)
 	inviteReq.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
 	inviteReq.SetBody(sess.LocalSDP())
 
@@ -721,23 +720,21 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 	return d, nil
 }
 
-func (dg *Diago) contactHDRFromTransport(tran Transport) sip.ContactHeader {
+func (dg *Diago) contactHDRFromTransport(tran Transport, contact *sip.ContactHeader) {
 	// Find contact hdr matching transport
 	scheme := "sip"
 	if tran.TLSConf != nil {
 		scheme = "sips"
 	}
 
-	return sip.ContactHeader{
-		DisplayName: "", // TODO
-		Address: sip.Uri{
-			Scheme:    scheme,
-			User:      dg.ua.Name(),
-			Host:      tran.ExternalHost,
-			Port:      tran.ExternalPort,
-			UriParams: sip.NewParams(),
-			Headers:   sip.NewParams(),
-		},
+	contact.DisplayName = "" //TODO
+	contact.Address = sip.Uri{
+		Scheme:    scheme,
+		User:      dg.ua.Name(),
+		Host:      tran.ExternalHost,
+		Port:      tran.ExternalPort,
+		UriParams: sip.NewParams(),
+		Headers:   sip.NewParams(),
 	}
 }
 
@@ -830,7 +827,8 @@ func (dg *Diago) RegisterTransaction(ctx context.Context, recipient sip.Uri, opt
 		return nil, fmt.Errorf("transport=%s does not exists", transport)
 	}
 
-	contactHDR := dg.contactHDRFromTransport(tran)
+	contactHDR := sip.ContactHeader{}
+	dg.contactHDRFromTransport(tran, &contactHDR)
 
 	// client, err := sipgo.NewClient(dg.ua,
 	// 	sipgo.WithClientHostname(contactHDR.Address.Host),

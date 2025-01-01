@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/emiago/diago/media/sdp"
+	"github.com/emiago/sipgo/sip"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/rs/zerolog"
@@ -76,7 +77,7 @@ func NewMediaSession(laddr *net.UDPAddr) (s *MediaSession, e error) {
 		},
 		Laddr: laddr,
 		Mode:  sdp.ModeSendrecv,
-		log:   log.With().Str("caller", "media").Logger(),
+		log:   log.Logger,
 	}
 
 	return s, s.createListeners(s.Laddr)
@@ -85,13 +86,24 @@ func NewMediaSession(laddr *net.UDPAddr) (s *MediaSession, e error) {
 // Init should be called if session is created manually
 // Use NewMediaSession for default building
 func (s *MediaSession) Init() error {
-	s.log = log.With().Str("caller", "media").Logger()
-
+	// NOTE: Creating custom logger with zerolog creates new allocation buffer, which here we have no big use case
+	// s.log = log.With().Str("caller", "media").Logger()
+	s.log = log.Logger
 	// Try to listen on this ports
 	if err := s.createListeners(s.Laddr); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (s *MediaSession) InitWithListeners(lRTP net.PacketConn, lRTCP net.PacketConn, raddr *net.UDPAddr) {
+	s.log = log.Logger
+	s.Mode = sdp.ModeSendrecv
+	s.rtpConn = lRTP
+	s.rtcpConn = lRTCP
+	laddr, port, _ := sip.ParseAddr(lRTCP.LocalAddr().String())
+	s.Laddr = &net.UDPAddr{IP: net.ParseIP(laddr), Port: port}
+	s.SetRemoteAddr(raddr)
 }
 
 func (s *MediaSession) StopRTP(rw int8, dur time.Duration) error {
