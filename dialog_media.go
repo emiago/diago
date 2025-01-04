@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/emiago/diago/media"
+	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/sip"
 	"github.com/rs/zerolog/log"
 )
@@ -153,6 +154,7 @@ func (d *DialogMedia) initMediaSessionFromConf(conf MediaConfig) error {
 		Formats:    conf.Formats,
 		Laddr:      &net.UDPAddr{IP: bindIP, Port: 0},
 		ExternalIP: conf.externalIP,
+		Mode:       sdp.ModeSendrecv,
 	}
 
 	if err := sess.Init(); err != nil {

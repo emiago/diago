@@ -42,11 +42,20 @@ var (
 //
 // NOTE: Not thread safe, read only after SDP negotiation or have locking in place
 type MediaSession struct {
+	// SDP stuff
+	// Depending of negotiation this can change.
+	// Formats will always try to match remote, to avoid different codec matching
+	// TODO:
+	// 1. make this list of codecs as we need to match also sample rate and ptime
+	// 2. rtp session when matching incoming packet sample rate for RTCP should use this
+	Formats sdp.Formats
+	Mode    sdp.Mode
+	// Laddr our local address which has full IP and port after media session creation
+	Laddr *net.UDPAddr
+
 	// Raddr is our target remote address. Normally it is resolved by SDP parsing.
 	// Checkout SetRemoteAddr
 	Raddr *net.UDPAddr
-	// Laddr our local address which has full IP and port after media session creation
-	Laddr *net.UDPAddr
 
 	// ExternalIP that should be used for building SDP
 	ExternalIP net.IP
@@ -57,15 +66,6 @@ type MediaSession struct {
 
 	// TODO: Support RTP Symetric
 	rtpSymetric bool
-
-	// SDP stuff
-	// Depending of negotiation this can change.
-	// Formats will always try to match remote, to avoid different codec matching
-	// TODO:
-	// 1. make this list of codecs as we need to match also sample rate and ptime
-	// 2. rtp session when matching incoming packet sample rate for RTCP should use this
-	Formats sdp.Formats
-	Mode    sdp.Mode
 
 	log zerolog.Logger
 }
@@ -89,6 +89,19 @@ func (s *MediaSession) Init() error {
 	// NOTE: Creating custom logger with zerolog creates new allocation buffer, which here we have no big use case
 	// s.log = log.With().Str("caller", "media").Logger()
 	s.log = log.Logger
+
+	if s.Formats == nil || len(s.Formats) == 0 {
+		return fmt.Errorf("media session: formats can not be empty")
+	}
+
+	if s.Mode == "" {
+		return fmt.Errorf("media session: mode must be set")
+	}
+
+	if s.Laddr == nil {
+		return fmt.Errorf("media session: local addr must be set")
+	}
+
 	// Try to listen on this ports
 	if err := s.createListeners(s.Laddr); err != nil {
 		return err
