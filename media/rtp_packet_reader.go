@@ -45,6 +45,8 @@ type RTPPacketReader struct {
 	// PacketHeader is stored after calling Read
 	// Safe to read only in same goroutine as Read
 	PacketHeader rtp.Header
+	// packet is temporarly packet holder for header and data
+	packet rtp.Packet
 
 	// payloadType uint8
 	seqReader RTPExtendedSequenceNumber
@@ -109,16 +111,14 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 		unreadPayload = r.unreadPayload
 	}
 
-	pkt := rtp.Packet{
-		// We are reusing buffer for payload. This avoids allocation
-		Payload: unreadPayload,
-	}
+	pkt := &r.packet
+	pkt.Payload = unreadPayload
 
 	r.mu.RLock()
 	reader := r.reader
 	r.mu.RUnlock()
 
-	rtpN, err := reader.ReadRTP(buf, &pkt)
+	rtpN, err := reader.ReadRTP(buf, pkt)
 	if err != nil {
 		// For now underhood IO should only net closed
 		// Here we are returning EOF to be io package compatilble
@@ -128,6 +128,7 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 		}
 		return 0, err
 	}
+	payloadSize := rtpN - pkt.Header.MarshalSize() - int(pkt.PaddingSize)
 	// In case of DTMF we can receive different payload types
 	// if pt != pkt.PayloadType {
 	// 	return 0, fmt.Errorf("payload type does not match. expected=%d, actual=%d", pt, pkt.PayloadType)
@@ -150,9 +151,7 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 
 	r.lastSSRC = pkt.SSRC
 	r.PacketHeader = pkt.Header
-
 	// Is there better way to compare this?
-	payloadSize := rtpN - pkt.Header.MarshalSize() - int(pkt.PaddingSize)
 	if len(b) != len(unreadPayload) {
 		// We are not using passed buffer. We need to copy payload
 		pkt.Payload = pkt.Payload[:payloadSize]

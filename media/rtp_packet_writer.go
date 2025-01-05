@@ -37,6 +37,8 @@ type RTPPacketWriter struct {
 
 	// After each write packet header is saved for more reading
 	PacketHeader rtp.Header
+	// packet is temporarly packet holder for header and data
+	packet rtp.Packet
 	// SSRC is readOnly and it is not changed
 	SSRC uint32
 
@@ -114,28 +116,27 @@ func (p *RTPPacketWriter) Write(b []byte) (int, error) {
 // This is useful if you need to write different payload but keeping same SSRC
 func (p *RTPPacketWriter) WriteSamples(payload []byte, sampleRateTimestamp uint32, marker bool, payloadType uint8) (int, error) {
 	writer := p.writer
-	pkt := rtp.Packet{
-		Header: rtp.Header{
-			Version:     2,
-			Padding:     false,
-			Extension:   false,
-			Marker:      marker,
-			PayloadType: payloadType,
-			// Timestamp should increase linear and monotonic for media clock
-			// Payload must be in same clock rate
-			// TODO: what about wrapp arround
-			Timestamp:      p.nextTimestamp,
-			SequenceNumber: p.seqWriter.NextSeqNumber(),
-			SSRC:           p.SSRC,
-			CSRC:           []uint32{},
-		},
-		Payload: payload,
+	pkt := &p.packet
+	pkt.Header = rtp.Header{
+		Version:     2,
+		Padding:     false,
+		Extension:   false,
+		Marker:      marker,
+		PayloadType: payloadType,
+		// Timestamp should increase linear and monotonic for media clock
+		// Payload must be in same clock rate
+		// TODO: what about wrapp arround
+		Timestamp:      p.nextTimestamp,
+		SequenceNumber: p.seqWriter.NextSeqNumber(),
+		SSRC:           p.SSRC,
+		// CSRC:           []uint32{},
 	}
-
-	p.PacketHeader = pkt.Header
+	pkt.Payload = payload
 	p.nextTimestamp += sampleRateTimestamp
 
-	err := writer.WriteRTP(&pkt)
+	err := writer.WriteRTP(pkt)
+	// store header for reading. NOTE: in case pointers in header, do nil first
+	p.PacketHeader = pkt.Header
 	return len(pkt.Payload), err
 }
 
