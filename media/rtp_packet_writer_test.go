@@ -12,7 +12,6 @@ import (
 
 	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/fakes"
-	"github.com/pion/rtp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,13 +66,7 @@ func BenchmarkRTPPacketWriter(b *testing.B) {
 		io.ReadAll(reader)
 	}()
 
-	pkt := rtp.Packet{
-		Payload: make([]byte, 160),
-	}
-	data, err := pkt.Marshal()
-	if err != nil {
-		return
-	}
+	data := make([]byte, 160)
 
 	for i := 0; i < b.N; i++ {
 		_, err := w.Write(data)
