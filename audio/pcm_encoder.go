@@ -16,11 +16,7 @@ import (
 
 /*
 	This is PCM Decoder and Encoder (translators from VOIP codecs)
-	They are io.Reader io.Writter which should wrap RTP Reader Writter and pass to upper PCM player
-	It operates on RTP payload and for every ticked sample it does decoding.
-	As decoding can add delay for compressed codecs, it may be usefull that upper Reader buffers,
-	but for ulaw, alaw codecs this should be no delays
-
+	They are io.Reader io.Writter which should pipeline RTP Reader Writter and pass to upper PCM player
 	PCM allows translation to any codec or creating wav files
 */
 
@@ -29,6 +25,7 @@ const (
 	FrameSize  = 3200
 	ReadBuffer = 160
 
+	// TODO: this type should defined once. For now we have this on sdp package as well
 	FORMAT_TYPE_ULAW = 0
 	FORMAT_TYPE_ALAW = 8
 	FORMAT_TYPE_OPUS = 96
