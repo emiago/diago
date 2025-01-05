@@ -159,6 +159,7 @@ func (w *RTPPacketWriter) UpdateRTPSession(rtpSess *RTPSession) {
 	w.payloadType = codec.PayloadType
 	w.sampleRate = codec.SampleRate
 	w.updateClockRate(codec)
+	w.writer = rtpSess
 	// rtpSess.writeStats.SSRC = w.SSRC
 	// rtpSess.writeStats.sampleRate = w.sampleRate
 }
