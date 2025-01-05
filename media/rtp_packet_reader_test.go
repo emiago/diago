@@ -21,7 +21,7 @@ func fakeMediaSessionReader(lport int, rtpReader io.Reader) *MediaSession {
 		Formats: sdp.Formats{
 			sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_ULAW,
 		},
-		Laddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: lport},
+		Laddr: net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: lport},
 		log:   log.Logger,
 	}
 

@@ -22,7 +22,7 @@ func TestMediaPortRange(t *testing.T) {
 	sessions := []*MediaSession{}
 	for i := RTPPortStart; i < RTPPortEnd; i += 2 {
 		require.Equal(t, i-RTPPortStart, int(rtpPortOffset.Load()))
-		mess, err := NewMediaSession(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+		mess, err := NewMediaSession(net.IPv4(127, 0, 0, 1), 0)
 		t.Log(mess.rtpConn.LocalAddr(), mess.rtcpConn.LocalAddr())
 		require.NoError(t, err)
 		sessions = append(sessions, mess)
@@ -100,7 +100,7 @@ func TestMediaSessionExternalIP(t *testing.T) {
 		Formats: sdp.Formats{
 			sdp.FORMAT_TYPE_ULAW, sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_TELEPHONE_EVENT,
 		},
-		Laddr:      &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
+		Laddr:      net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
 		Mode:       sdp.ModeSendrecv,
 		ExternalIP: net.IPv4(1, 1, 1, 1),
 	}
@@ -114,4 +114,31 @@ func TestMediaSessionExternalIP(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, connInfo.IP.To4())
 	assert.Equal(t, m.ExternalIP.To4(), connInfo.IP.To4())
+}
+
+func TestMediaSessionUpdateCodec(t *testing.T) {
+
+	newM := func() *MediaSession {
+		return &MediaSession{
+			Formats: sdp.Formats{
+				sdp.FORMAT_TYPE_ULAW, sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_TELEPHONE_EVENT,
+			},
+		}
+	}
+
+	m := newM()
+	m.updateRemoteFormats(sdp.Formats{sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_ULAW})
+	assert.Equal(t, sdp.Formats{sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_ULAW}, m.Formats)
+
+	m = newM()
+	m.updateRemoteFormats(sdp.Formats{sdp.FORMAT_TYPE_ALAW})
+	assert.Equal(t, sdp.Formats{sdp.FORMAT_TYPE_ALAW}, m.Formats)
+
+	m = newM()
+	m.updateRemoteFormats(sdp.Formats{})
+	assert.Equal(t, sdp.Formats{}, m.Formats)
+
+	m = newM()
+	m.updateRemoteFormats(sdp.Formats{"NonExisting"})
+	assert.Equal(t, sdp.Formats{}, m.Formats)
 }

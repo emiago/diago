@@ -51,18 +51,18 @@ type MediaSession struct {
 	Formats sdp.Formats
 	Mode    sdp.Mode
 	// Laddr our local address which has full IP and port after media session creation
-	Laddr *net.UDPAddr
+	Laddr net.UDPAddr
 
 	// Raddr is our target remote address. Normally it is resolved by SDP parsing.
 	// Checkout SetRemoteAddr
-	Raddr *net.UDPAddr
+	Raddr net.UDPAddr
 
 	// ExternalIP that should be used for building SDP
 	ExternalIP net.IP
 
 	rtpConn   net.PacketConn
 	rtcpConn  net.PacketConn
-	rtcpRaddr *net.UDPAddr
+	rtcpRaddr net.UDPAddr
 
 	// TODO: Support RTP Symetric
 	rtpSymetric bool
@@ -70,17 +70,18 @@ type MediaSession struct {
 	log zerolog.Logger
 }
 
-func NewMediaSession(laddr *net.UDPAddr) (s *MediaSession, e error) {
+func NewMediaSession(ip net.IP, port int) (s *MediaSession, e error) {
 	s = &MediaSession{
 		Formats: sdp.Formats{
 			sdp.FORMAT_TYPE_ULAW, sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_TELEPHONE_EVENT,
 		},
-		Laddr: laddr,
-		Mode:  sdp.ModeSendrecv,
-		log:   log.Logger,
+		Mode: sdp.ModeSendrecv,
+		log:  log.Logger,
 	}
+	s.Laddr.IP = ip
+	s.Laddr.Port = port
 
-	return s, s.createListeners(s.Laddr)
+	return s, s.createListeners(&s.Laddr)
 }
 
 // Init should be called if session is created manually
@@ -98,12 +99,12 @@ func (s *MediaSession) Init() error {
 		return fmt.Errorf("media session: mode must be set")
 	}
 
-	if s.Laddr == nil {
+	if s.Laddr.IP == nil {
 		return fmt.Errorf("media session: local addr must be set")
 	}
 
 	// Try to listen on this ports
-	if err := s.createListeners(s.Laddr); err != nil {
+	if err := s.createListeners(&s.Laddr); err != nil {
 		return err
 	}
 	return nil
@@ -115,7 +116,7 @@ func (s *MediaSession) InitWithListeners(lRTP net.PacketConn, lRTCP net.PacketCo
 	s.rtpConn = lRTP
 	s.rtcpConn = lRTCP
 	laddr, port, _ := sip.ParseAddr(lRTCP.LocalAddr().String())
-	s.Laddr = &net.UDPAddr{IP: net.ParseIP(laddr), Port: port}
+	s.Laddr = net.UDPAddr{IP: net.ParseIP(laddr), Port: port}
 	s.SetRemoteAddr(raddr)
 }
 
@@ -176,8 +177,8 @@ func (s *MediaSession) SetLogger(log zerolog.Logger) {
 // SetRemoteAddr is helper to set Raddr and rtcp address.
 // It is not thread safe
 func (s *MediaSession) SetRemoteAddr(raddr *net.UDPAddr) {
-	s.Raddr = raddr
-	s.rtcpRaddr = &net.UDPAddr{
+	s.Raddr = *raddr
+	s.rtcpRaddr = net.UDPAddr{
 		IP:   raddr.IP,
 		Port: raddr.Port + 1,
 		Zone: raddr.Zone,
@@ -213,8 +214,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 		return err
 	}
 
-	raddr := &net.UDPAddr{IP: ci.IP, Port: md.Port}
-	s.SetRemoteAddr(raddr)
+	s.SetRemoteAddr(&net.UDPAddr{IP: ci.IP, Port: md.Port})
 
 	s.updateRemoteFormats(md.Formats)
 	if len(s.Formats) == 0 {
@@ -227,23 +227,18 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 func (s *MediaSession) updateRemoteFormats(formats sdp.Formats) {
 	// Check remote vs local
 	if len(s.Formats) > 0 {
-		filter := make([]string, 0, cap(formats))
+		// filter := make([]string, 0, cap(formats))
+		filter := formats[:0] // reuse buffer
 		// Always prefer remote side?
 		for _, cr := range formats {
 			for _, cs := range s.Formats {
 				if cr == cs {
 					filter = append(filter, cr)
+					break
 				}
 			}
 		}
 
-		// for _, cs := range s.Formats {
-		// 	for _, cr := range formats {
-		// 		if cr == cs {
-		// 			filter = append(filter, cr)
-		// 		}
-		// 	}
-		// }
 		// Update new list of formats
 		s.Formats = sdp.Formats(filter)
 	} else {
@@ -308,7 +303,7 @@ func (s *MediaSession) listenRTPandRTCP(laddr *net.UDPAddr) error {
 	}
 
 	// Update laddr as it can be empheral
-	s.Laddr = laddr
+	s.Laddr = *laddr
 	return nil
 }
 
@@ -335,7 +330,7 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	// }
 
 	if RTPDebug {
-		m.log.Debug().Msgf("Recv RTP %s < %s \n%s", m.Laddr, from.String(), pkt.String())
+		m.log.Debug().Msgf("Recv RTP %s < %s \n%s", m.Laddr.String(), from.String(), pkt.String())
 	}
 	return n, err
 }
@@ -441,7 +436,7 @@ func (m *MediaSession) WriteRTP(p *rtp.Packet) error {
 }
 
 func (m *MediaSession) WriteRTPRaw(data []byte) (n int, err error) {
-	n, err = m.rtpConn.WriteTo(data, m.Raddr)
+	n, err = m.rtpConn.WriteTo(data, &m.Raddr)
 	return
 }
 
@@ -490,7 +485,7 @@ func (m *MediaSession) WriteRTCPs(pkts []rtcp.Packet) error {
 }
 
 func (m *MediaSession) WriteRTCPRaw(data []byte) (int, error) {
-	n, err := m.rtcpConn.WriteTo(data, m.rtcpRaddr)
+	n, err := m.rtcpConn.WriteTo(data, &m.rtcpRaddr)
 	return n, err
 }
 

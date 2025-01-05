@@ -152,7 +152,7 @@ func (d *DialogMedia) initMediaSessionFromConf(conf MediaConfig) error {
 
 	sess := &media.MediaSession{
 		Formats:    conf.Formats,
-		Laddr:      &net.UDPAddr{IP: bindIP, Port: 0},
+		Laddr:      net.UDPAddr{IP: bindIP, Port: 0},
 		ExternalIP: conf.externalIP,
 		Mode:       sdp.ModeSendrecv,
 	}

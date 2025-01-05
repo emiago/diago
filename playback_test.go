@@ -19,15 +19,15 @@ import (
 func TestIntegrationStreamWAV(t *testing.T) {
 	fh, err := os.Open("testdata/files/demo-echodone.wav")
 	require.NoError(t, err)
-	sess, err := media.NewMediaSession(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	sess, err := media.NewMediaSession(net.IPv4(127, 0, 0, 1), 0)
 	require.NoError(t, err)
 	defer sess.Close()
 
 	codec := media.CodecFromSession(sess)
 	rtpWriter := media.NewRTPPacketWriter(sess, codec)
-	sess.Raddr = &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
+	sess.Raddr = net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
-	udpDump, err := net.ListenUDP("udp4", sess.Raddr)
+	udpDump, err := net.ListenUDP("udp4", &sess.Raddr)
 	require.NoError(t, err)
 	defer udpDump.Close()
 
@@ -46,16 +46,16 @@ func TestIntegrationStreamWAV(t *testing.T) {
 func TestIntegrationPlaybackStreamWAV(t *testing.T) {
 	fh, err := os.Open("testdata/files/demo-echodone.wav")
 	require.NoError(t, err)
-	sess, err := media.NewMediaSession(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	sess, err := media.NewMediaSession(net.IPv4(127, 0, 0, 1), 0)
 	require.NoError(t, err)
 	defer sess.Close()
 
 	codec := media.CodecFromSession(sess)
-	sess.Raddr = &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
+	sess.Raddr = net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
 	p := NewAudioPlayback(bytes.NewBuffer(make([]byte, 0)), codec)
 
-	udpDump, err := net.ListenUDP("udp4", sess.Raddr)
+	udpDump, err := net.ListenUDP("udp4", &sess.Raddr)
 	require.NoError(t, err)
 	defer udpDump.Close()
 

@@ -23,9 +23,9 @@ func fakeSession(lport int, rport int, rtpReader io.Reader, rtpWriter io.Writer,
 		Formats: sdp.Formats{
 			sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_ULAW,
 		},
-		Laddr:     &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: lport},
-		Raddr:     &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: rport},
-		rtcpRaddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: rport + 1},
+		Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: lport},
+		Raddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: rport},
+		rtcpRaddr: net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: rport + 1},
 	}
 	sess.SetLogger(log.Logger)
 
@@ -212,7 +212,7 @@ func TestRTPSessionWriting(t *testing.T) {
 // }
 
 func TestRTPSessionClose(t *testing.T) {
-	sess, err := NewMediaSession(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	sess, err := NewMediaSession(net.IPv4(127, 0, 0, 1), 0)
 	require.NoError(t, err)
 
 	rtpSess := NewRTPSession(sess)
