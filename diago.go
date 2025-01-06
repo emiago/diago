@@ -862,8 +862,8 @@ func (dg *Diago) createClient(tran Transport) (client *sipgo.Client) {
 		// Forcing port here makes more problem when listener is not started
 		// ex register and then serve
 		// We check that user started to listen port
-		ports := ua.TransportLayer().ListenPorts("udp")
-		if len(ports) > 0 {
+		port := ua.TransportLayer().GetListenPort("udp")
+		if port > 0 {
 			bindPort = tran.BindPort
 		}
 	}
