@@ -3,7 +3,7 @@ module github.com/emiago/diago
 go 1.22.4
 
 require (
-	github.com/emiago/sipgo v0.26.1
+	github.com/emiago/sipgo v0.27.2-0.20241230125302-1623ff2fdc47
 	github.com/go-audio/riff v1.0.0
 	github.com/go-audio/wav v1.1.0
 	github.com/icholy/digest v0.1.22
