@@ -10,6 +10,8 @@ Short of **dialog + GO**.
 Built on top of optimized [SIPgo library]((https://emiago.github.io/diago))!  
 In short it allows developing fast and easy testable VOIP apps to handle calls, registrations and more... 
 
+*Diago is mainly project driven lib, so lot of API design will/should be challenged with real working apps needs*
+
 **For more information and documentation visit [the website](https://emiago.github.io/diago/docs)**
 
 Quick links:
