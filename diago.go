@@ -117,6 +117,8 @@ func WithTransport(t Transport) DiagoOption {
 		// we want to handle SIP networking better per each transport
 		t.client = dg.createClient(t)
 		dg.transports = append(dg.transports, t)
+
+		dg.log.Debug().Interface("t", t).Msg("Loaded transport")
 	}
 }
 

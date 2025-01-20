@@ -190,11 +190,15 @@ func (s *MediaSession) SetRemoteAddr(raddr *net.UDPAddr) {
 func (s *MediaSession) LocalSDP() []byte {
 	ip := s.Laddr.IP
 	rtpPort := s.Laddr.Port
-	if s.ExternalIP != nil {
-		ip = s.ExternalIP
+	connIP := s.ExternalIP
+	if connIP == nil {
+		connIP = ip
 	}
+	// if s.ExternalIP != nil {
+	// 	ip = s.ExternalIP
+	// }
 
-	return sdp.GenerateForAudio(ip, ip, rtpPort, s.Mode, s.Formats)
+	return sdp.GenerateForAudio(ip, connIP, rtpPort, s.Mode, s.Formats)
 }
 
 func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {

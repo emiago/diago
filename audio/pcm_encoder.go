@@ -11,7 +11,6 @@ import (
 
 	"github.com/emiago/diago/media"
 	"github.com/rs/zerolog/log"
-	"github.com/zaf/g711"
 )
 
 /*
@@ -82,27 +81,33 @@ func (dec *PCMDecoder) Init(codec media.Codec) error {
 
 type PCMDecoderReader struct {
 	PCMDecoder
-	Source io.Reader
-	buf    []byte
+	Source  io.Reader
+	BufSize int
+	buf     []byte
 }
 
 func NewPCMDecoderReader(codec uint8, reader io.Reader) (*PCMDecoderReader, error) {
-	d, err := NewPCMDecoder(codec)
+	cod, err := media.CodecAudioFromPayloadType(codec)
 	if err != nil {
 		return nil, err
 	}
+	d := &PCMDecoderReader{}
+	return d, d.Init(cod, reader)
+}
 
-	return &PCMDecoderReader{
-		PCMDecoder: *d,
-		Source:     reader,
-	}, nil
+func (d *PCMDecoderReader) Init(codec media.Codec, reader io.Reader) error {
+	d.Source = reader
+	if d.BufSize == 0 {
+		d.BufSize = media.RTPBufSize
+	}
+	return d.PCMDecoder.Init(codec)
 }
 
 // Read decodes and return PCM
 // NOTE: It is expected that buffer matches codec samples size.
 func (d *PCMDecoderReader) Read(b []byte) (n int, err error) {
 	if d.buf == nil {
-		d.buf = make([]byte, media.RTPBufSize)
+		d.buf = make([]byte, d.BufSize)
 	}
 
 	n, err = d.Source.Read(d.buf)
@@ -132,14 +137,6 @@ func NewPCMDecoderWriter(codec uint8, writer io.Writer) (*PCMDecoderWriter, erro
 	if err != nil {
 		return nil, err
 	}
-	// d, err := NewPCMDecoder(codec)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// return &PCMDecoderWriter{
-	// 	PCMDecoder: *d,
-	// 	Writer:     writer,
-	// }, nil
 
 	dec := &PCMDecoderWriter{}
 	return dec, dec.Init(cod, writer)
@@ -178,7 +175,6 @@ func (d *PCMDecoderWriter) Write(b []byte) (n int, err error) {
 }
 
 type PCMEncoder struct {
-	Encoder   func(lpcm []byte) (encoded []byte)
 	EncoderTo func(encoded []byte, lpcm []byte) (int, error)
 
 	samplesSize int
@@ -199,10 +195,8 @@ func (enc *PCMEncoder) Init(codec media.Codec) error {
 	enc.samplesSize = codec.SamplesPCM(16) // For now we only support 16 bit
 	switch codec.PayloadType {
 	case FORMAT_TYPE_ULAW:
-		enc.Encoder = g711.EncodeUlaw
 		enc.EncoderTo = EncodeUlawTo
 	case FORMAT_TYPE_ALAW:
-		enc.Encoder = g711.EncodeAlaw
 		enc.EncoderTo = EncodeAlawTo
 
 	case FORMAT_TYPE_OPUS:
@@ -221,38 +215,49 @@ func (enc *PCMEncoder) Init(codec media.Codec) error {
 
 type PCMEncoderWriter struct {
 	PCMEncoder
-	Destination io.Writer
-	buf         []byte
+	Writer  io.Writer
+	BufSize int
+	buf     []byte
 }
 
-func NewPCMEncoderWriter(codec uint8, writer io.Writer) (*PCMEncoderWriter, error) {
-	d, err := NewPCMEncoder(codec)
+func NewPCMEncoderWriter(payloadType uint8, writer io.Writer) (*PCMEncoderWriter, error) {
+	enc := &PCMEncoderWriter{}
+	codec, err := media.CodecAudioFromPayloadType(payloadType)
 	if err != nil {
 		return nil, err
 	}
-	return &PCMEncoderWriter{
-		PCMEncoder:  *d,
-		Destination: writer,
-	}, nil
+
+	return enc, enc.Init(codec, writer)
+	// d, err := NewPCMEncoder(codec)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// enc := &PCMEncoderWriter{
+	// 	PCMEncoder: *d,
+	// 	Writer:     writer,
+	// }
+	// return enc, enc.Init()
+}
+
+func (d *PCMEncoderWriter) Init(codec media.Codec, writer io.Writer) error {
+	d.Writer = writer
+	if d.BufSize == 0 {
+		d.BufSize = media.RTPBufSize
+	}
+	return d.PCMEncoder.Init(codec)
 }
 
 func (d *PCMEncoderWriter) Write(lpcm []byte) (int, error) {
 	if d.buf == nil {
 		// We expect constant rate
-		// d.buf = make([]byte, len(lpcm)/2)
-		d.buf = make([]byte, media.RTPBufSize)
+		d.buf = make([]byte, d.BufSize)
 	}
 
 	// We need to have fixed frame sizes due to encoders
-
 	sampleSize := d.samplesSize
 	if len(lpcm) > sampleSize {
 		log.Warn().Int("pcm", len(lpcm)).Int("expected", sampleSize).Msg("Size of pcm samples does not match our frame")
 	}
-
-	// for i := 0; ; i = i + d.samplesSize {
-	// 	lpcmFrame := lpcm[i:]
-	// }
 
 	// If encoder can not fit our network buffer it will error
 	// TODO we may want this to be configurable for some other applications
@@ -263,40 +268,16 @@ func (d *PCMEncoderWriter) Write(lpcm []byte) (int, error) {
 	encoded := d.buf[:n]
 	// fmt.Println("Writing lpcm, encoded", len(lpcm), len(encoded))
 
-	nn, err := d.Destination.Write(encoded)
+	nn, err := d.Writer.Write(encoded)
 	if err != nil {
 		return nn, err
 	}
+
 	if nn != len(encoded) {
 		return 0, io.ErrShortWrite
 	}
 
 	return len(lpcm), nil
-
-	// ind := 0
-	// nn := 0
-	// double := len(d.buf) * 2
-	// for nn < len(lpcm) {
-	// 	max := min(double, len(lpcm[ind:]))
-	// 	// EncoderTo avoids allocation
-	// 	n, err := d.EncoderTo(d.buf, lpcm[ind:ind+max])
-	// 	if err != nil {
-	// 		return 0, err
-	// 	}
-	// 	ind = max
-
-	// 	encoded := d.buf[:n]
-	// 	n, err = d.Destination.Write(encoded)
-	// 	if err != nil {
-	// 		return nn, err
-	// 	}
-	// 	if n < len(encoded) {
-	// 		return nn, io.ErrShortWrite
-	// 	}
-
-	// 	nn += max
-	// }
-	// return nn, nil
 }
 
 func samplesByteToInt16(input []byte, output []int16) (int, error) {

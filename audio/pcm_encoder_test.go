@@ -10,6 +10,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/emiago/diago/media"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zaf/g711"
@@ -81,10 +82,11 @@ func TestPCMEncoderWrite(t *testing.T) {
 
 func TestPCMDecoderRead(t *testing.T) {
 	// Expected decoded output
-	pcm := []byte{
-		0x00, 0x01, 0x02, 0x03, // This should match original PCM data after decoding
-		0x04, 0x05, 0x06, 0x07,
-	}
+	// pcm := []byte{
+	// 	0x00, 0x01, 0x02, 0x03, // This should match original PCM data after decoding
+	// 	0x04, 0x05, 0x06, 0x07,
+	// }
+	pcm := testGeneratePCM16(8000)
 
 	encodedUlaw := g711.EncodeUlaw(pcm)
 	encodedAlaw := g711.EncodeAlaw(pcm)
@@ -98,6 +100,7 @@ func TestPCMDecoderRead(t *testing.T) {
 	}{
 		{"UlawDecoding", FORMAT_TYPE_ULAW, encodedUlaw, g711.DecodeUlaw(encodedUlaw)},
 		{"AlawDecoding", FORMAT_TYPE_ALAW, encodedAlaw, g711.DecodeAlaw(encodedAlaw)},
+		{"AlawDecodingCut", FORMAT_TYPE_ALAW, encodedAlaw[:len(encodedAlaw)-48], g711.DecodeAlaw(encodedAlaw[:len(encodedAlaw)-48])},
 	}
 
 	for _, tt := range tests {
@@ -107,13 +110,16 @@ func TestPCMDecoderRead(t *testing.T) {
 
 			// Create the PCM decoder
 			decoder, err := NewPCMDecoderReader(tt.codec, inputBuffer)
+			decoder.BufSize = 160
 			require.NoError(t, err)
 
 			// Prepare a buffer to read the decoded PCM data into
-			decodedPCM := make([]byte, 320)
+			// decodedPCM := make([]byte, 320)
 
 			// Read the data
-			n, err := decoder.Read(decodedPCM)
+			decodedPCM, err := media.ReadAll(decoder, 320)
+			n := len(decodedPCM)
+			// n, err := decoder.Read(decodedPCM)
 			require.NoError(t, err)
 			if n != len(tt.expected) {
 				t.Fatalf("expected to read %d bytes, but read %d", len(tt.expected), n)
