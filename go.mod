@@ -37,3 +37,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 )
+
+replace github.com/pion/dtls/v3 v3.0.10 => github.com/emiago/dtls/v3 v3.0.0-20260119193300-76b4a2c33545
