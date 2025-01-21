@@ -403,6 +403,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	case "RTP/SAVP":
 		secureRequest = true
 	case "UDP/TLS/RTP/SAVP":
+	case "UDP/TLS/RTP/SAVPF":
 		// secureRequest = true
 	default:
 		return fmt.Errorf("unsupported media description protocol proto=%s", md.Proto)
@@ -558,43 +559,45 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 				return fmt.Errorf("failed to get dtls client state")
 			}
 
-			// if state.
+			// Setup now SRTP for encryption
+			prof, _ := s.dtlsConn.SelectedSRTPProtectionProfile()
+			p := srtp.ProtectionProfile(prof)
+			masterKeyLen, err := p.KeyLen()
+			if err != nil {
+				return fmt.Errorf("dtls - failed to get master keylen: %w", err)
+			}
+			masterSaltLen, err := p.SaltLen()
+			if err != nil {
+				return fmt.Errorf("dtls - failed to get master saltlen: %w", err)
+			}
+			keyingMaterial, err := state.ExportKeyingMaterial("EXTRACTOR-dtls_srtp", nil, 2*(masterKeyLen+masterSaltLen))
+			if err != nil {
+				return fmt.Errorf("dtls - failed to export keying material: %w", err)
+			}
 
-			// THIS IS WAY TO SUPPORT DOUBLE RTCP Connection over DTLS
-			if false {
-				prof, _ := s.dtlsConn.SelectedSRTPProtectionProfile()
-				p := srtp.ProtectionProfile(prof)
-				masterKeyLen, err := p.KeyLen()
-				if err != nil {
-					return fmt.Errorf("dtls - failed to get master keylen: %w", err)
-				}
-				masterSaltLen, err := p.SaltLen()
-				if err != nil {
-					return fmt.Errorf("dtls - failed to get master saltlen: %w", err)
-				}
-				keyingMaterial, err := state.ExportKeyingMaterial("EXTRACTOR-dtls_srtp", nil, 2*(masterKeyLen+masterSaltLen))
-				if err != nil {
-					return fmt.Errorf("dtls - failed to export keying material: %w", err)
-				}
+			clientKey := keyingMaterial[:masterKeyLen]
+			serverKey := keyingMaterial[masterKeyLen : 2*masterKeyLen]
+			clientSalt := keyingMaterial[2*masterKeyLen : 2*masterKeyLen+masterSaltLen]
+			serverSalt := keyingMaterial[2*masterKeyLen+masterSaltLen:]
 
-				clientKey := keyingMaterial[:masterKeyLen]
-				serverKey := keyingMaterial[masterKeyLen : 2*masterKeyLen]
-				clientSalt := keyingMaterial[2*masterKeyLen : 2*masterKeyLen+masterSaltLen]
-				serverSalt := keyingMaterial[2*masterKeyLen+masterSaltLen:]
+			s.remoteCtxSRTP, err = srtp.CreateContext(clientKey, clientSalt, p)
+			if err != nil {
+				return fmt.Errorf("failed to create SRTP context: %w", err)
+			}
 
-				if setup == "active" {
-					srtpSession, err := srtp.CreateContext(clientKey, clientSalt, srtp.ProtectionProfileAes128CmHmacSha1_80)
-					if err != nil {
-						return fmt.Errorf("failed to create SRTP context: %w", err)
-					}
-					s.localCtxSRTP = srtpSession
-				} else {
-					srtpSession, err := srtp.CreateContext(serverKey, serverSalt, srtp.ProtectionProfileAes128CmHmacSha1_80)
-					if err != nil {
-						return fmt.Errorf("failed to create SRTP context: %w", err)
-					}
-					s.remoteCtxSRTP = srtpSession
-				}
+			s.localCtxSRTP, err = srtp.CreateContext(serverKey, serverSalt, p)
+			if err != nil {
+				return fmt.Errorf("failed to create SRTP context: %w", err)
+			}
+
+			// Issue is current DTLS library is keeping DTLS open with demuxing which is more WEBRTC needed
+			// In other words we want to close active reader which was used in handshake setup
+			if err := s.dtlsConn.CloseReader(); err != nil {
+				return fmt.Errorf("closing dtls conn :%w", err)
+			}
+
+			if s.localCtxSRTP == nil && s.remoteCtxSRTP == nil {
+				panic("no context setup")
 			}
 
 			return nil
@@ -684,7 +687,7 @@ func (s *MediaSession) createListeners(laddr *net.UDPAddr) error {
 			}
 		}
 		if err != nil {
-			return fmt.Errorf("No available ports in range %d:%d: %w", RTPPortStart, RTPPortEnd, err)
+			return fmt.Errorf("no available ports in range %d:%d: %w", RTPPortStart, RTPPortEnd, err)
 		}
 		// Add some offset so that we use more from range
 		offset := (port + 2 - RTPPortStart) % (RTPPortEnd - RTPPortStart)
@@ -732,22 +735,6 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 		return 0, io.ErrShortBuffer
 	}
 
-	// Check is DTLS
-	if m.dtlsConn != nil {
-		fmt.Println("READING DTLS", m.dtlsConn.LocalAddr().String())
-		n, err := m.dtlsConn.Read(buf)
-		fmt.Println("READING DTLS DONE", m.dtlsConn.LocalAddr().String())
-		if err != nil {
-			return 0, err
-		}
-		if err := RTPUnmarshal(buf[:n], pkt); err != nil {
-			return n, err
-		}
-
-		logRTPRead(m, m.dtlsConn.RemoteAddr(), pkt)
-		return n, err
-	}
-
 	n, from, err := m.rtpConn.ReadFrom(buf)
 	if err != nil {
 		return 0, err
@@ -768,7 +755,7 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 		// NOTE this is optimiation to avoid double unmarshaling RTP header
 		headerN := pkt.Header.MarshalSize()
 		if err := rtpUnmarshalPayload(headerN, buf, pkt); err != nil {
-			return n, err
+			return n, fmt.Errorf("rtp unmarshal failed: %w", err)
 		}
 	} else {
 		if err := RTPUnmarshal(buf[:n], pkt); err != nil {
@@ -854,8 +841,9 @@ func (m *MediaSession) ReadRTCP(buf []byte, pkts []rtcp.Packet) (n int, err erro
 
 	if m.remoteCtxSRTP != nil {
 		data, err = m.remoteCtxSRTP.DecryptRTCP(data, data, nil)
-		if err != nil {
-			return 0, err
+		if err != nil && false {
+			// For some unknown cases Decryption could fail
+			return 0, errors.Join(errRTCPFailedToUnmarshal, err)
 		}
 	}
 
@@ -892,7 +880,7 @@ func (m *MediaSession) ReadRTCP(buf []byte, pkts []rtcp.Packet) (n int, err erro
 func (m *MediaSession) ReadRTCPRaw(buf []byte) (int, net.Addr, error) {
 	if m.rtcpConn == nil {
 		// just block
-		select {}
+		return 0, nil, fmt.Errorf("no connection present")
 	}
 	n, a, err := m.rtcpConn.ReadFrom(buf)
 	return n, a, err
@@ -901,7 +889,7 @@ func (m *MediaSession) ReadRTCPRaw(buf []byte) (int, net.Addr, error) {
 func (m *MediaSession) ReadRTCPRawDeadline(buf []byte, t time.Time) (int, error) {
 	if m.rtcpConn == nil {
 		// just block
-		select {}
+		return 0, fmt.Errorf("no connection present")
 	}
 	n, _, err := m.rtcpConn.ReadFrom(buf)
 
@@ -919,17 +907,6 @@ func (m *MediaSession) WriteRTP(p *rtp.Packet) error {
 	}
 	data := writeBuf[:n]
 	// data, err := p.Marshal()
-	// Check is DTLS
-	if m.dtlsConn != nil {
-		n, err := m.dtlsConn.Write(data)
-		if err != nil {
-			return err
-		}
-		if n != len(data) {
-			return io.ErrShortWrite
-		}
-		return nil
-	}
 
 	if m.localCtxSRTP != nil {
 		data, err = m.localCtxSRTP.EncryptRTP(writeBuf, data, &p.Header)

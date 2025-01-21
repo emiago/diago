@@ -44,6 +44,7 @@ func dtlsServerConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls
 		SRTPProtectionProfiles: []dtls.SRTPProtectionProfile{
 			dtls.SRTP_AEAD_AES_128_GCM,
 			dtls.SRTP_AES128_CM_HMAC_SHA1_80,
+			// dtls.SRTP_AES128_CM_HMAC_SHA1_32,
 		},
 
 		// SignatureSchemes: []tls.SignatureScheme{
@@ -53,7 +54,8 @@ func dtlsServerConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls
 		// If you're acting as the server
 		// We are verifying Connection fingerprints so we require client cert
 		// use dtls.NoClientCert without verfication
-		ClientAuth: dtls.RequestClientCert,
+		ClientAuth:           dtls.RequestClientCert,
+		ExtendedMasterSecret: dtls.RequireExtendedMasterSecret,
 
 		// IT IS STILL UNCLEAR WHY WE CAN NOT READ CERTIFICATE HERE
 		VerifyConnection: func(state *dtls.State) error {
