@@ -66,6 +66,10 @@ type DialogMedia struct {
 	audioReader io.Reader
 	audioWriter io.Writer
 
+	// lastInvite is actual last invite sent by remote REINVITE
+	// We do not use sipgo as this needs mutex but also keeping original invite
+	lastInvite *sip.Request
+
 	onClose func()
 
 	closed bool
@@ -170,6 +174,22 @@ func (d *DialogMedia) RTPSession() *media.RTPSession {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.rtpSession
+}
+
+func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransaction) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.lastInvite = req
+
+	if err := d.sdpReInviteUnsafe(req.Body()); err != nil {
+		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestTerminated, err.Error(), nil))
+	}
+
+	// Reply with updated SDP
+	sd := d.mediaSession.LocalSDP()
+	res := sip.NewResponseFromRequest(req, sip.StatusOK, "OK", sd)
+	res.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
+	return tx.Respond(res)
 }
 
 // Must be protected with lock

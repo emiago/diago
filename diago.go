@@ -372,6 +372,7 @@ func (dg *Diago) handleReInvite(req *sip.Request, tx sip.ServerTransaction, id s
 	if err != nil {
 		id, err := sip.UACReadRequestDialogID(req)
 		if err != nil {
+			dg.log.Info().Err(err).Msg("Reinvite failed to read request dialog ID")
 			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil))
 			return
 
@@ -383,11 +384,15 @@ func (dg *Diago) handleReInvite(req *sip.Request, tx sip.ServerTransaction, id s
 			return
 		}
 
-		s.handleReInvite(req, tx)
+		if err := s.handleReInvite(req, tx); err != nil {
+			dg.log.Error().Err(err).Msg("Reinvite client failed to handle")
+		}
 		return
 	}
 
-	s.handleReInvite(req, tx)
+	if err := s.handleReInvite(req, tx); err != nil {
+		dg.log.Error().Err(err).Msg("Reinvite server failed to handle")
+	}
 }
 
 func (dg *Diago) Serve(ctx context.Context, f ServeDialogFunc) error {
@@ -774,8 +779,8 @@ func (dg *Diago) findTransport(id string, transport string) (Transport, bool) {
 
 type RegisterOptions struct {
 	// Digest auth
-	Username string
-	Password string
+	Username  string
+	Password  string
 	ProxyHost string
 
 	// Expiry is for Expire header

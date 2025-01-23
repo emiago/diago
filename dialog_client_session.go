@@ -16,9 +16,6 @@ type DialogClientSession struct {
 	*sipgo.DialogClientSession
 
 	DialogMedia
-	// lastInvite is actual last invite sent by remote REINVITE
-	// We do not use sipgo as this needs mutex but also keeping original invite
-	lastInvite *sip.Request
 
 	closed atomic.Uint32
 }
@@ -88,22 +85,12 @@ func (d *DialogClientSession) ReInvite(ctx context.Context) error {
 	return nil
 }
 
-func (d *DialogClientSession) handleReInvite(req *sip.Request, tx sip.ServerTransaction) {
+func (d *DialogClientSession) handleReInvite(req *sip.Request, tx sip.ServerTransaction) error {
 	if err := d.ReadRequest(req, tx); err != nil {
-		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
-		return
+		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
 	}
 
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.lastInvite = req
-
-	if err := d.sdpReInviteUnsafe(req.Body()); err != nil {
-		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestTerminated, err.Error(), nil))
-		return
-	}
-
-	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusOK, "OK", nil))
+	return d.handleMediaUpdate(req, tx)
 }
 
 func (d *DialogClientSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTransaction) {
