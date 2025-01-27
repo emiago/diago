@@ -261,3 +261,31 @@ func TestRTTCalc(t *testing.T) {
 	assert.GreaterOrEqual(t, dur, 1*time.Second)
 	assert.LessOrEqual(t, dur, 1*time.Second+20*time.Millisecond)
 }
+
+func TestJitterCalc(t *testing.T) {
+	stats := RTPReadStats{
+		SampleRate: 8000,
+	}
+
+	now := time.Now()
+	stats.firstRTPTime = now
+	stats.firstRTPTimestamp = 160
+	stats.calcJitter(now.Add(20*time.Millisecond), 160*2)
+	assert.EqualValues(t, 0, int(stats.jitter))
+
+	stats.calcJitter(now.Add(40*time.Millisecond), 160*3)
+	assert.EqualValues(t, 0, int(stats.jitter))
+
+	stats.calcJitter(now.Add(75*time.Millisecond), 160*4)
+	assert.EqualValues(t, 7, int(stats.jitter))
+
+	stats.calcJitter(now.Add(80*time.Millisecond), 160*5)
+	assert.EqualValues(t, 14, int(stats.jitter))
+
+	stats.calcJitter(now.Add(100*time.Millisecond), 160*6)
+	assert.EqualValues(t, 13, int(stats.jitter))
+
+	// Simulate a gap
+	// stats.calcJitterRFC(now.Add(5*time.Second), 640)
+	// assert.EqualValues(t, 0, int(stats.jitter))
+}

@@ -15,6 +15,7 @@ import (
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 // RTP session is RTP ReadWriter with control (RTCP) reporting
@@ -73,10 +74,13 @@ type RTPReadStats struct {
 	OctetCount   uint64
 
 	// RTP reading stats
-	SampleRate       uint32
-	lastRTPTime      time.Time
-	lastRTPTimestamp uint32
-	jitter           float64
+	SampleRate uint32
+	// lastRTPTime       time.Time
+	// lastRTPTimestamp  uint32
+	firstRTPTime      time.Time
+	firstRTPTimestamp uint32
+	jitter            float64
+	transit           int64
 
 	// Reading RTCP stats
 	lastSenderReportNTP       uint64
@@ -85,6 +89,47 @@ type RTPReadStats struct {
 
 	// Round TRIP Time based on LSR and DLSR
 	RTT time.Duration
+}
+
+/*
+	 func (stats *RTPReadStats) calcJitter(now time.Time, readPktTimestamp uint32) {
+		sampleRate := float64(stats.SampleRate)
+
+		// https://www.rfc-editor.org/rfc/rfc3550#appendix-A.8
+		// Jitter here will mostly be incorrect as Reading RTP can be faster slower
+		// and not actually dictated by sampling (clock)
+		Sij := readPktTimestamp - stats.lastRTPTimestamp
+		Rij := now.Sub(stats.lastRTPTime)
+		D := Rij.Seconds()*sampleRate - float64(Sij)
+		if D < 0 {
+			D = -D
+		}
+		stats.jitter = stats.jitter + (D-stats.jitter)/16
+	}
+*/
+func (stats *RTPReadStats) calcJitter(now time.Time, readPktTimestamp uint32) {
+	sampleRate := float64(stats.SampleRate)
+
+	// Calculate samples
+	// https://www.rfc-editor.org/rfc/rfc3550#appendix-A.8
+	rtpSampleArrival := stats.firstRTPTimestamp + uint32(now.Sub(stats.firstRTPTime).Seconds()*sampleRate)
+
+	transit := int64(rtpSampleArrival) - int64(readPktTimestamp)
+
+	if transit < 0 {
+		log.Warn().Msg("Pkt timestamp is higher than our expected arrival")
+		transit = -transit
+	}
+
+	D := transit - stats.transit
+	stats.transit = transit
+
+	if D < 0 {
+		D = -D
+	}
+	jit := (float64(D) - stats.jitter) / 16.0
+
+	stats.jitter = stats.jitter + jit
 }
 
 // Some of fields here are exported (as readonly) intentionally
@@ -162,24 +207,16 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 		*stats = RTPReadStats{
 			SSRC:                   readPkt.SSRC,
 			FirstPktSequenceNumber: readPkt.SequenceNumber,
-
-			SampleRate: codec.SampleRate,
+			SampleRate:             codec.SampleRate,
+			firstRTPTime:           now,
+			firstRTPTimestamp:      readPkt.Timestamp,
 		}
 		stats.lastSeq.InitSeq(readPkt.SequenceNumber)
 	} else {
 		stats.lastSeq.UpdateSeq(readPkt.SequenceNumber)
-		sampleRate := s.readStats.SampleRate
 
-		// Jitter here will mostly be incorrect as Reading RTP can be faster slower
-		// and not actually dictated by sampling (clock)
 		// https://datatracker.ietf.org/doc/html/rfc3550#page-39
-		Sij := readPkt.Timestamp - stats.lastRTPTimestamp
-		Rij := now.Sub(stats.lastRTPTime)
-		D := Rij.Seconds()*float64(sampleRate) - float64(Sij)
-		if D < 0 {
-			D = -D
-		}
-		stats.jitter = stats.jitter + (D-stats.jitter)/16
+		stats.calcJitter(now, readPkt.Timestamp)
 	}
 	payloadSize := n - readPkt.Header.MarshalSize() - int(readPkt.PaddingSize)
 
@@ -193,18 +230,10 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 		stats.IntervalFirstPktSeqNum = readPkt.SequenceNumber
 	}
 
-	stats.lastRTPTime = now
-	stats.lastRTPTimestamp = readPkt.Timestamp
+	// stats.lastRTPTime = now
+	// stats.lastRTPTimestamp = readPkt.Timestamp
 
 	s.rtcpMU.Unlock()
-
-	// select {
-	// case t := <-s.rtcpTicker.C:
-	// 	s.writeRTCP(t)
-	// 	// stats.IntervalFirstPktSeqNum = 0
-	// 	// stats.IntervalTotalPackets = 0
-	// default:
-	// }
 
 	return n, err
 }
@@ -240,12 +269,6 @@ func (s *RTPSession) WriteRTP(pkt *rtp.Packet) error {
 	writeStats.lastPacketTimestamp = pkt.Timestamp
 
 	s.rtcpMU.Unlock()
-
-	// select {
-	// case t := <-s.rtcpTicker.C:
-	// 	s.writeRTCP(t)
-	// default:
-	// }
 	return nil
 }
 
@@ -545,7 +568,7 @@ func FractionLostFloat(f uint8) float64 {
 
 func calcRTT(now time.Time, lastSenderReport uint32, delaySenderReport uint32) (rtt time.Duration, skewed bool) {
 	nowNTP := NTPTimestamp(now)
-	now32 := uint32(nowNTP >> 16)
+	now32 := uint32(nowNTP >> 16) // LSR is middle 32 bits of NTP timestamp
 
 	rtt32 := now32 - lastSenderReport - delaySenderReport
 	skewed = now32-delaySenderReport < lastSenderReport

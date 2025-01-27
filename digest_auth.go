@@ -29,16 +29,29 @@ func (a *DigestAuth) expire() time.Duration {
 	return 5 * time.Second
 }
 
+type digestChallengeEntry struct {
+	digest.Challenge
+	expireTimer *time.Timer
+}
+
 type DigestAuthServer struct {
 	mu    sync.Mutex
-	cache map[string]*digest.Challenge
+	cache map[string]*digestChallengeEntry
 }
 
 func NewDigestServer() *DigestAuthServer {
 	t := &DigestAuthServer{
-		cache: make(map[string]*digest.Challenge),
+		cache: make(map[string]*digestChallengeEntry),
 	}
 	return t
+}
+
+func (s *DigestAuthServer) Close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, v := range s.cache {
+		v.expireTimer.Stop()
+	}
 }
 
 var (
@@ -57,20 +70,24 @@ func (s *DigestAuthServer) AuthorizeRequest(req *sip.Request, auth DigestAuth) (
 			return sip.NewResponseFromRequest(req, sip.StatusInternalServerError, "Internal Server Error", nil), err
 		}
 
-		chal := &digest.Challenge{
-			Realm: auth.Realm,
-			Nonce: nonce,
-			// Opaque:    "sipgo",
-			Algorithm: "MD5",
+		e := &digestChallengeEntry{
+			Challenge: digest.Challenge{
+				Realm: auth.Realm,
+				Nonce: nonce,
+				// Opaque:    "sipgo",
+				Algorithm: "MD5",
+			},
 		}
+
+		chal := &e.Challenge
 
 		res := sip.NewResponseFromRequest(req, 401, "Unathorized", nil)
 		res.AppendHeader(sip.NewHeader("WWW-Authenticate", chal.String()))
 
 		s.mu.Lock()
-		s.cache[nonce] = chal
+		s.cache[nonce] = e
 		s.mu.Unlock()
-		time.AfterFunc(auth.expire(), func() {
+		e.expireTimer = time.AfterFunc(auth.expire(), func() {
 			s.mu.Lock()
 			delete(s.cache, nonce)
 			s.mu.Unlock()
@@ -84,10 +101,11 @@ func (s *DigestAuthServer) AuthorizeRequest(req *sip.Request, auth DigestAuth) (
 		return sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil), err
 	}
 
-	chal, exists := s.cache[cred.Nonce]
+	e, exists := s.cache[cred.Nonce]
 	if !exists {
 		return sip.NewResponseFromRequest(req, sip.StatusUnauthorized, "Unauthorized", nil), ErrDigestAuthNoChallenge
 	}
+	chal := &e.Challenge
 
 	// Make digest and compare response
 	digCred, err := digest.Digest(chal, digest.Options{

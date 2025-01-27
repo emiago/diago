@@ -330,7 +330,7 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	// }
 
 	if RTPDebug {
-		m.log.Debug().Msgf("Recv RTP %s < %s \n%s", m.Laddr.String(), from.String(), pkt.String())
+		m.log.Debug().Msgf("RTP read0 %s < %s \n%s", m.Laddr.String(), from.String(), pkt.String())
 	}
 	return n, err
 }
