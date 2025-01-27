@@ -15,7 +15,6 @@ import (
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 // RTP session is RTP ReadWriter with control (RTCP) reporting
@@ -113,13 +112,7 @@ func (stats *RTPReadStats) calcJitter(now time.Time, readPktTimestamp uint32) {
 	// Calculate samples
 	// https://www.rfc-editor.org/rfc/rfc3550#appendix-A.8
 	rtpSampleArrival := stats.firstRTPTimestamp + uint32(now.Sub(stats.firstRTPTime).Seconds()*sampleRate)
-
 	transit := int64(rtpSampleArrival) - int64(readPktTimestamp)
-
-	if transit < 0 {
-		log.Warn().Msg("Pkt timestamp is higher than our expected arrival")
-		transit = -transit
-	}
 
 	D := transit - stats.transit
 	stats.transit = transit
@@ -215,8 +208,15 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 	} else {
 		stats.lastSeq.UpdateSeq(readPkt.SequenceNumber)
 
-		// https://datatracker.ietf.org/doc/html/rfc3550#page-39
-		stats.calcJitter(now, readPkt.Timestamp)
+		if readPkt.Marker {
+			// Reset our firstRTPtime to improve jitter calc
+			stats.firstRTPTime = now
+			stats.firstRTPTimestamp = readPkt.Timestamp
+		} else {
+			// https://datatracker.ietf.org/doc/html/rfc3550#page-39
+			stats.calcJitter(now, readPkt.Timestamp)
+		}
+
 	}
 	payloadSize := n - readPkt.Header.MarshalSize() - int(readPkt.PaddingSize)
 
