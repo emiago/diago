@@ -70,6 +70,7 @@ func (d *DialogClientSession) ReInvite(ctx context.Context) error {
 	d.mu.Unlock()
 	req := sip.NewRequest(sip.INVITE, contact.Address)
 	req.AppendHeader(d.InviteRequest.Contact())
+	req.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
 	req.SetBody(sdp)
 
 	res, err := d.Do(ctx, req)

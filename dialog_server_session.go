@@ -245,6 +245,7 @@ func (d *DialogServerSession) ReInvite(ctx context.Context) error {
 	sdp := d.mediaSession.LocalSDP()
 	contact := d.RemoteContact()
 	req := sip.NewRequest(sip.INVITE, contact.Address)
+	req.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
 	req.SetBody(sdp)
 
 	res, err := d.Do(ctx, req)
