@@ -21,7 +21,14 @@ type Bridger interface {
 type Bridge struct {
 	// Originator is dialog session that created bridge
 	Originator DialogSession
-	dialogs    []DialogSession
+	// DTMFpass is also dtmf pipeline and proxy. By default only audio media is proxied
+	DTMFpass bool
+
+	// TODO: RTPpass. RTP pass means that RTP will be proxied.
+	// This gives high performance but you can not attach any pipeline in media processing
+	// RTPpass bool
+
+	dialogs []DialogSession
 
 	log zerolog.Logger
 	// minDialogs is just helper flag when to start proxy
@@ -105,8 +112,24 @@ func (b *Bridge) proxyMedia() error {
 	m2 := b.dialogs[1].Media()
 
 	// Lets for now simplify proxy and later optimize
-	errCh := make(chan error, 2)
 
+	if b.DTMFpass {
+		errCh := make(chan error, 4)
+		go func() {
+			errCh <- b.proxyMediaWithDTMF(m1, m2)
+		}()
+
+		go func() {
+			errCh <- b.proxyMediaWithDTMF(m2, m1)
+		}()
+
+		// Wait for all to finish
+		for i := 0; i < 2; i++ {
+			err = errors.Join(err, <-errCh)
+		}
+		return err
+	}
+	errCh := make(chan error, 2)
 	func() {
 		p1, p2 := MediaProps{}, MediaProps{}
 		r := m1.audioReaderProps(&p1)
@@ -126,7 +149,7 @@ func (b *Bridge) proxyMedia() error {
 	}()
 
 	// Wait for all to finish
-	for i := 0; i < len(b.dialogs); i++ {
+	for i := 0; i < 2; i++ {
 		err = errors.Join(err, <-errCh)
 	}
 	return err
@@ -153,6 +176,31 @@ func proxyMediaBackground(log zerolog.Logger, reader io.Reader, writer io.Writer
 	written, err := copyWithBuf(reader, writer, buf.([]byte))
 	log.Debug().Int64("bytes", written).Msg("Bridge proxy stream finished")
 	ch <- err
+}
+
+func (b *Bridge) proxyMediaWithDTMF(m1 *DialogMedia, m2 *DialogMedia) error {
+	dtmfReader := DTMFReader{}
+	p1, p2 := MediaProps{}, MediaProps{}
+	r, err := m1.AudioReader(WithAudioReaderDTMF(&dtmfReader), WithAudioReaderMediaProps(&p1))
+	if err != nil {
+		return err
+	}
+	dtmfWriter := DTMFWriter{}
+	w, err := m2.AudioWriter(WithAudioWriterDTMF(&dtmfWriter), WithAudioWriterMediaProps(&p2))
+	if err != nil {
+		return err
+	}
+	dtmfReader.OnDTMF(func(dtmf rune) error {
+		return dtmfWriter.WriteDTMF(dtmf)
+	})
+
+	buf := rtpBufPool.Get()
+	defer rtpBufPool.Put(buf)
+
+	log.Info().Str("from", p1.Raddr+" > "+p1.Laddr).Str("to", p2.Laddr+" > "+p2.Raddr).Msg("Starting proxy media with DTMF routine")
+	written, err := copyWithBuf(r, w, buf.([]byte))
+	log.Debug().Int64("bytes", written).Msg("Bridge proxy stream finished")
+	return err
 }
 
 func (b *Bridge) proxyMediaRTPRaw(m1 media.RTPReaderRaw, m2 media.RTPWriterRaw) (written int64, e error) {

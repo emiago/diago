@@ -334,7 +334,7 @@ func WithAudioWriterRTPStats(hook media.OnRTPWriteStats) AudioWriterOption {
 }
 
 // WithAudioWriterDTMF creates DTMF interceptor
-func WithAudioWriterDTMF(r *DTMFWriter) AudioReaderOption {
+func WithAudioWriterDTMF(r *DTMFWriter) AudioWriterOption {
 	return func(d *DialogMedia) error {
 		r.dtmfWriter = media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, d.RTPPacketWriter, d.getAudioWriter())
 		r.mediaSession = d.mediaSession
