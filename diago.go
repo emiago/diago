@@ -552,17 +552,18 @@ func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts InviteOptio
 // If bridge has Originator (first participant) it will be used for creating outgoing call leg as in B2BUA
 // When bridge is provided then this call will be bridged with any participant already present in bridge
 func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts InviteOptions) (d *DialogClientSession, err error) {
-	transport := "udp"
+	transport := ""
 	if recipient.UriParams != nil {
 		if t := recipient.UriParams["transport"]; t != "" {
 			transport = t
 		}
 	}
-
-	tran, exists := dg.findTransport(opts.TransportID, transport)
+	tran, exists := dg.findTransport(transport, opts.TransportID)
 	if !exists {
 		return nil, fmt.Errorf("transport %s does not exists", transport)
 	}
+	// set now found transport
+	transport = tran.Transport
 
 	// TODO: remove this alloc of UA each time
 	client := dg.getClient(&tran)
@@ -800,7 +801,11 @@ func (dg *Diago) getTransport(transport string) (Transport, bool) {
 	return Transport{}, false
 }
 
-func (dg *Diago) findTransport(id string, transport string) (Transport, bool) {
+func (dg *Diago) findTransport(transport string, id string) (Transport, bool) {
+	if transport != "" {
+		return dg.getTransport(transport)
+	}
+
 	if id != "" {
 		for _, t := range dg.transports {
 			if id == t.ID {
@@ -810,7 +815,7 @@ func (dg *Diago) findTransport(id string, transport string) (Transport, bool) {
 		return Transport{}, false
 	}
 
-	return dg.getTransport(transport)
+	return dg.getTransport("udp")
 }
 
 type RegisterOptions struct {
