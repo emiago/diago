@@ -86,7 +86,7 @@ func (t *RegisterTransaction) Register(ctx context.Context) error {
 	// Send request and parse response
 	// req.SetDestination(*dst)
 	log.Info().Str("uri", req.Recipient.String()).Int("expiry", int(expiry)).Msg("REGISTER")
-	tx, err := client.TransactionRequest(ctx, req)
+	tx, err := client.TransactionRequest(ctx, req, sipgo.ClientRequestRegisterBuild)
 	if err != nil {
 		return fmt.Errorf("fail to create transaction req=%q: %w", req.StartLine(), err)
 	}
@@ -190,7 +190,7 @@ func (t *RegisterTransaction) QualifyLoop(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C: // TODO make configurable
 		}
-		err := t.qualify(ctx)
+		err := t.Qualify(ctx)
 		if err != nil {
 			return err
 		}
@@ -221,7 +221,7 @@ func (t *RegisterTransaction) Unregister(ctx context.Context) error {
 	return t.doRequest(ctx, req)
 }
 
-func (t *RegisterTransaction) qualify(ctx context.Context) error {
+func (t *RegisterTransaction) Qualify(ctx context.Context) error {
 	return t.doRequest(ctx, t.Origin)
 }
 
@@ -233,7 +233,7 @@ func (t *RegisterTransaction) doRequest(ctx context.Context, req *sip.Request) e
 	// Send request and parse response
 	// req.SetDestination(*dst)
 	req.RemoveHeader("Via")
-	tx, err := client.TransactionRequest(ctx, req)
+	tx, err := client.TransactionRequest(ctx, req, sipgo.ClientRequestRegisterBuild)
 	if err != nil {
 		return fmt.Errorf("fail to create transaction req=%q: %w", req.StartLine(), err)
 	}
