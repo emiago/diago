@@ -5,6 +5,7 @@ package diago
 
 import (
 	"context"
+	"math/rand/v2"
 	"os"
 	"testing"
 	"time"
@@ -340,11 +341,12 @@ func TestIntegrationDialogCancel(t *testing.T) {
 
 	ua, _ := sipgo.NewUA()
 	defer ua.Close()
+	port := 15000 + rand.IntN(999)
 	dg := NewDiago(ua, WithTransport(
 		Transport{
 			Transport: "udp",
 			BindHost:  "127.0.0.1",
-			BindPort:  15060,
+			BindPort:  port,
 		},
 	))
 
@@ -365,7 +367,7 @@ func TestIntegrationDialogCancel(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		_, err := dg.Invite(ctx, sip.Uri{User: "test", Host: "127.0.0.1", Port: 15060}, InviteOptions{
+		_, err := dg.Invite(ctx, sip.Uri{User: "test", Host: "127.0.0.1", Port: port}, InviteOptions{
 			OnResponse: func(res *sip.Response) error {
 				if res.StatusCode == sip.StatusRinging {
 					cancel()

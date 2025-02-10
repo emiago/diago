@@ -88,12 +88,12 @@ func (d *DialogClientSession) ReInvite(ctx context.Context) error {
 
 func (d *DialogClientSession) handleReInvite(req *sip.Request, tx sip.ServerTransaction) error {
 	if err := d.ReadRequest(req, tx); err != nil {
-		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request - "+err.Error(), nil))
 	}
 
 	return d.handleMediaUpdate(req, tx)
 }
 
-func (d *DialogClientSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTransaction) {
-	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
+func (d *DialogClientSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTransaction) error {
+	return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
 }

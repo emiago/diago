@@ -182,7 +182,7 @@ func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransacti
 	d.lastInvite = req
 
 	if err := d.sdpReInviteUnsafe(req.Body()); err != nil {
-		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestTerminated, err.Error(), nil))
+		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestTerminated, "Request Terminated - "+err.Error(), nil))
 	}
 
 	// Reply with updated SDP
@@ -196,8 +196,7 @@ func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransacti
 func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 	msess := d.mediaSession.Fork()
 	if err := msess.RemoteSDP(sdp); err != nil {
-		log.Error().Err(err).Msg("reinvite media remote SDP applying failed")
-		return fmt.Errorf("Malformed SDP")
+		return fmt.Errorf("reinvite media remote SDP applying failed: %w", err)
 	}
 
 	d.mediaSession = msess

@@ -302,8 +302,8 @@ func (d *DialogServerSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 	return d.handleMediaUpdate(req, tx)
 }
 
-func (d *DialogServerSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTransaction) {
-	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
+func (d *DialogServerSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTransaction) error {
+	return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
 	// if err := d.ReadRequest(req, tx); err != nil {
 	// 	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil))
 	// 	return
