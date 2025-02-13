@@ -35,7 +35,8 @@ a=rtpmap:122 telephone-event/32000
 a=fmtp:122 0-16
 a=ssrc:1204560450 cname:4585300731f880ff
 a=rtcp:57798 IN IP4 192.168.100.11
-a=rtcp-mux`
+a=rtcp-mux
+`
 
 	// Fails due to b=TIAS:64000
 	sd := SessionDescription{}
