@@ -95,6 +95,6 @@ func GenerateForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode Mo
 	// 	fmt.Sprintf("a=rtcp:%d IN IP4 %s", rtpPort+1, connectionIP),
 	// }
 
-	res := strings.Join(s, "\r\n")
+	res := strings.Join(s, "\r\n") + "\r\n"
 	return []byte(res)
 }
