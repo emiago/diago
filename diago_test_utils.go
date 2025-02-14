@@ -2,11 +2,11 @@ package diago
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"sync/atomic"
 
 	"github.com/emiago/sipgo/sip"
-	"github.com/rs/zerolog/log"
 )
 
 type connRecorder struct {
@@ -44,7 +44,7 @@ type clientTxRequester struct {
 func (r *clientTxRequester) Request(ctx context.Context, req *sip.Request) (sip.ClientTransaction, error) {
 	key, _ := sip.MakeClientTxKey(req)
 	rec := NewConnRecorder()
-	tx := sip.NewClientTx(key, req, rec, log.Logger)
+	tx := sip.NewClientTx(key, req, rec, slog.Default())
 	if err := tx.Init(); err != nil {
 		return nil, err
 	}

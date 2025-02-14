@@ -503,11 +503,12 @@ func (dg *Diago) HandleFunc(f ServeDialogFunc) {
 }
 
 type InviteOptions struct {
+	Originator DialogSession
 	OnResponse func(res *sip.Response) error
 	// OnMediaUpdate called when media is changed. NOTE: you should not block this call
 	OnMediaUpdate func(d *DialogMedia)
 	OnRefer       func(referDialog *DialogClientSession)
-	OnPreInvite   func(inviteReq *sip.Request)
+	// OnPreInvite   func(inviteReq *sip.Request)
 	// For digest authentication
 	Username string
 	Password string
@@ -671,9 +672,9 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 			fromHDR.Address.Host = dg.ua.Hostname()
 		}
 	}
-	if opts.OnPreInvite != nil {
-		opts.OnPreInvite(inviteReq)
-	}
+	// if opts.OnPreInvite != nil {
+	// 	opts.OnPreInvite(inviteReq)
+	// }
 
 	// Build here request
 	if err := sipgo.ClientRequestBuild(client, inviteReq); err != nil {
@@ -756,6 +757,63 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 
 	if err := waitCall(ctx); err != nil {
 		d.Close()
+		return nil, err
+	}
+
+	return d, nil
+}
+
+type NewDialogOpts struct {
+	TransportID string
+}
+
+// NewDialog creates a new client dialog session after you can perform call establish
+// For simpler use cases use Invite
+func (dg *Diago) NewDialog(ctx context.Context, recipient sip.Uri, opts NewDialogOpts) (d *DialogClientSession, err error) {
+	transport := ""
+	if recipient.UriParams != nil {
+		if t := recipient.UriParams["transport"]; t != "" {
+			transport = t
+			delete(recipient.UriParams, "transport")
+		}
+
+	}
+	tran, exists := dg.findTransport(transport, opts.TransportID)
+	if !exists {
+		return nil, fmt.Errorf("transport %s does not exists", transport)
+	}
+	// set now found transport
+	transport = tran.Transport
+
+	// TODO: remove this alloc of UA each time
+	client := dg.getClient(&tran)
+	dialogUA := sipgo.DialogUA{
+		Client:         client,
+		RewriteContact: tran.RewriteContact,
+	}
+	dg.contactHDRFromTransport(tran, &dialogUA.ContactHDR)
+
+	inviteReq := sip.NewRequest(sip.INVITE, recipient)
+	inviteReq.SetTransport(sip.NetworkToUpper(transport))
+
+	d = &DialogClientSession{
+		DialogClientSession: &sipgo.DialogClientSession{
+			UA: &dialogUA,
+			Dialog: sipgo.Dialog{
+				InviteRequest: inviteReq,
+			},
+		},
+	}
+	d.Init()
+
+	// Create media
+	// TODO explicit media format passing
+	mediaConf := MediaConfig{
+		Formats:    dg.mediaConf.Formats,
+		bindIP:     tran.mediaBindIP,
+		externalIP: tran.MediaExternalIP,
+	}
+	if err := d.initMediaSessionFromConf(mediaConf); err != nil {
 		return nil, err
 	}
 

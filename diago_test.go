@@ -162,6 +162,51 @@ func TestDiagoTransportConfs(t *testing.T) {
 	})
 }
 
+func TestDiagoNewDialog(t *testing.T) {
+	dg := testDiagoClient(t, func(req *sip.Request) *sip.Response {
+		body := sdp.GenerateForAudio(net.IPv4(127, 0, 0, 1), net.IPv4(127, 0, 0, 1), 34455, sdp.ModeSendrecv, []string{sdp.FORMAT_TYPE_ALAW})
+		return sip.NewResponseFromRequest(req, 200, "OK", body)
+	})
+	ctx := context.TODO()
+
+	t.Run("CloseNoError", func(t *testing.T) {
+		dialog, err := dg.NewDialog(ctx, sip.Uri{User: "alice", Host: "localhost"}, NewDialogOpts{})
+		require.NoError(t, err)
+		dialog.Close()
+	})
+
+	// t.Run("NoAcked", func(t *testing.T) {
+	// 	dialog, err := dg.NewDialog(ctx, sip.Uri{User: "alice", Host: "localhost"}, NewDialogOpts{})
+	// 	require.NoError(t, err)
+	// 	defer dialog.Close()
+
+	// 	err = dialog.Invite(ctx, InviteOptions{})
+	// 	require.NoError(t, err)
+
+	// 	dialog.Audio
+	// })
+
+	t.Run("FullDialog", func(t *testing.T) {
+		dialog, err := dg.NewDialog(ctx, sip.Uri{User: "alice", Host: "localhost"}, NewDialogOpts{})
+		require.NoError(t, err)
+		defer dialog.Close()
+
+		err = dialog.InviteMedia(ctx, InviteMediaOptions{})
+		require.NoError(t, err)
+		assert.NotEmpty(t, dialog.ID)
+
+		err = dialog.Ack(ctx)
+		require.NoError(t, err)
+
+		// assert.NotEmpty(t, dialog.ID)
+	})
+
+	// _, err := dg.Invite(context.Background(), sip.Uri{User: "alice", Host: "localhost"}, InviteOptions{})
+	// if assert.Error(t, err) {
+	// 	assert.Equal(t, "no SDP in response", err.Error())
+	// }
+}
+
 func TestIntegrationDiagoTransportEmpheralPort(t *testing.T) {
 	tran := Transport{
 		Transport: "udp",
