@@ -97,9 +97,6 @@ func TestReadRTCP(t *testing.T) {
 
 func TestMediaSessionExternalIP(t *testing.T) {
 	m := &MediaSession{
-		Formats: sdp.Formats{
-			sdp.FORMAT_TYPE_ULAW, sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_TELEPHONE_EVENT,
-		},
 		Laddr:      net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
 		Mode:       sdp.ModeSendrecv,
 		ExternalIP: net.IPv4(1, 1, 1, 1),
@@ -117,28 +114,58 @@ func TestMediaSessionExternalIP(t *testing.T) {
 }
 
 func TestMediaSessionUpdateCodec(t *testing.T) {
-
 	newM := func() *MediaSession {
 		return &MediaSession{
-			Formats: sdp.Formats{
-				sdp.FORMAT_TYPE_ULAW, sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_TELEPHONE_EVENT,
+			Codecs: []Codec{
+				CodecAudioUlaw, CodecAudioAlaw, CodecTelephoneEvent8000,
 			},
 		}
 	}
 
 	m := newM()
-	m.updateRemoteFormats(sdp.Formats{sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_ULAW})
-	assert.Equal(t, sdp.Formats{sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_ULAW}, m.Formats)
+	m.updateRemoteCodecs([]Codec{CodecAudioAlaw, CodecAudioUlaw})
+	assert.Equal(t, []Codec{CodecAudioAlaw, CodecAudioUlaw}, m.Codecs)
 
 	m = newM()
-	m.updateRemoteFormats(sdp.Formats{sdp.FORMAT_TYPE_ALAW})
-	assert.Equal(t, sdp.Formats{sdp.FORMAT_TYPE_ALAW}, m.Formats)
+	m.updateRemoteCodecs([]Codec{CodecAudioAlaw})
+	assert.Equal(t, []Codec{CodecAudioAlaw}, m.Codecs)
 
 	m = newM()
-	m.updateRemoteFormats(sdp.Formats{})
-	assert.Equal(t, sdp.Formats{}, m.Formats)
+	m.updateRemoteCodecs([]Codec{})
+	assert.Equal(t, []Codec{}, m.Codecs)
 
 	m = newM()
-	m.updateRemoteFormats(sdp.Formats{"NonExisting"})
-	assert.Equal(t, sdp.Formats{}, m.Formats)
+	m.updateRemoteCodecs([]Codec{{Name: "NonExisting"}})
+	assert.Equal(t, []Codec{}, m.Codecs)
+}
+
+func TestMediaSessionUpdateSDP(t *testing.T) {
+	sd := `v=0
+o=- 3948988145 3948988145 IN IP4 192.168.178.54
+s=Sip Go Media
+c=IN IP4 192.168.178.54
+t=0 0
+m=audio 34391 RTP/AVP 0 8 96 101
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:96 opus/48000/2
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv`
+
+	m := MediaSession{
+		Codecs: []Codec{
+			CodecAudioAlaw, CodecAudioUlaw, CodecAudioOpus, CodecTelephoneEvent8000,
+		},
+	}
+	err := m.RemoteSDP([]byte(sd))
+	require.NoError(t, err)
+
+	require.Len(t, m.Codecs, 4)
+	assert.Equal(t, CodecAudioUlaw, m.Codecs[0])
+	assert.Equal(t, CodecAudioAlaw, m.Codecs[1])
+	assert.Equal(t, CodecAudioOpus, m.Codecs[2])
+	assert.Equal(t, CodecTelephoneEvent8000, m.Codecs[3])
 }

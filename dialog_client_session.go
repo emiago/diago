@@ -6,6 +6,7 @@ package diago
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync/atomic"
 
 	"github.com/emiago/diago/media"
@@ -68,19 +69,26 @@ func (d *DialogClientSession) remoteContactUnsafe() *sip.ContactHeader {
 	return d.InviteResponse.Contact()
 }
 
-type InviteMediaOptions struct {
+type InviteClientOptions struct {
 	Originator DialogSession
 	OnResponse func(res *sip.Response) error
-	Headers    []sip.Header
-
-	// Digest auth
+	// OnMediaUpdate called when media is changed. NOTE: you should not block this call
+	OnMediaUpdate func(d *DialogMedia)
+	OnRefer       func(referDialog *DialogClientSession)
+	// OnPreInvite   func(inviteReq *sip.Request)
+	// For digest authentication
 	Username string
 	Password string
+
+	// Custom headers to pass. DO NOT SET THIS to nil
+	Headers []sip.Header
 }
 
-// InviteMedia sends Invite request and establishes early media
+// Invite sends Invite request and establishes early media.
+// NOTE: You must call Ack after to acknowledge session.
+// NOTE: It updates internal invite request so NOT THREAD SAFE.
 // If you pass originator it will use originator to set correct from header and avoid media transcoding
-func (d *DialogClientSession) InviteMedia(ctx context.Context, opts InviteMediaOptions) error {
+func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptions) error {
 	sess := d.mediaSession
 	inviteReq := d.InviteRequest
 	originator := opts.Originator
@@ -105,49 +113,71 @@ func (d *DialogClientSession) InviteMedia(ctx context.Context, opts InviteMediaO
 			inviteReq.AppendHeader(&f)
 		}
 
-		sd := sdp.SessionDescription{}
-		if err := sdp.Unmarshal(origInvite.Body(), &sd); err != nil {
-			return err
-		}
-		md, err := sd.MediaDescription("audio")
-		if err != nil {
-			return err
-		}
-
-		// Check do we support this formats, and filter first that we support
-		// Limiting to one format we remove need for transcoding
-		singleFormat := ""
-	outloop:
-		for _, f := range md.Formats {
-			for _, sf := range sess.Formats {
-				if f == sf {
-					singleFormat = f
-					break outloop
+		// Avoid transcoding if originator answered
+		// If not pass full SDP, but then client should negotiate common
+		if originator.DialogSIP().LoadState() >= sip.DialogStateEstablished {
+			// Check ContentType
+			contType := origInvite.ContentType()
+			if body := origInvite.Body(); body != nil && (contType != nil && contType.Value() == "application/sdp") {
+				sd := sdp.SessionDescription{}
+				if err := sdp.Unmarshal(origInvite.Body(), &sd); err != nil {
+					return err
 				}
+				md, err := sd.MediaDescription("audio")
+				if err != nil {
+					return err
+				}
+
+				codecs := make([]media.Codec, len(md.Formats))
+				attrs := sd.Values("a")
+				n, err := media.CodecsFromSDPRead(md.Formats, attrs, codecs)
+				if err != nil {
+
+					// if n == 0 {
+					// 	return err
+					// }
+					// We will be here strict for now. We want to have correct SDP parsing
+					return err
+				}
+				if n == 0 {
+					return fmt.Errorf("no codecs found in originator SDP")
+				}
+				codecs = codecs[:n]
+
+				// Avoid transcoding--
+				audioCodec := media.Codec{}
+				telEventCodec := media.Codec{}
+
+				for _, c := range codecs {
+					// TODO refactor this
+					if strings.HasPrefix(c.Name, "telephone-event") {
+						if telEventCodec.SampleRate == 0 {
+							telEventCodec = c
+						}
+						continue
+					}
+
+					if audioCodec.SampleRate == 0 {
+						audioCodec = c
+					}
+				}
+				// TODO: DO we need to be thread safe here?
+				// TODO: Should we honor formats set on this session?
+				sessCodecs := sess.Codecs[:0]
+				if audioCodec.SampleRate != 0 {
+					sessCodecs = append(sessCodecs, audioCodec)
+				}
+
+				if telEventCodec.SampleRate != 0 {
+					sessCodecs = append(sessCodecs, telEventCodec)
+				}
+
+				if len(sessCodecs) == 0 {
+					return fmt.Errorf("no codecs support found from originator")
+				}
+				sess.Codecs = sessCodecs
 			}
 		}
-
-		if singleFormat == "" {
-			return fmt.Errorf("no audio media is supported from originator")
-		}
-
-		// Safe to update until we start using in rtp session
-		sess.Formats = []string{singleFormat}
-
-		// Unless caller is customizing response handling we want to answer caller on
-		// callerState := omed.DialogSIP().LoadState()
-		// if opts.OnResponse == nil {
-		// 	opts.OnResponse = func(res *sip.Response) error {
-		// 		if res.StatusCode == 200 {
-		// 			switch om := omed.(type) {
-		// 			case *DialogClientSession:
-		// 			case *DialogServerSession:
-		// 				return om.answerWebrtc([]string{})
-		// 			}
-		// 		}
-		// 		return nil
-		// 	}
-		// }
 	}
 
 	dialogCli := d.UA
@@ -166,6 +196,8 @@ func (d *DialogClientSession) InviteMedia(ctx context.Context, opts InviteMediaO
 		return err
 	}
 
+	// This only gets called after session established
+	d.onMediaUpdate = opts.OnMediaUpdate
 	// reuse UDP listener
 	// Problem if listener is unspecified IP sipgo will not map this to listener
 	// Code below only works if our bind host is specified
@@ -188,6 +220,12 @@ func (d *DialogClientSession) InviteMedia(ctx context.Context, opts InviteMediaO
 		OnResponse: opts.OnResponse,
 	})
 }
+
+// InviteLate does not send SDP offer
+// NOTE: call AckLate to complete negotiation
+// func (d *DialogClientSession) InviteLate(ctx context.Context, opts InviteOptions) error {
+
+// }
 
 func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerOptions) error {
 	sess := d.mediaSession
@@ -231,10 +269,10 @@ func (d *DialogClientSession) Ack(ctx context.Context) error {
 	return d.ack(ctx, nil)
 }
 
-// AckMedia sends ACK with media. Use this in case delay offer
-func (d *DialogClientSession) AckMedia(ctx context.Context) error {
-	return d.ack(ctx, d.mediaSession.LocalSDP())
-}
+// AckLate sends ACK with media. Use this in combination with late(delay) offer
+// func (d *DialogClientSession) AckLate(ctx context.Context) error {
+// 	return d.ack(ctx, d.mediaSession.LocalSDP())
+// }
 
 func (d *DialogClientSession) ack(ctx context.Context, body []byte) error {
 	inviteRequest := d.InviteRequest

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -155,7 +156,7 @@ func (d *DialogMedia) initMediaSessionFromConf(conf MediaConfig) error {
 	}
 
 	sess := &media.MediaSession{
-		Formats:    conf.Formats,
+		Codecs:     slices.Clone(conf.Codecs),
 		Laddr:      net.UDPAddr{IP: bindIP, Port: 0},
 		ExternalIP: conf.externalIP,
 		Mode:       sdp.ModeSendrecv,
@@ -219,8 +220,12 @@ func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 		d.onMediaUpdate(d)
 	}
 
+	fmts := ""
+	for _, c := range msess.Codecs {
+		fmts += c.Name
+	}
 	log.Info().
-		Str("formats", msess.Formats.String()).
+		Str("formats", fmts).
 		Str("localAddr", msess.Laddr.String()).
 		Str("remoteAddr", msess.Raddr.String()).
 		Msg("Media/RTP session updated")

@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/emiago/diago/media"
-	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/rs/zerolog"
@@ -123,7 +122,7 @@ func WithTransport(t Transport) DiagoOption {
 }
 
 type MediaConfig struct {
-	Formats sdp.Formats
+	Codecs []media.Codec
 
 	// Used internally
 	bindIP     net.IP
@@ -170,7 +169,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		},
 		transports: []Transport{},
 		mediaConf: MediaConfig{
-			Formats: sdp.NewFormats(sdp.FORMAT_TYPE_ULAW, sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_TELEPHONE_EVENT),
+			Codecs: []media.Codec{media.CodecAudioUlaw, media.CodecAudioAlaw, media.CodecTelephoneEvent8000},
 		},
 	}
 
@@ -235,7 +234,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			DialogMedia:         DialogMedia{},
 			// TODO we may actually just build media session with this conf here
 			mediaConf: MediaConfig{
-				Formats:    dg.mediaConf.Formats,
+				Codecs:     dg.mediaConf.Codecs,
 				bindIP:     tran.mediaBindIP,
 				externalIP: tran.MediaExternalIP,
 			},
@@ -502,22 +501,6 @@ func (dg *Diago) HandleFunc(f ServeDialogFunc) {
 	dg.serveHandler = f
 }
 
-type InviteOptions struct {
-	Originator DialogSession
-	OnResponse func(res *sip.Response) error
-	// OnMediaUpdate called when media is changed. NOTE: you should not block this call
-	OnMediaUpdate func(d *DialogMedia)
-	OnRefer       func(referDialog *DialogClientSession)
-	// OnPreInvite   func(inviteReq *sip.Request)
-	// For digest authentication
-	Username string
-	Password string
-
-	// Custom headers to pass. DO NOT SET THIS to nil
-	Headers     []sip.Header
-	TransportID string
-}
-
 // func (o InviteOptions) SetCaller(displayName string, callerID string) {
 // 	o.Headers = append(o.Headers, &sip.FromHeader{
 // 		DisplayName: displayName,
@@ -542,10 +525,38 @@ func (o *InviteOptions) SetCaller(displayName string, callerID string) {
 	})
 }
 
+type InviteOptions struct {
+	Originator DialogSession
+	OnResponse func(res *sip.Response) error
+	// For digest authentication
+	Username string
+	Password string
+	// Custom headers to pass. DO NOT SET THIS to nil
+	Headers []sip.Header
+}
+
 // Invite makes outgoing call leg and waits for answer.
 // If you want to bridge call then use helper InviteBridge
 func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts InviteOptions) (d *DialogClientSession, err error) {
-	return dg.InviteBridge(ctx, recipient, nil, opts)
+	d, err = dg.NewDialog(recipient, NewDialogOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := d.Invite(ctx, InviteClientOptions{
+		Originator: opts.Originator,
+		OnResponse: opts.OnResponse,
+		Headers:    opts.Headers,
+	}); err != nil {
+		d.Close()
+		return nil, err
+	}
+
+	if err := d.Ack(ctx); err != nil {
+		d.Close()
+		return nil, err
+	}
+	return d, nil
 }
 
 // InviteBridge makes outgoing call leg and does bridging.
@@ -553,225 +564,49 @@ func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts InviteOptio
 // If bridge has Originator (first participant) it will be used for creating outgoing call leg as in B2BUA
 // When bridge is provided then this call will be bridged with any participant already present in bridge
 func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts InviteOptions) (d *DialogClientSession, err error) {
-	transport := ""
-	if recipient.UriParams != nil {
-		if t := recipient.UriParams["transport"]; t != "" {
-			transport = t
-		}
-	}
-	tran, exists := dg.findTransport(transport, opts.TransportID)
-	if !exists {
-		return nil, fmt.Errorf("transport %s does not exists", transport)
-	}
-	// set now found transport
-	transport = tran.Transport
-
-	// TODO: remove this alloc of UA each time
-	client := dg.getClient(&tran)
-	dialogCli := sipgo.DialogUA{
-		Client:         client,
-		RewriteContact: tran.RewriteContact,
-	}
-	dg.contactHDRFromTransport(tran, &dialogCli.ContactHDR)
-
-	d = &DialogClientSession{
-		onReferDialog: opts.OnRefer,
-	}
-
-	// Create media
-	// TODO explicit media format passing
-	mediaConf := MediaConfig{
-		Formats:    dg.mediaConf.Formats,
-		bindIP:     tran.mediaBindIP,
-		externalIP: tran.MediaExternalIP,
-	}
-	if err := d.initMediaSessionFromConf(mediaConf); err != nil {
-		return nil, err
-	}
-	sess := d.mediaSession
-
-	inviteReq := sip.NewRequest(sip.INVITE, recipient)
-	inviteReq.SetTransport(sip.NetworkToUpper(transport))
-
-	for _, h := range opts.Headers {
-		inviteReq.AppendHeader(h)
-	}
-
-	// Are we bridging?
-	if bridge != nil {
-		if omed := bridge.Originator; omed != nil {
-			// In case originator then:
-			// - check do we support this media formats by conf
-			// - if we do, then filter and pass to dial endpoint filtered
-			origInvite := omed.DialogSIP().InviteRequest
-			if fromHDR := inviteReq.From(); fromHDR == nil {
-				// From header should be preserved from originator
-				fromHDROrig := origInvite.From()
-				f := sip.FromHeader{
-					DisplayName: fromHDROrig.DisplayName,
-					Address:     *fromHDROrig.Address.Clone(),
-					Params:      fromHDROrig.Params.Clone(),
-				}
-				inviteReq.AppendHeader(&f)
-			}
-
-			sd := sdp.SessionDescription{}
-			if err := sdp.Unmarshal(origInvite.Body(), &sd); err != nil {
-				return nil, err
-			}
-			md, err := sd.MediaDescription("audio")
-			if err != nil {
-				return nil, err
-			}
-
-			// Check do we support this formats, and filter first that we support
-			// Limiting to one format we remove need for transcoding
-			singleFormat := ""
-		outloop:
-			for _, f := range md.Formats {
-				for _, sf := range dg.mediaConf.Formats {
-					if f == sf {
-						singleFormat = f
-						break outloop
-					}
-				}
-			}
-
-			if singleFormat == "" {
-				return nil, fmt.Errorf("no audio media is supported from originator")
-			}
-
-			// Safe to update until we start using in rtp session
-			sess.Formats = []string{singleFormat}
-
-			// Unless caller is customizing response handling we want to answer caller on
-			// callerState := omed.DialogSIP().LoadState()
-			// if opts.OnResponse == nil {
-			// 	opts.OnResponse = func(res *sip.Response) error {
-			// 		if res.StatusCode == 200 {
-			// 			switch om := omed.(type) {
-			// 			case *DialogClientSession:
-			// 			case *DialogServerSession:
-			// 				return om.answerWebrtc([]string{})
-			// 			}
-			// 		}
-			// 		return nil
-			// 	}
-			// }
-		}
-	}
-
-	inviteReq.AppendHeader(&dialogCli.ContactHDR)
-	inviteReq.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
-	inviteReq.SetBody(sess.LocalSDP())
-
-	// We allow changing full from header, but we need to make sure it is correctly set
-	if fromHDR := inviteReq.From(); fromHDR != nil {
-		fromHDR.Params["tag"] = sip.GenerateTagN(16)
-		if fromHDR.Address.Host == "" { // IN case caller is set but not hostname
-			fromHDR.Address.Host = dg.ua.Hostname()
-		}
-	}
-	// if opts.OnPreInvite != nil {
-	// 	opts.OnPreInvite(inviteReq)
-	// }
-
-	// Build here request
-	if err := sipgo.ClientRequestBuild(client, inviteReq); err != nil {
-		return nil, err
-	}
-
-	// reuse UDP listener
-	// Problem if listener is unspecified IP sipgo will not map this to listener
-	// Code below only works if our bind host is specified
-	// For now let SIPgo create 1 UDP connection and it will reuse it
-	// via := inviteReq.Via()
-	// if via.Host == "" {
-	// }
-	dialog, err := dialogCli.WriteInvite(ctx, inviteReq, func(c *sipgo.Client, req *sip.Request) error {
-		// Do nothing
-		return nil
-	})
+	d, err = dg.NewDialog(recipient, NewDialogOptions{})
 	if err != nil {
-		sess.Close()
 		return nil, err
 	}
-	d.DialogClientSession = dialog
 
-	waitCall := func(ctx context.Context) error {
-		callID := inviteReq.CallID().Value()
-		log.Info().Str("call_id", callID).Msg("Waiting answer")
-		answO := sipgo.AnswerOptions{
-			Username:   opts.Username,
-			Password:   opts.Password,
-			OnResponse: opts.OnResponse,
-		}
-
-		if err := dialog.WaitAnswer(ctx, answO); err != nil {
-			return err
-		}
-
-		remoteSDP := dialog.InviteResponse.Body()
-		if remoteSDP == nil {
-			return fmt.Errorf("no SDP in response")
-		}
-		if err := sess.RemoteSDP(remoteSDP); err != nil {
-			return err
-		}
-
-		// Create RTP session. After this no media session configuration should be changed
-		rtpSess := media.NewRTPSession(sess)
-		d.mu.Lock()
-		d.initRTPSessionUnsafe(sess, rtpSess)
-		d.onCloseUnsafe(func() {
-			if err := rtpSess.Close(); err != nil {
-				log.Error().Err(err).Msg("Closing session")
-			}
-		})
-		d.mu.Unlock()
-		log.Debug().Str("laddr", sess.Laddr.String()).Str("raddr", sess.Raddr.String()).Msg("RTP Session setuped")
-
-		// Must be called after reader and writer setup due to race
-		rtpSess.MonitorBackground()
-
-		// Add to bridge as early media. This may need to be moved earlier to handlin ringback tones
-		// but normally callee should not send any other media before receving ack.
-		if bridge != nil {
-			if err := bridge.AddDialogSession(d); err != nil {
-				return err
-			}
-		}
-
-		if err := dialog.Ack(ctx); err != nil {
-			return err
-		}
-
-		if err := DialogsClientCache.DialogStore(ctx, d.ID, d); err != nil {
-			return err
-		}
-		d.OnClose(func() {
-			DialogsClientCache.DialogDelete(context.Background(), d.ID)
-		})
-		return nil
+	// Keep things compatible
+	if opts.Originator == nil {
+		opts.Originator = bridge.Originator
 	}
 
-	if err := waitCall(ctx); err != nil {
+	if err := d.Invite(ctx, InviteClientOptions{
+		Originator: opts.Originator,
+		OnResponse: opts.OnResponse,
+		Headers:    opts.Headers,
+	}); err != nil {
 		d.Close()
 		return nil, err
 	}
 
+	// Do bridging now
+	if err := bridge.AddDialogSession(d); err != nil {
+		d.Close()
+		return nil, err
+	}
+
+	if err := d.Ack(ctx); err != nil {
+		d.Close()
+		return nil, err
+	}
 	return d, nil
 }
 
-type NewDialogOpts struct {
+type NewDialogOptions struct {
+	// Transport or protocol that should be used
+	Transport string
+	// TransportID matches diago transport by ID instead protocol
 	TransportID string
 }
 
-// NewDialog creates a new client dialog session after you can perform call establish
-// For simpler use cases use Invite
-func (dg *Diago) NewDialog(ctx context.Context, recipient sip.Uri, opts NewDialogOpts) (d *DialogClientSession, err error) {
-	transport := ""
-	if recipient.UriParams != nil {
+// NewDialog creates a new client dialog session after you can perform dialog Invite
+func (dg *Diago) NewDialog(recipient sip.Uri, opts NewDialogOptions) (d *DialogClientSession, err error) {
+	transport := opts.Transport
+	if transport == "" && recipient.UriParams != nil {
 		if t := recipient.UriParams["transport"]; t != "" {
 			transport = t
 			delete(recipient.UriParams, "transport")
@@ -809,7 +644,7 @@ func (dg *Diago) NewDialog(ctx context.Context, recipient sip.Uri, opts NewDialo
 	// Create media
 	// TODO explicit media format passing
 	mediaConf := MediaConfig{
-		Formats:    dg.mediaConf.Formats,
+		Codecs:     dg.mediaConf.Codecs,
 		bindIP:     tran.mediaBindIP,
 		externalIP: tran.MediaExternalIP,
 	}

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -43,13 +44,12 @@ var (
 // NOTE: Not thread safe, read only after SDP negotiation or have locking in place
 type MediaSession struct {
 	// SDP stuff
-	// Depending of negotiation this can change.
-	// Formats will always try to match remote, to avoid different codec matching
 	// TODO:
 	// 1. make this list of codecs as we need to match also sample rate and ptime
 	// 2. rtp session when matching incoming packet sample rate for RTCP should use this
-	Formats sdp.Formats
-	Mode    sdp.Mode
+	Codecs []Codec
+	// Mode is sdp mode. Check consts sdp.ModeRecvOnly etc...
+	Mode string
 	// Laddr our local address which has full IP and port after media session creation
 	Laddr net.UDPAddr
 
@@ -72,8 +72,8 @@ type MediaSession struct {
 
 func NewMediaSession(ip net.IP, port int) (s *MediaSession, e error) {
 	s = &MediaSession{
-		Formats: sdp.Formats{
-			sdp.FORMAT_TYPE_ULAW, sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_TELEPHONE_EVENT,
+		Codecs: []Codec{
+			CodecAudioUlaw, CodecAudioAlaw, CodecTelephoneEvent8000,
 		},
 		Mode: sdp.ModeSendrecv,
 		log:  log.Logger,
@@ -81,7 +81,7 @@ func NewMediaSession(ip net.IP, port int) (s *MediaSession, e error) {
 	s.Laddr.IP = ip
 	s.Laddr.Port = port
 
-	return s, s.createListeners(&s.Laddr)
+	return s, s.Init()
 }
 
 // Init should be called if session is created manually
@@ -91,7 +91,7 @@ func (s *MediaSession) Init() error {
 	// s.log = log.With().Str("caller", "media").Logger()
 	s.log = log.Logger
 
-	if s.Formats == nil || len(s.Formats) == 0 {
+	if s.Codecs == nil || len(s.Codecs) == 0 {
 		return fmt.Errorf("media session: formats can not be empty")
 	}
 
@@ -151,9 +151,8 @@ func (s *MediaSession) Fork() *MediaSession {
 		Laddr:    s.Laddr, // TODO clone it although it is read only
 		rtpConn:  s.rtpConn,
 		rtcpConn: s.rtcpConn,
-
-		Formats: sdp.Formats{
-			sdp.FORMAT_TYPE_ULAW, sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_TELEPHONE_EVENT,
+		Codecs: []Codec{
+			CodecAudioUlaw, CodecAudioAlaw, CodecTelephoneEvent8000,
 		},
 		Mode: sdp.ModeSendrecv,
 	}
@@ -198,7 +197,7 @@ func (s *MediaSession) LocalSDP() []byte {
 	// 	ip = s.ExternalIP
 	// }
 
-	return sdp.GenerateForAudio(ip, connIP, rtpPort, s.Mode, s.Formats)
+	return generateSDPForAudio(ip, connIP, rtpPort, s.Mode, s.Codecs)
 }
 
 func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
@@ -213,6 +212,22 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 		return err
 	}
 
+	codecs := make([]Codec, len(md.Formats))
+	attrs := sd.Values("a")
+	n, err := CodecsFromSDPRead(md.Formats, attrs, codecs)
+	if err != nil {
+		if n == 0 {
+			// Nothing parsed, break
+			return err
+		}
+		// TODO: Should we be strict?
+		s.log.Error().Err(err).Msg("Reading codecs from sdp was not full")
+	}
+	if n == 0 {
+		return fmt.Errorf("no codecs found in SDP")
+	}
+	codecs = codecs[:n]
+
 	ci, err := sd.ConnectionInformation()
 	if err != nil {
 		return err
@@ -220,34 +235,30 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 
 	s.SetRemoteAddr(&net.UDPAddr{IP: ci.IP, Port: md.Port})
 
-	s.updateRemoteFormats(md.Formats)
-	if len(s.Formats) == 0 {
+	s.updateRemoteCodecs(codecs)
+	if len(s.Codecs) == 0 {
 		return fmt.Errorf("no supported codecs found")
 	}
 
 	return nil
 }
 
-func (s *MediaSession) updateRemoteFormats(formats sdp.Formats) {
-	// Check remote vs local
-	if len(s.Formats) > 0 {
-		// filter := make([]string, 0, cap(formats))
-		filter := formats[:0] // reuse buffer
-		// Always prefer remote side?
-		for _, cr := range formats {
-			for _, cs := range s.Formats {
-				if cr == cs {
-					filter = append(filter, cr)
-					break
-				}
+func (s *MediaSession) updateRemoteCodecs(codecs []Codec) {
+	if len(s.Codecs) == 0 {
+		s.Codecs = codecs
+		return
+	}
+
+	filter := codecs[:0] // reuse buffer
+	for _, rc := range codecs {
+		for _, c := range s.Codecs {
+			if c == rc {
+				filter = append(filter, c)
+				break
 			}
 		}
-
-		// Update new list of formats
-		s.Formats = sdp.Formats(filter)
-	} else {
-		s.Formats = formats
 	}
+	s.Codecs = filter
 }
 
 // Listen creates listeners instead
@@ -541,4 +552,75 @@ func StringRTCP(p rtcp.Packet) string {
 		return s.String()
 	}
 	return "can not stringify"
+}
+
+func generateSDPForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode string, codecs []Codec) []byte {
+	ntpTime := GetCurrentNTPTimestamp()
+
+	fmts := make([]string, len(codecs))
+	formatsMap := []string{}
+	for i, f := range codecs {
+		// TODO should we just go generic
+		switch f.PayloadType {
+		case CodecAudioUlaw.PayloadType:
+			formatsMap = append(formatsMap, "a=rtpmap:0 PCMU/8000")
+		case CodecAudioAlaw.PayloadType:
+			formatsMap = append(formatsMap, "a=rtpmap:8 PCMA/8000")
+		case CodecAudioOpus.PayloadType:
+			formatsMap = append(formatsMap, "a=rtpmap:96 opus/48000/2")
+			// Providing 0 when FEC cannot be used on the receiving side is RECOMMENDED.
+			// https://datatracker.ietf.org/doc/html/rfc7587
+			formatsMap = append(formatsMap, "a=fmtp:96 useinbandfec=0")
+		case CodecTelephoneEvent8000.PayloadType:
+			formatsMap = append(formatsMap, "a=rtpmap:101 telephone-event/8000")
+			formatsMap = append(formatsMap, "a=fmtp:101 0-16")
+		default:
+			s := fmt.Sprintf("a=rtpmap:%d %s/%d/%d", f.PayloadType, f.Name, f.SampleRate, f.NumChannels)
+			formatsMap = append(formatsMap, s)
+		}
+		fmts[i] = strconv.Itoa(int(f.PayloadType))
+	}
+
+	// Support only ulaw and alaw
+	// TODO optimize this with string builder
+	s := []string{
+		"v=0",
+		fmt.Sprintf("o=- %d %d IN IP4 %s", ntpTime, ntpTime, originIP),
+		"s=Sip Go Media",
+		// "b=AS:84",
+		fmt.Sprintf("c=IN IP4 %s", connectionIP),
+		"t=0 0",
+		fmt.Sprintf("m=audio %d RTP/AVP %s", rtpPort, strings.Join(fmts, " ")),
+	}
+
+	s = append(s, formatsMap...)
+	s = append(s,
+		"a=ptime:20", // Needed for opus
+		"a=maxptime:20",
+		"a="+string(mode))
+	// s := []string{
+	// 	"v=0",
+	// 	fmt.Sprintf("o=- %d %d IN IP4 %s", ntpTime, ntpTime, originIP),
+	// 	"s=Sip Go Media",
+	// 	// "b=AS:84",
+	// 	fmt.Sprintf("c=IN IP4 %s", connectionIP),
+	// 	"t=0 0",
+	// 	fmt.Sprintf("m=audio %d RTP/AVP 96 97 98 99 3 0 8 9 120 121 122", rtpPort),
+	// 	"a=" + string(mode),
+	// 	"a=rtpmap:96 speex/16000",
+	// 	"a=rtpmap:97 speex/8000",
+	// 	"a=rtpmap:98 speex/32000",
+	// 	"a=rtpmap:99 iLBC/8000",
+	// 	"a=fmtp:99 mode=30",
+	// 	"a=rtpmap:120 telephone-event/16000",
+	// 	"a=fmtp:120 0-16",
+	// 	"a=rtpmap:121 telephone-event/8000",
+	// 	"a=fmtp:121 0-16",
+	// 	"a=rtpmap:122 telephone-event/32000",
+	// 	"a=rtcp-mux",
+	// 	fmt.Sprintf("a=rtcp:%d IN IP4 %s", rtpPort+1, connectionIP),
+	// }
+
+	res := strings.Join(s, "\r\n")
+	return []byte(res)
 }

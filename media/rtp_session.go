@@ -166,6 +166,9 @@ func (s *RTPSession) Close() error {
 	return err
 }
 
+// ReadRTP reads RTP
+// NOTE: For RTCP we may read some properties of media session. Do not run this until
+// full media session is negotiated. For updating media, media session forking must be done!
 func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 	for {
 		n, err = s.Sess.ReadRTP(b, readPkt)
@@ -195,7 +198,22 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 	if stats.SSRC != readPkt.SSRC {
 		// For now we will reset all our stats.
 		// We expect that SSRC only changed but MULTI RTP stream per one session is not supported
-		codec := CodecFromPayloadType(readPkt.PayloadType)
+		// NOTE: Reading codecs may be in a race while establishing session but it is expected
+		// that caller should not run reading while session is established
+		codec := s.Sess.Codecs[0]
+		if codec.PayloadType != readPkt.PayloadType {
+			for _, c := range s.Sess.Codecs {
+				if c.PayloadType == readPkt.PayloadType {
+					codec = c
+					break
+				}
+			}
+
+			if codec.PayloadType != readPkt.PayloadType {
+				s.log.Warn().Uint8("pt", readPkt.PayloadType).Msg("Received RTP with unsupported payload_type")
+				return 0, nil
+			}
+		}
 
 		*stats = RTPReadStats{
 			SSRC:                   readPkt.SSRC,

@@ -10,18 +10,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/fakes"
 	"github.com/stretchr/testify/require"
 )
 
 func fakeMediaSessionWriter(lport int, rport int, rtpWriter io.Writer) *MediaSession {
 	sess := &MediaSession{
-		Formats: sdp.Formats{
-			sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_ULAW,
-		},
-		Laddr: net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
-		Raddr: net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234},
+		Codecs: []Codec{CodecAudioAlaw, CodecAudioUlaw},
+		Laddr:  net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
+		Raddr:  net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234},
 	}
 
 	conn := &fakes.UDPConn{

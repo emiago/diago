@@ -170,13 +170,13 @@ func TestDiagoNewDialog(t *testing.T) {
 	ctx := context.TODO()
 
 	t.Run("CloseNoError", func(t *testing.T) {
-		dialog, err := dg.NewDialog(ctx, sip.Uri{User: "alice", Host: "localhost"}, NewDialogOpts{})
+		dialog, err := dg.NewDialog(sip.Uri{User: "alice", Host: "localhost"}, NewDialogOptions{})
 		require.NoError(t, err)
 		dialog.Close()
 	})
 
 	// t.Run("NoAcked", func(t *testing.T) {
-	// 	dialog, err := dg.NewDialog(ctx, sip.Uri{User: "alice", Host: "localhost"}, NewDialogOpts{})
+	// 	dialog, err := dg.NewDialog( sip.Uri{User: "alice", Host: "localhost"}, NewDialogOpts{})
 	// 	require.NoError(t, err)
 	// 	defer dialog.Close()
 
@@ -187,11 +187,11 @@ func TestDiagoNewDialog(t *testing.T) {
 	// })
 
 	t.Run("FullDialog", func(t *testing.T) {
-		dialog, err := dg.NewDialog(ctx, sip.Uri{User: "alice", Host: "localhost"}, NewDialogOpts{})
+		dialog, err := dg.NewDialog(sip.Uri{User: "alice", Host: "localhost"}, NewDialogOptions{})
 		require.NoError(t, err)
 		defer dialog.Close()
 
-		err = dialog.InviteMedia(ctx, InviteMediaOptions{})
+		err = dialog.Invite(ctx, InviteClientOptions{})
 		require.NoError(t, err)
 		assert.NotEmpty(t, dialog.ID)
 

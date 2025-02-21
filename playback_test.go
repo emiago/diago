@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/emiago/diago/media"
-	"github.com/emiago/diago/media/sdp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -76,7 +75,7 @@ func TestIntegrationPlaybackFile(t *testing.T) {
 
 	dialog := &DialogServerSession{
 		DialogMedia: DialogMedia{
-			mediaSession: &media.MediaSession{Formats: sdp.NewFormats(sdp.FORMAT_TYPE_ULAW)},
+			mediaSession: &media.MediaSession{Codecs: []media.Codec{media.CodecAudioUlaw}},
 			// audioReader:  bytes.NewBuffer(make([]byte, 9999)),
 			audioWriter:     w,
 			RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioUlaw),

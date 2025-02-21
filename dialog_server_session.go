@@ -100,8 +100,11 @@ type AnswerOptions struct {
 	// OnMediaUpdate triggers when media update happens. It is blocking func, so make sure you exit
 	OnMediaUpdate func(d *DialogMedia)
 	OnRefer       func(referDialog *DialogClientSession)
+	// Codecs that will be used
+	Codecs []media.Codec
 }
 
+// AnswerOptions allows to answer dialog with options
 // Experimental
 //
 // NOTE: API may change
@@ -111,7 +114,13 @@ func (d *DialogServerSession) AnswerOptions(opt AnswerOptions) error {
 	d.onMediaUpdate = opt.OnMediaUpdate
 	d.mu.Unlock()
 
-	if err := d.initMediaSessionFromConf(d.mediaConf); err != nil {
+	// Let override of formats
+	conf := d.mediaConf
+	if opt.Codecs != nil {
+		conf.Codecs = opt.Codecs
+	}
+
+	if err := d.initMediaSessionFromConf(conf); err != nil {
 		return err
 	}
 	rtpSess := media.NewRTPSession(d.mediaSession)

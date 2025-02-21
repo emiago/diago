@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/fakes"
 	"github.com/pion/rtcp"
 	"github.com/rs/zerolog/log"
@@ -20,9 +19,7 @@ import (
 
 func fakeSession(lport int, rport int, rtpReader io.Reader, rtpWriter io.Writer, rtcpReader io.Reader, rtcpWriter io.Writer) *RTPSession {
 	sess := &MediaSession{
-		Formats: sdp.Formats{
-			sdp.FORMAT_TYPE_ALAW, sdp.FORMAT_TYPE_ULAW,
-		},
+		Codecs:    []Codec{CodecAudioAlaw, CodecAudioUlaw},
 		Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: lport},
 		Raddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: rport},
 		rtcpRaddr: net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: rport + 1},

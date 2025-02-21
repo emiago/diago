@@ -24,17 +24,16 @@ func NTPTimestamp(now time.Time) uint64 {
 	return uint64(currentTime)
 }
 
-type Mode string
-
 const (
 	// https://datatracker.ietf.org/doc/html/rfc4566#section-6
-	ModeRecvonly Mode = "recvonly"
-	ModeSendrecv Mode = "sendrecv"
-	ModeSendonly Mode = "sendonly"
+	ModeRecvonly string = "recvonly"
+	ModeSendrecv string = "sendrecv"
+	ModeSendonly string = "sendonly"
 )
 
 // GenerateForAudio is minimal AUDIO SDP setup
-func GenerateForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode Mode, fmts Formats) []byte {
+// mode -> consts like ModeRecvOnly, ModeSendrecv
+func GenerateForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode string, fmts Formats) []byte {
 	ntpTime := GetCurrentNTPTimestamp()
 
 	formatsMap := []string{}
