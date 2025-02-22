@@ -601,6 +601,8 @@ type NewDialogOptions struct {
 	Transport string
 	// TransportID matches diago transport by ID instead protocol
 	TransportID string
+
+	// Codecs []media.Codec
 }
 
 // NewDialog creates a new client dialog session after you can perform dialog Invite
@@ -648,6 +650,11 @@ func (dg *Diago) NewDialog(recipient sip.Uri, opts NewDialogOptions) (d *DialogC
 		bindIP:     tran.mediaBindIP,
 		externalIP: tran.MediaExternalIP,
 	}
+
+	// if opts.Codecs != nil {
+	// 	mediaConf.Codecs = opts.Codecs
+	// }
+
 	if err := d.initMediaSessionFromConf(mediaConf); err != nil {
 		return nil, err
 	}

@@ -6,11 +6,11 @@ package diago
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"sync/atomic"
 
 	"github.com/emiago/diago/media"
-	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/rs/zerolog/log"
@@ -113,70 +113,50 @@ func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptio
 			inviteReq.AppendHeader(&f)
 		}
 
-		// Avoid transcoding if originator answered
-		// If not pass full SDP, but then client should negotiate common
-		if originator.DialogSIP().LoadState() >= sip.DialogStateEstablished {
-			// Check ContentType
-			contType := origInvite.ContentType()
-			if body := origInvite.Body(); body != nil && (contType != nil && contType.Value() == "application/sdp") {
-				sd := sdp.SessionDescription{}
-				if err := sdp.Unmarshal(origInvite.Body(), &sd); err != nil {
-					return err
-				}
-				md, err := sd.MediaDescription("audio")
-				if err != nil {
-					return err
-				}
-
-				codecs := make([]media.Codec, len(md.Formats))
-				attrs := sd.Values("a")
-				n, err := media.CodecsFromSDPRead(md.Formats, attrs, codecs)
-				if err != nil {
-
-					// if n == 0 {
-					// 	return err
-					// }
-					// We will be here strict for now. We want to have correct SDP parsing
-					return err
-				}
-				if n == 0 {
-					return fmt.Errorf("no codecs found in originator SDP")
-				}
-				codecs = codecs[:n]
-
-				// Avoid transcoding--
-				audioCodec := media.Codec{}
-				telEventCodec := media.Codec{}
-
-				for _, c := range codecs {
-					// TODO refactor this
-					if strings.HasPrefix(c.Name, "telephone-event") {
-						if telEventCodec.SampleRate == 0 {
-							telEventCodec = c
-						}
-						continue
-					}
-
-					if audioCodec.SampleRate == 0 {
-						audioCodec = c
-					}
-				}
-				// TODO: DO we need to be thread safe here?
-				// TODO: Should we honor formats set on this session?
-				sessCodecs := sess.Codecs[:0]
-				if audioCodec.SampleRate != 0 {
-					sessCodecs = append(sessCodecs, audioCodec)
-				}
-
-				if telEventCodec.SampleRate != 0 {
-					sessCodecs = append(sessCodecs, telEventCodec)
-				}
-
-				if len(sessCodecs) == 0 {
-					return fmt.Errorf("no codecs support found from originator")
-				}
-				sess.Codecs = sessCodecs
+		// Avoid transcoding if originator present
+		// Check ContentType and body present
+		contType := origInvite.ContentType()
+		if body := origInvite.Body(); body != nil && (contType != nil && contType.Value() == "application/sdp") {
+			// apply remote SDP
+			if err := sess.RemoteSDP(body); err != nil {
+				return fmt.Errorf("failed to apply originator sdp: %w", err)
 			}
+			// We do not want originator to be remote side, but we want to apply codec filtering
+			sess.SetRemoteAddr(&net.UDPAddr{})
+
+			// Now to totally remove transcoding a chance. Leave only one codec of different types
+			audioCodec := media.Codec{}
+			telEventCodec := media.Codec{}
+
+			for _, c := range sess.Codecs {
+				// TODO refactor this
+				if strings.HasPrefix(c.Name, "telephone-event") {
+					if telEventCodec.SampleRate == 0 {
+						telEventCodec = c
+					}
+					continue
+				}
+
+				if audioCodec.SampleRate == 0 {
+					audioCodec = c
+				}
+			}
+			// TODO: DO we need to be thread safe here?
+			// TODO: Should we honor formats set on this session?
+			sessCodecs := sess.Codecs[:0]
+			if audioCodec.SampleRate != 0 {
+				sessCodecs = append(sessCodecs, audioCodec)
+			}
+
+			// TODO: should we only match telephone event with same sampling rate?
+			if telEventCodec.SampleRate != 0 {
+				sessCodecs = append(sessCodecs, telEventCodec)
+			}
+
+			if len(sessCodecs) == 0 {
+				return fmt.Errorf("no codecs support found from originator")
+			}
+			sess.Codecs = sessCodecs
 		}
 	}
 

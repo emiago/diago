@@ -226,7 +226,11 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	if n == 0 {
 		return fmt.Errorf("no codecs found in SDP")
 	}
-	codecs = codecs[:n]
+
+	s.updateRemoteCodecs(codecs[:n])
+	if len(s.Codecs) == 0 {
+		return fmt.Errorf("no supported codecs found")
+	}
 
 	ci, err := sd.ConnectionInformation()
 	if err != nil {
@@ -234,12 +238,6 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	}
 
 	s.SetRemoteAddr(&net.UDPAddr{IP: ci.IP, Port: md.Port})
-
-	s.updateRemoteCodecs(codecs)
-	if len(s.Codecs) == 0 {
-		return fmt.Errorf("no supported codecs found")
-	}
-
 	return nil
 }
 
