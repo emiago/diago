@@ -75,7 +75,6 @@ type InviteClientOptions struct {
 	// OnMediaUpdate called when media is changed. NOTE: you should not block this call
 	OnMediaUpdate func(d *DialogMedia)
 	OnRefer       func(referDialog *DialogClientSession)
-	// OnPreInvite   func(inviteReq *sip.Request)
 	// For digest authentication
 	Username string
 	Password string
@@ -88,6 +87,8 @@ type InviteClientOptions struct {
 // NOTE: You must call Ack after to acknowledge session.
 // NOTE: It updates internal invite request so NOT THREAD SAFE.
 // If you pass originator it will use originator to set correct from header and avoid media transcoding
+//
+// Experimental: Note API may have changes
 func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptions) error {
 	sess := d.mediaSession
 	inviteReq := d.InviteRequest

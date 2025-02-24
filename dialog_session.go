@@ -31,8 +31,6 @@ func dialogRefer(ctx context.Context, d DialogSession, recipient sip.Uri, referT
 		return fmt.Errorf("Can only be called on answered dialog")
 	}
 
-	fmt.Println("Transfering", recipient.String(), referTo.String())
-
 	req := sip.NewRequest(sip.REFER, recipient)
 	// Invite request tags must be preserved but switched
 	req.AppendHeader(sip.NewHeader("Refer-To", referTo.String()))
