@@ -3,6 +3,7 @@ package diago
 import (
 	"context"
 	"net"
+	"sync"
 	"testing"
 
 	"github.com/emiago/diago/media/sdp"
@@ -31,6 +32,10 @@ func testDiagoClient(t *testing.T, onRequest func(req *sip.Request) *sip.Respons
 
 func TestDiagoRegister(t *testing.T) {
 	dg := testDiagoClient(t, func(req *sip.Request) *sip.Response {
+		sync.OnceFunc(func() {
+			sip.NewResponseFromRequest(req, 100, "Trying", nil)
+		})()
+
 		return sip.NewResponseFromRequest(req, 200, "OK", nil)
 	})
 
@@ -40,6 +45,10 @@ func TestDiagoRegister(t *testing.T) {
 
 	err = rtx.Register(ctx)
 	require.NoError(t, err)
+}
+
+func TestDiagoRegisterAuthorization(t *testing.T) {
+	t.Skip("Do test with sending Register and authorization returned")
 }
 
 func TestDiagoInviteCallerID(t *testing.T) {

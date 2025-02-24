@@ -122,16 +122,10 @@ func (t *RegisterTransaction) Register(ctx context.Context) error {
 		tx.Terminate() //Terminate previous
 
 		log.Info().Msg("Unathorized. Doing digest auth")
-		tx, err = client.DoDigestAuth(ctx, req, res, sipgo.DigestAuth{
+		res, err := client.DoDigestAuth(ctx, req, res, sipgo.DigestAuth{
 			Username: username,
 			Password: password,
 		})
-		if err != nil {
-			return err
-		}
-		defer tx.Terminate()
-
-		res, err = getResponse(ctx, tx)
 		if err != nil {
 			return fmt.Errorf("fail to get response req=%q : %w", req.StartLine(), err)
 		}
@@ -233,31 +227,18 @@ func (t *RegisterTransaction) doRequest(ctx context.Context, req *sip.Request) e
 	// Send request and parse response
 	// req.SetDestination(*dst)
 	req.RemoveHeader("Via")
-	tx, err := client.TransactionRequest(ctx, req, sipgo.ClientRequestRegisterBuild)
-	if err != nil {
-		return fmt.Errorf("fail to create transaction req=%q: %w", req.StartLine(), err)
-	}
-	defer tx.Terminate()
-
-	res, err := getResponse(ctx, tx)
+	res, err := client.Do(ctx, req, sipgo.ClientRequestRegisterBuild)
 	if err != nil {
 		return fmt.Errorf("fail to get response req=%q : %w", req.StartLine(), err)
 	}
 
 	log.Info().Int("status", int(res.StatusCode)).Msg("Received status")
 	if res.StatusCode == sip.StatusUnauthorized || res.StatusCode == sip.StatusProxyAuthRequired {
-		tx.Terminate() //Terminate previous
 		log.Info().Msg("Unathorized. Doing digest auth")
-		tx, err = client.DoDigestAuth(ctx, req, res, sipgo.DigestAuth{
+		res, err := client.DoDigestAuth(ctx, req, res, sipgo.DigestAuth{
 			Username: username,
 			Password: password,
 		})
-		if err != nil {
-			return err
-		}
-		defer tx.Terminate()
-
-		res, err = getResponse(ctx, tx)
 		if err != nil {
 			return fmt.Errorf("fail to get response req=%q : %w", req.StartLine(), err)
 		}
