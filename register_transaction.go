@@ -122,7 +122,7 @@ func (t *RegisterTransaction) Register(ctx context.Context) error {
 		tx.Terminate() //Terminate previous
 
 		log.Info().Msg("Unathorized. Doing digest auth")
-		res, err := client.DoDigestAuth(ctx, req, res, sipgo.DigestAuth{
+		res, err = client.DoDigestAuth(ctx, req, res, sipgo.DigestAuth{
 			Username: username,
 			Password: password,
 		})
@@ -235,7 +235,7 @@ func (t *RegisterTransaction) doRequest(ctx context.Context, req *sip.Request) e
 	log.Info().Int("status", int(res.StatusCode)).Msg("Received status")
 	if res.StatusCode == sip.StatusUnauthorized || res.StatusCode == sip.StatusProxyAuthRequired {
 		log.Info().Msg("Unathorized. Doing digest auth")
-		res, err := client.DoDigestAuth(ctx, req, res, sipgo.DigestAuth{
+		res, err = client.DoDigestAuth(ctx, req, res, sipgo.DigestAuth{
 			Username: username,
 			Password: password,
 		})
