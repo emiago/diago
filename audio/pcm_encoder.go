@@ -74,7 +74,7 @@ func (dec *PCMDecoder) Init(codec media.Codec) error {
 		}
 		dec.DecoderTo = opusDec.DecodeTo
 	default:
-		return fmt.Errorf("not supported codec %d", codec)
+		return fmt.Errorf("not supported codec %d", codec.PayloadType)
 	}
 	return nil
 }
@@ -208,7 +208,7 @@ func (enc *PCMEncoder) Init(codec media.Codec) error {
 		enc.EncoderTo = opusEnc.EncodeTo
 
 	default:
-		return fmt.Errorf("not supported codec %d", codec)
+		return fmt.Errorf("not supported codec %d", codec.PayloadType)
 	}
 	return nil
 }

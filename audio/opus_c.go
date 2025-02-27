@@ -52,7 +52,6 @@ type OpusDecoder struct {
 func (enc *OpusDecoder) Init(sampleRate int, numChannels int, samplesSize int) error {
 	enc.numChannels = numChannels
 	enc.pcmInt16 = make([]int16, samplesSize)
-
 	if err := enc.Decoder.Init(sampleRate, numChannels); err != nil {
 		return fmt.Errorf("failed to create opus decoder: %w", err)
 	}
