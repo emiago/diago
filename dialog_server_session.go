@@ -76,10 +76,6 @@ func (d *DialogServerSession) RemoteContact() *sip.ContactHeader {
 	return d.InviteRequest.Contact()
 }
 
-func (d *DialogServerSession) Respond(statusCode sip.StatusCode, reason string, body []byte, headers ...sip.Header) error {
-	return d.DialogServerSession.Respond(statusCode, reason, body, headers...)
-}
-
 func (d *DialogServerSession) RespondSDP(body []byte) error {
 	headers := []sip.Header{sip.NewHeader("Content-Type", "application/sdp")}
 	return d.DialogServerSession.Respond(200, "OK", body, headers...)

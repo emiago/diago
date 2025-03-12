@@ -115,7 +115,7 @@ func dialogHandleRefer(d DialogSession, dg *Diago, req *sip.Request, tx sip.Serv
 	// TODO after this we could get BYE immediately, but caller would not be able
 	// to take control over refer dialog
 
-	addSipFrag := func(req *sip.Request, statusCode sip.StatusCode, reason string) {
+	addSipFrag := func(req *sip.Request, statusCode int, reason string) {
 		req.AppendHeader(sip.NewHeader("Event", "refer"))
 		req.AppendHeader(sip.NewHeader("Content-Type", "message/sipfrag;version=2.0"))
 		frag := fmt.Sprintf("SIP/2.0 %d %s", statusCode, reason)
