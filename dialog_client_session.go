@@ -307,7 +307,14 @@ func (d *DialogClientSession) ReInvite(ctx context.Context) error {
 			Res: res,
 		}
 	}
-	return nil
+
+	cont := res.Contact()
+	if cont == nil {
+		return fmt.Errorf("no contact header present")
+	}
+
+	ack := sip.NewRequest(sip.ACK, cont.Address)
+	return d.WriteRequest(ack)
 }
 
 // Refer tries todo refer (blind transfer) on call
@@ -338,7 +345,7 @@ func (d *DialogClientSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request - "+err.Error(), nil))
 	}
 
-	return d.handleMediaUpdate(req, tx)
+	return d.handleMediaUpdate(req, tx, d.InviteRequest.Contact())
 }
 
 func (d *DialogClientSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTransaction) error {

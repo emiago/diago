@@ -177,7 +177,7 @@ func (d *DialogMedia) RTPSession() *media.RTPSession {
 	return d.rtpSession
 }
 
-func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransaction) error {
+func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransaction, contactHDR sip.Header) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.lastInvite = req
@@ -189,6 +189,7 @@ func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransacti
 	// Reply with updated SDP
 	sd := d.mediaSession.LocalSDP()
 	res := sip.NewResponseFromRequest(req, sip.StatusOK, "OK", sd)
+	res.AppendHeader(contactHDR)
 	res.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
 	return tx.Respond(res)
 }
