@@ -730,6 +730,10 @@ type RegisterOptions struct {
 	RetryInterval time.Duration
 	AllowHeaders  []string
 
+	// extra headers to pass, will be added to REGISTER request
+	// for example: User-Agent: myuseragent/1.0
+	ExtraHeaders []sip.Header
+
 	// Useragent default will be used on what is provided as NewUA()
 	// UserAgent         string
 	// UserAgentHostname string
