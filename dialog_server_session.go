@@ -32,12 +32,13 @@ func (d *DialogServerSession) Id() string {
 	return d.ID
 }
 
-func (d *DialogServerSession) Close() {
+func (d *DialogServerSession) Close() error {
 	if !d.closed.CompareAndSwap(0, 1) {
-		return
+		return nil
 	}
-	d.DialogMedia.Close()
-	d.DialogServerSession.Close()
+	e1 := d.DialogMedia.Close()
+	e2 := d.DialogServerSession.Close()
+	return errors.Join(e1, e2)
 }
 
 func (d *DialogServerSession) FromUser() string {

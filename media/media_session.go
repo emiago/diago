@@ -4,6 +4,7 @@
 package media
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -178,14 +179,16 @@ func (s *MediaSession) Fork() *MediaSession {
 	return &cp
 }
 
-func (s *MediaSession) Close() {
+func (s *MediaSession) Close() error {
+	var e1, e2 error
 	if s.rtcpConn != nil {
-		s.rtcpConn.Close()
+		e1 = s.rtcpConn.Close()
 	}
 
 	if s.rtpConn != nil {
-		s.rtpConn.Close()
+		e2 = s.rtpConn.Close()
 	}
+	return errors.Join(e1, e2)
 }
 
 // SetRemoteAddr is helper to set Raddr and rtcp address.

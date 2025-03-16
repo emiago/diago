@@ -77,13 +77,13 @@ type DialogMedia struct {
 	closed bool
 }
 
-func (d *DialogMedia) Close() {
+func (d *DialogMedia) Close() error {
 	// Any hook attached
 	// Prevent double exec
 	d.mu.Lock()
 	if d.closed {
 		d.mu.Unlock()
-		return
+		return nil
 	}
 	d.closed = true
 
@@ -93,13 +93,15 @@ func (d *DialogMedia) Close() {
 
 	d.mu.Unlock()
 
+	var e1, e2 error
 	if onClose != nil {
-		onClose()
+		e1 = onClose()
 	}
 
 	if m != nil {
-		m.Close()
+		e2 = m.Close()
 	}
+	return errors.Join(e1, e2)
 }
 
 func (d *DialogMedia) OnClose(f func() error) {

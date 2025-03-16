@@ -238,7 +238,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			},
 		}
 
-		defer dWrap.Close()
+		defer closeAndLog(dWrap, "closing dialog server returned error")
 
 		DialogsServerCache.DialogStore(dWrap.Context(), dWrap.ID, dWrap)
 		defer func() {
@@ -296,12 +296,12 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		// Terminate our media processing
 		// As user may stuck in playing or reading media, this unblocks that goroutine
 		if cd != nil {
-			defer cd.DialogMedia.Close()
+			defer closeAndLog(&cd.DialogMedia, "failed to close client media")
 
 			return cd.ReadBye(req, tx)
 		}
 
-		defer sd.DialogMedia.Close()
+		defer closeAndLog(&sd.DialogMedia, "failed to close server media")
 		return sd.ReadBye(req, tx)
 	}))
 

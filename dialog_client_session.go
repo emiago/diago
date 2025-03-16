@@ -5,6 +5,7 @@ package diago
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -26,12 +27,13 @@ type DialogClientSession struct {
 	closed atomic.Uint32
 }
 
-func (d *DialogClientSession) Close() {
+func (d *DialogClientSession) Close() error {
 	if !d.closed.CompareAndSwap(0, 1) {
-		return
+		return nil
 	}
-	d.DialogMedia.Close()
-	d.DialogClientSession.Close()
+	e1 := d.DialogMedia.Close()
+	e2 := d.DialogClientSession.Close()
+	return errors.Join(e1, e2)
 }
 
 func (d *DialogClientSession) Id() string {
