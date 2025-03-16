@@ -13,7 +13,6 @@ import (
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/rs/zerolog/log"
 )
 
 // DialogClientSession represents outbound channel
@@ -210,9 +209,7 @@ func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptio
 
 func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerOptions) error {
 	sess := d.mediaSession
-	callID := d.InviteRequest.CallID().Value()
 
-	log.Info().Str("call_id", callID).Msg("Waiting answer")
 	if err := d.WaitAnswer(ctx, opts); err != nil {
 		return err
 	}
@@ -229,13 +226,10 @@ func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerO
 	rtpSess := media.NewRTPSession(sess)
 	d.mu.Lock()
 	d.initRTPSessionUnsafe(sess, rtpSess)
-	d.onCloseUnsafe(func() {
-		if err := rtpSess.Close(); err != nil {
-			log.Error().Err(err).Msg("Closing session")
-		}
+	d.onCloseUnsafe(func() error {
+		return rtpSess.Close()
 	})
 	d.mu.Unlock()
-	log.Debug().Str("laddr", sess.Laddr.String()).Str("raddr", sess.Raddr.String()).Msg("RTP Session setuped")
 
 	// Must be called after reader and writer setup due to race
 	if err := rtpSess.MonitorBackground(); err != nil {
@@ -280,8 +274,8 @@ func (d *DialogClientSession) ack(ctx context.Context, body []byte) error {
 	if err := DialogsClientCache.DialogStore(ctx, d.ID, d); err != nil {
 		return err
 	}
-	d.OnClose(func() {
-		DialogsClientCache.DialogDelete(context.Background(), d.ID)
+	d.OnClose(func() error {
+		return DialogsClientCache.DialogDelete(context.Background(), d.ID)
 	})
 	return nil
 }

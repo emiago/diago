@@ -6,13 +6,12 @@ package media
 import (
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"sync"
 
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 // var rtpBufPool = &sync.Pool{
@@ -38,7 +37,7 @@ type RTPCReaderRaw interface {
 // RTPPacketReader reads RTP packet and extracts payload and header
 type RTPPacketReader struct {
 	mu  sync.RWMutex
-	log zerolog.Logger
+	log *slog.Logger
 
 	reader RTPReader
 
@@ -78,7 +77,7 @@ func NewRTPPacketReader(reader RTPReader, codec Codec) *RTPPacketReader {
 		seqReader: RTPExtendedSequenceNumber{},
 		// unreadPayload: make([]byte, RTPBufSize),
 		// rtpBuffer:     make([]byte, RTPBufSize),
-		log: log.With().Str("caller", "media").Logger(),
+		log: slog.Default().With("caller", "media"),
 	}
 
 	return &w
@@ -103,7 +102,7 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 	unreadPayload := b
 	if len(b) < RTPBufSize {
 		if r.unreadPayload == nil {
-			r.log.Debug().Msg("Read RTP buf is < RTPBufSize!!! Creating larger buffer!!!")
+			r.log.Debug("Read RTP buf is < RTPBufSize!!! Creating larger buffer!!!")
 			r.unreadPayload = make([]byte, RTPBufSize)
 		}
 
@@ -138,12 +137,12 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 	if r.lastSSRC == pkt.SSRC {
 		prevSeq := r.seqReader.ReadExtendedSeq()
 		if err := r.seqReader.UpdateSeq(pkt.SequenceNumber); err != nil {
-			r.log.Warn().Msg(err.Error())
+			r.log.Warn(err.Error())
 		}
 
 		newSeq := r.seqReader.ReadExtendedSeq()
 		if prevSeq+1 != newSeq {
-			r.log.Warn().Uint64("expected", prevSeq+1).Uint64("actual", newSeq).Uint16("real", pkt.SequenceNumber).Msg("Out of order pkt received")
+			r.log.Warn("Out of order pkt received", "expected", prevSeq+1, "actual", newSeq, "real", pkt.SequenceNumber)
 		}
 	} else {
 		r.seqReader.InitSeq(pkt.SequenceNumber)
@@ -167,7 +166,7 @@ func (r *RTPPacketReader) readPayload(b []byte, payload []byte) int {
 	if n < len(payload) {
 		written := copy(r.unreadPayload, payload[n:])
 		if written < len(payload[n:]) {
-			r.log.Error().Msg("Payload is huge, it will be unread")
+			r.log.Error("Payload is huge, it will be unread")
 		}
 		r.unread = written
 	} else {

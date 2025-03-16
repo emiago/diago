@@ -7,15 +7,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
-	"time"
 
 	"github.com/emiago/diago"
+	"github.com/emiago/diago/examples"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 // Run app:
@@ -34,19 +33,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	// Setup logger
-	lev, err := zerolog.ParseLevel(os.Getenv("LOG_LEVEL"))
-	if err != nil || lev == zerolog.NoLevel {
-		lev = zerolog.InfoLevel
-	}
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMicro
-	log.Logger = zerolog.New(zerolog.ConsoleWriter{
-		Out:        os.Stdout,
-		TimeFormat: time.StampMicro,
-	}).With().Timestamp().Logger().Level(lev)
-
-	// Have some debugging
-	sip.SIPDebug = os.Getenv("SIP_DEBUG") == "true"
+	examples.SetupLogger()
 
 	recipientUri := flag.Arg(0)
 	if recipientUri == "" {
@@ -54,12 +41,12 @@ func main() {
 		return
 	}
 
-	err = start(ctx, recipientUri, diago.RegisterOptions{
+	err := start(ctx, recipientUri, diago.RegisterOptions{
 		Username: *fUsername,
 		Password: *fPassword,
 	})
 	if err != nil {
-		log.Fatal().Err(err).Msg("PBX finished with error")
+		slog.Error("PBX finished with error", "error", err)
 	}
 }
 
@@ -92,8 +79,8 @@ func start(ctx context.Context, recipientURI string, regOpts diago.RegisterOptio
 	// Start listening incoming calls
 	go func() {
 		tu.Serve(ctx, func(inDialog *diago.DialogServerSession) {
-			log.Info().Str("id", inDialog.ID).Msg("New dialog request")
-			defer log.Info().Str("id", inDialog.ID).Msg("Dialog finished")
+			slog.Info("New dialog request", "id", inDialog.ID)
+			defer slog.Info("Dialog finished", "id", inDialog.ID)
 		})
 	}()
 

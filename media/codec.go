@@ -6,12 +6,12 @@ package media
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/emiago/diago/media/sdp"
-	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -85,12 +85,12 @@ func mapSupportedCodec(f string) Codec {
 	case sdp.FORMAT_TYPE_TELEPHONE_EVENT:
 		return CodecTelephoneEvent8000
 	default:
-		log.Warn().Str("format", f).Msg("Unsupported format. Using default clock rate")
+		slog.Warn("Unsupported format. Using default clock rate", "format", f)
 	}
 	// Format as default
 	pt, err := sdp.FormatNumeric(f)
 	if err != nil {
-		log.Warn().Str("format", f).Msg("Format is non numeric value")
+		slog.Warn("Format is non numeric value", "format", f)
 	}
 	return Codec{
 		PayloadType: pt,
@@ -99,7 +99,7 @@ func mapSupportedCodec(f string) Codec {
 	}
 }
 
-// func CodecsFromSDP(log *zerolog.Logger, sd sdp.SessionDescription, codecsAudio []Codec) error {
+// func CodecsFromSDP(log *slog.Logger, sd sdp.SessionDescription, codecsAudio []Codec) error {
 // 	md, err := sd.MediaDescription("audio")
 // 	if err != nil {
 // 		return err

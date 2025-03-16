@@ -7,34 +7,27 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"time"
 
 	"github.com/emiago/diago"
 	"github.com/emiago/diago/audio"
+	"github.com/emiago/diago/examples"
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	lev, err := zerolog.ParseLevel(os.Getenv("LOG_LEVEL"))
-	if err != nil || lev == zerolog.NoLevel {
-		lev = zerolog.InfoLevel
-	}
-	log.Logger = zerolog.New(zerolog.ConsoleWriter{
-		Out:        os.Stdout,
-		TimeFormat: time.StampMicro,
-	}).With().Timestamp().Logger().Level(lev)
+	examples.SetupLogger()
 
-	err = start(ctx)
+	err := start(ctx)
 	if err != nil {
-		log.Fatal().Err(err).Msg("PBX finished with error")
+		slog.Error("PBX finished with error", "error", err)
 	}
 }
 
@@ -44,8 +37,8 @@ func start(ctx context.Context) error {
 	tu := diago.NewDiago(ua)
 
 	return tu.Serve(ctx, func(inDialog *diago.DialogServerSession) {
-		log.Info().Str("id", inDialog.ID).Msg("New dialog request")
-		defer log.Info().Str("id", inDialog.ID).Msg("Dialog finished")
+		slog.Info("New dialog request", "id", inDialog.ID)
+		defer slog.Info("Dialog finished", "id", inDialog.ID)
 		ReadMedia(inDialog)
 	})
 }
@@ -81,7 +74,7 @@ func ReadMedia(inDialog *diago.DialogServerSession) error {
 		pkt := inDialog.RTPPacketReader.PacketHeader
 		if time.Since(lastPrint) > 3*time.Second {
 			lastPrint = time.Now()
-			log.Info().Uint8("PayloadType", pkt.PayloadType).Int("pkts", pktsCount).Msg("Received packets")
+			slog.Info("Received packets", "PayloadType", pkt.PayloadType, "pkts", pktsCount)
 		}
 		pktsCount++
 	}

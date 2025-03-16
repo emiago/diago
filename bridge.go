@@ -7,11 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/emiago/diago/media"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 type Bridger interface {
@@ -24,22 +23,26 @@ type Bridge struct {
 	// DTMFpass is also dtmf pipeline and proxy. By default only audio media is proxied
 	DTMFpass bool
 
+	log *slog.Logger
 	// TODO: RTPpass. RTP pass means that RTP will be proxied.
 	// This gives high performance but you can not attach any pipeline in media processing
 	// RTPpass bool
 
 	dialogs []DialogSession
 
-	log zerolog.Logger
 	// minDialogs is just helper flag when to start proxy
 	waitDialogsNum int
 }
 
 func NewBridge() Bridge {
-	return Bridge{
-		log:            log.Logger,
-		waitDialogsNum: 2, // For now only p2p bridge
-	}
+	b := Bridge{}
+	b.Init(slog.Default())
+	return b
+}
+
+func (b *Bridge) Init(log *slog.Logger) {
+	b.log = log
+	b.waitDialogsNum = 2
 }
 
 func (b *Bridge) GetDialogs() []DialogSession {
@@ -90,23 +93,24 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 	}
 
 	go func() {
+		defer func(start time.Time) {
+			b.log.Info("Proxy media setup", "dur", time.Since(start).String())
+		}(time.Now())
 		if err := b.proxyMedia(); err != nil {
 			if errors.Is(err, io.EOF) {
 				return
 			}
-			b.log.Error().Err(err).Msg("Proxy media stopped")
+			b.log.Error("Proxy media stopped", "error", err)
 		}
 	}()
 	return nil
 }
 
+// proxyMedia starts routine to proxy media between
+// Should be called after having 2 or more participants
 func (b *Bridge) proxyMedia() error {
 	var err error
 	log := b.log
-
-	defer func(start time.Time) {
-		log.Info().Dur("dur", time.Since(start)).Msg("Proxy media setup")
-	}(time.Now())
 
 	m1 := b.dialogs[0].Media()
 	m2 := b.dialogs[1].Media()
@@ -135,7 +139,7 @@ func (b *Bridge) proxyMedia() error {
 		r := m1.audioReaderProps(&p1)
 		w := m2.audioWriterProps(&p2)
 
-		log.Info().Str("from", p1.Raddr+" > "+p1.Laddr).Str("to", p2.Laddr+" > "+p2.Raddr).Msg("Starting proxy media routine")
+		log.Debug("Starting proxy media routine", "from", p1.Raddr+" > "+p1.Laddr, "to", p2.Laddr+" > "+p2.Raddr)
 		go proxyMediaBackground(log, r, w, errCh)
 	}()
 
@@ -144,7 +148,7 @@ func (b *Bridge) proxyMedia() error {
 		p1, p2 := MediaProps{}, MediaProps{}
 		r := m2.audioReaderProps(&p1)
 		w := m1.audioWriterProps(&p2)
-		log.Info().Str("from", p1.Raddr+" > "+p1.Laddr).Str("to", p2.Laddr+" > "+p2.Raddr).Msg("Starting proxy media routine")
+		log.Debug("Starting proxy media routine", "from", p1.Raddr+" > "+p1.Laddr, "to", p2.Laddr+" > "+p2.Raddr)
 		go proxyMediaBackground(log, r, w, errCh)
 	}()
 
@@ -153,28 +157,14 @@ func (b *Bridge) proxyMedia() error {
 		err = errors.Join(err, <-errCh)
 	}
 	return err
-	// For webrtc we have no session for our packet readers
-	// TODO find better distiction
-	// if dlg1.Media().RTPPacketReader.Sess == nil || dlg2.Media().RTPPacketReader.Sess == nil {
-	// 	b.log.Info().Msg("Starting proxy media no session")
-	// 	r1 := dlg1.Media().RTPPacketReader.Reader().(media.RTPReaderRaw)
-	// 	r2 := dlg2.Media().RTPPacketReader.Reader().(media.RTPReaderRaw)
-	// 	w1 := dlg1.Media().RTPPacketWriter.Writer().(media.RTPWriterRaw)
-	// 	w2 := dlg2.Media().RTPPacketWriter.Writer().(media.RTPWriterRaw)
-
-	// 	go b.proxyMediaRTPRaw(r1, w2)
-	// 	go b.proxyMediaRTPRaw(r2, w1)
-
-	// 	return nil
-	// }
 }
 
-func proxyMediaBackground(log zerolog.Logger, reader io.Reader, writer io.Writer, ch chan error) {
+func proxyMediaBackground(log *slog.Logger, reader io.Reader, writer io.Writer, ch chan error) {
 	buf := rtpBufPool.Get()
 	defer rtpBufPool.Put(buf)
 
 	written, err := copyWithBuf(reader, writer, buf.([]byte))
-	log.Debug().Int64("bytes", written).Msg("Bridge proxy stream finished")
+	log.Debug("Bridge proxy stream finished", "bytes", written)
 	ch <- err
 }
 
@@ -197,9 +187,10 @@ func (b *Bridge) proxyMediaWithDTMF(m1 *DialogMedia, m2 *DialogMedia) error {
 	buf := rtpBufPool.Get()
 	defer rtpBufPool.Put(buf)
 
-	log.Info().Str("from", p1.Raddr+" > "+p1.Laddr).Str("to", p2.Laddr+" > "+p2.Raddr).Msg("Starting proxy media with DTMF routine")
+	log := b.log
+	log.Debug("Starting proxy media routine", "from", p1.Raddr+" > "+p1.Laddr, "to", p2.Laddr+" > "+p2.Raddr)
 	written, err := copyWithBuf(r, w, buf.([]byte))
-	log.Debug().Int64("bytes", written).Msg("Bridge proxy stream finished")
+	log.Debug("Bridge proxy stream finished", "bytes", written)
 	return err
 }
 

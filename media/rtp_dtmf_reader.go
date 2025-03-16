@@ -4,10 +4,9 @@
 package media
 
 import (
+	"context"
 	"io"
-
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
+	"log/slog"
 )
 
 type RTPDtmfReader struct {
@@ -49,16 +48,16 @@ func (w *RTPDtmfReader) Read(b []byte) (int, error) {
 	// Now decode DTMF
 	ev := DTMFEvent{}
 	if err := DTMFDecode(b, &ev); err != nil {
-		log.Error().Err(err).Msg("Failed to decode DTMF event")
+		slog.Error("Failed to decode DTMF event", "error", err)
 	}
 	w.processDTMFEvent(ev)
 	return n, nil
 }
 
 func (w *RTPDtmfReader) processDTMFEvent(ev DTMFEvent) {
-	if log.Logger.GetLevel() == zerolog.DebugLevel {
+	if slog.Default().Handler().Enabled(context.Background(), slog.LevelDebug) {
 		// Expensive call on logger
-		log.Debug().Interface("ev", ev).Msg("Processing DTMF event")
+		slog.Debug("Processing DTMF event", "ev", ev)
 	}
 	if ev.EndOfEvent {
 		if w.lastEv.Duration == 0 {
@@ -72,7 +71,7 @@ func (w *RTPDtmfReader) processDTMFEvent(ev DTMFEvent) {
 
 		dur := ev.Duration - w.lastEv.Duration
 		if dur <= 3*160 { // Expect at least ~50ms duration
-			log.Debug().Uint16("dur", dur).Msg("Received DTMF packet but short duration")
+			slog.Debug("Received DTMF packet but short duration", "dur", dur)
 			return
 		}
 

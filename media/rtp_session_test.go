@@ -12,7 +12,6 @@ import (
 
 	"github.com/emiago/sipgo/fakes"
 	"github.com/pion/rtcp"
-	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,7 +23,6 @@ func fakeSession(lport int, rport int, rtpReader io.Reader, rtpWriter io.Writer,
 		Raddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: rport},
 		rtcpRaddr: net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: rport + 1},
 	}
-	sess.SetLogger(log.Logger)
 
 	rtpConn := &fakes.UDPConn{
 		Reader: rtpReader,

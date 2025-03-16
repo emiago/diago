@@ -6,15 +6,15 @@ package main
 import (
 	"context"
 	"flag"
+	"log/slog"
 	"os"
 	"os/signal"
 	"time"
 
 	"github.com/emiago/diago"
+	"github.com/emiago/diago/examples"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 // Have receiver running:
@@ -30,25 +30,14 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	lev, err := zerolog.ParseLevel(os.Getenv("LOG_LEVEL"))
-	if err != nil || lev == zerolog.NoLevel {
-		lev = zerolog.InfoLevel
-	}
-
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMicro
-	log.Logger = zerolog.New(zerolog.ConsoleWriter{
-		Out:        os.Stdout,
-		TimeFormat: time.StampMicro,
-	}).With().Timestamp().Logger().Level(lev)
+	examples.SetupLogger()
 
 	flag.Parse()
 	recipientUri := flag.Arg(0)
-	sip.SIPDebug = true
-	sip.TransactionFSMDebug = true
 
-	err = start(ctx, recipientUri)
+	err := start(ctx, recipientUri)
 	if err != nil {
-		log.Fatal().Err(err).Msg("PBX finished with error")
+		slog.Error("PBX finished with error", "error", err)
 	}
 }
 

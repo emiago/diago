@@ -6,14 +6,13 @@ package diago
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 type RegisterResponseError struct {
@@ -23,7 +22,7 @@ type RegisterResponseError struct {
 	Msg string
 }
 
-func (e *RegisterResponseError) StatusCode() sip.StatusCode {
+func (e *RegisterResponseError) StatusCode() int {
 	return e.RegisterRes.StatusCode
 }
 
@@ -36,7 +35,7 @@ type RegisterTransaction struct {
 	Origin *sip.Request
 
 	client *sipgo.Client
-	log    zerolog.Logger
+	log    *slog.Logger
 
 	expiry time.Duration
 }
@@ -70,7 +69,7 @@ func newRegisterTransaction(client *sipgo.Client, recipient sip.Uri, contact sip
 		Origin: req, // origin maybe updated after first register
 		opts:   opts,
 		client: client,
-		log:    log.With().Str("caller", "Register").Logger(),
+		log:    slog.Default().With("caller", "Register"),
 	}
 
 	return t
@@ -85,7 +84,7 @@ func (t *RegisterTransaction) Register(ctx context.Context) error {
 
 	// Send request and parse response
 	// req.SetDestination(*dst)
-	log.Info().Str("uri", req.Recipient.String()).Int("expiry", int(expiry)).Msg("REGISTER")
+	log.Info("REGISTER", "uri", req.Recipient.String(), "expiry", int(expiry))
 	tx, err := client.TransactionRequest(ctx, req, sipgo.ClientRequestRegisterBuild)
 	if err != nil {
 		return fmt.Errorf("fail to create transaction req=%q: %w", req.StartLine(), err)
@@ -117,11 +116,11 @@ func (t *RegisterTransaction) Register(ctx context.Context) error {
 		req.ReplaceHeader(&contact)
 	}
 
-	log.Info().Int("status", int(res.StatusCode)).Msg("Received status")
+	log.Info("Received status", "status", int(res.StatusCode))
 	if res.StatusCode == sip.StatusUnauthorized || res.StatusCode == sip.StatusProxyAuthRequired {
 		tx.Terminate() //Terminate previous
 
-		log.Info().Msg("Unathorized. Doing digest auth")
+		log.Info("Unathorized. Doing digest auth")
 		res, err = client.DoDigestAuth(ctx, req, res, sipgo.DigestAuth{
 			Username: username,
 			Password: password,
@@ -129,7 +128,7 @@ func (t *RegisterTransaction) Register(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("fail to get response req=%q : %w", req.StartLine(), err)
 		}
-		log.Info().Int("status", int(res.StatusCode)).Msg("Received status")
+		log.Info("Received status", "status", int(res.StatusCode))
 	}
 
 	if res.StatusCode != 200 {
@@ -194,7 +193,7 @@ func (t *RegisterTransaction) QualifyLoop(ctx context.Context) error {
 			expiry = t.expiry
 			retry = calcRetry(expiry)
 
-			t.log.Info().Dur("expiry_old", expiry).Dur("expiry_new", t.expiry).Dur("retry", retry).Msg("Register expiry changed")
+			t.log.Info("Register expiry changed", "expiry_old", expiry, "expiry_new", t.expiry, "retry", retry)
 			ticker.Reset(retry)
 		}
 
@@ -202,7 +201,6 @@ func (t *RegisterTransaction) QualifyLoop(ctx context.Context) error {
 }
 
 func (t *RegisterTransaction) Unregister(ctx context.Context) error {
-	log := t.log
 	req := t.Origin
 
 	req.RemoveHeader("Expires")
@@ -210,8 +208,6 @@ func (t *RegisterTransaction) Unregister(ctx context.Context) error {
 	req.AppendHeader(sip.NewHeader("Contact", "*"))
 	expires := sip.ExpiresHeader(0)
 	req.AppendHeader(&expires)
-
-	log.Info().Str("uri", req.Recipient.String()).Msg("UNREGISTER")
 	return t.doRequest(ctx, req)
 }
 
@@ -232,9 +228,9 @@ func (t *RegisterTransaction) doRequest(ctx context.Context, req *sip.Request) e
 		return fmt.Errorf("fail to get response req=%q : %w", req.StartLine(), err)
 	}
 
-	log.Info().Int("status", int(res.StatusCode)).Msg("Received status")
+	log.Info("Received status", "uri", req.Recipient.String())
 	if res.StatusCode == sip.StatusUnauthorized || res.StatusCode == sip.StatusProxyAuthRequired {
-		log.Info().Msg("Unathorized. Doing digest auth")
+		log.Info("Unathorized. Doing digest auth")
 		res, err = client.DoDigestAuth(ctx, req, res, sipgo.DigestAuth{
 			Username: username,
 			Password: password,
@@ -242,7 +238,7 @@ func (t *RegisterTransaction) doRequest(ctx context.Context, req *sip.Request) e
 		if err != nil {
 			return fmt.Errorf("fail to get response req=%q : %w", req.StartLine(), err)
 		}
-		log.Info().Int("status", int(res.StatusCode)).Msg("Received status")
+		log.Info("Received status", "uri", req.Recipient.String())
 	}
 
 	if res.StatusCode != 200 {

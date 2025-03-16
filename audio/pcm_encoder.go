@@ -7,10 +7,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 
 	"github.com/emiago/diago/media"
-	"github.com/rs/zerolog/log"
 )
 
 /*
@@ -256,7 +256,7 @@ func (d *PCMEncoderWriter) Write(lpcm []byte) (int, error) {
 	// We need to have fixed frame sizes due to encoders
 	sampleSize := d.samplesSize
 	if len(lpcm) > sampleSize {
-		log.Warn().Int("pcm", len(lpcm)).Int("expected", sampleSize).Msg("Size of pcm samples does not match our frame")
+		slog.Warn("Size of pcm samples does not match our frame", "lenpcm", len(lpcm), "expected", sampleSize)
 	}
 
 	// If encoder can not fit our network buffer it will error

@@ -11,7 +11,6 @@ import (
 
 	"github.com/emiago/sipgo/fakes"
 	"github.com/pion/rtp"
-	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,7 +18,6 @@ func fakeMediaSessionReader(lport int, rtpReader io.Reader) *MediaSession {
 	sess := &MediaSession{
 		Codecs: []Codec{CodecAudioAlaw, CodecAudioUlaw},
 		Laddr:  net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: lport},
-		log:    log.Logger,
 	}
 
 	conn := &fakes.UDPConn{

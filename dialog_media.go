@@ -5,8 +5,10 @@ package diago
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -18,7 +20,6 @@ import (
 	"github.com/emiago/diago/media"
 	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/sip"
-	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -70,7 +71,7 @@ type DialogMedia struct {
 	// We do not use sipgo as this needs mutex but also keeping original invite
 	lastInvite *sip.Request
 
-	onClose       func()
+	onClose       func() error
 	onMediaUpdate func(*DialogMedia)
 
 	closed bool
@@ -101,18 +102,17 @@ func (d *DialogMedia) Close() {
 	}
 }
 
-func (d *DialogMedia) OnClose(f func()) {
+func (d *DialogMedia) OnClose(f func() error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.onCloseUnsafe(f)
 }
 
-func (d *DialogMedia) onCloseUnsafe(f func()) {
+func (d *DialogMedia) onCloseUnsafe(f func() error) {
 	if d.onClose != nil {
 		prev := d.onClose
-		d.onClose = func() {
-			prev()
-			f()
+		d.onClose = func() error {
+			return errors.Join(prev(), f())
 		}
 		return
 	}
@@ -177,6 +177,12 @@ func (d *DialogMedia) RTPSession() *media.RTPSession {
 	return d.rtpSession
 }
 
+func (d *DialogMedia) MediaSession() *media.MediaSession {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.mediaSession
+}
+
 func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransaction, contactHDR sip.Header) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -204,10 +210,8 @@ func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 	d.mediaSession = msess
 
 	rtpSess := media.NewRTPSession(msess)
-	d.onCloseUnsafe(func() {
-		if err := rtpSess.Close(); err != nil {
-			log.Error().Err(err).Msg("Closing session")
-		}
+	d.onCloseUnsafe(func() error {
+		return rtpSess.Close()
 	})
 
 	d.RTPPacketReader.UpdateRTPSession(rtpSess)
@@ -219,17 +223,18 @@ func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 
 	if d.onMediaUpdate != nil {
 		d.onMediaUpdate(d)
+	} else {
+		fmts := ""
+		for _, c := range msess.Codecs {
+			fmts += c.Name
+		}
+		slog.Info("Media/RTP session updated",
+			slog.String("formats", fmts),
+			slog.String("localAddr", msess.Laddr.String()),
+			slog.String("remoteAddr", msess.Raddr.String()),
+		)
 	}
 
-	fmts := ""
-	for _, c := range msess.Codecs {
-		fmts += c.Name
-	}
-	log.Info().
-		Str("formats", fmts).
-		Str("localAddr", msess.Laddr.String()).
-		Str("remoteAddr", msess.Raddr.String()).
-		Msg("Media/RTP session updated")
 	return nil
 }
 
@@ -447,7 +452,7 @@ func (s *loggingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	respBytes, _ := httputil.DumpResponse(resp, false)
 	bytes = append(bytes, respBytes...)
 
-	log.Debug().Msgf("HTTP Debug:\n%s\n", bytes)
+	slog.Debug(fmt.Sprintf("HTTP Debug:\n%s\n", bytes))
 
 	return resp, err
 }

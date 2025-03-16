@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/emiago/diago/examples"
 	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
@@ -28,6 +29,11 @@ func testDiagoClient(t *testing.T, onRequest func(req *sip.Request) *sip.Respons
 
 	opts = append(opts, WithClient(client))
 	return NewDiago(ua, opts...)
+}
+
+func TestMain(m *testing.M) {
+	examples.SetupLogger()
+	m.Run()
 }
 
 func TestDiagoRegister(t *testing.T) {

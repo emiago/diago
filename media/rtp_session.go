@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -14,7 +15,6 @@ import (
 	"github.com/emiago/diago/media/sdp"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
-	"github.com/rs/zerolog"
 )
 
 // RTP session is RTP ReadWriter with control (RTCP) reporting
@@ -55,7 +55,6 @@ type RTPSession struct {
 	OnReadRTCP  func(pkt rtcp.Packet, rtpStats RTPReadStats)
 	OnWriteRTCP func(pkt rtcp.Packet, rtpStats RTPWriteStats)
 
-	log    zerolog.Logger
 	closed bool
 }
 
@@ -143,7 +142,6 @@ func NewRTPSession(sess *MediaSession) *RTPSession {
 	return &RTPSession{
 		Sess:        sess,
 		rtcpTicker:  time.NewTicker(5 * time.Second),
-		log:         sess.log,
 		rtcpClosed:  make(chan struct{}),
 		OnReadRTCP:  DefaultOnReadRTCP,
 		OnWriteRTCP: DefaultOnWriteRTCP,
@@ -178,11 +176,11 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 
 		// Validate pkt. Check is it keep alive
 		if readPkt.Version == 0 {
-			s.log.Warn().Msg("Received RTP with invalid version. Skipping")
+			slog.Warn("Received RTP with invalid version. Skipping")
 			continue
 		}
 		if len(readPkt.Payload) == 0 {
-			s.log.Warn().Msg("Received RTP with empty Payload. Skipping")
+			slog.Warn("Received RTP with empty Payload. Skipping")
 			continue
 		}
 
@@ -210,7 +208,7 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 			}
 
 			if codec.PayloadType != readPkt.PayloadType {
-				s.log.Warn().Uint8("pt", readPkt.PayloadType).Msg("Received RTP with unsupported payload_type")
+				slog.Warn("Received RTP with unsupported payload_type", "pt", readPkt.PayloadType)
 				return 0, nil
 			}
 		}
@@ -325,7 +323,7 @@ func (s *RTPSession) Monitor() error {
 		select {
 		case now = <-s.rtcpTicker.C:
 		case <-s.rtcpClosed:
-			s.Sess.log.Debug().Msg("RTCP writer closed")
+			slog.Debug("RTCP writer closed")
 			return nil
 		}
 		if err = s.writeRTCP(now); err != nil {
@@ -342,43 +340,44 @@ func (s *RTPSession) MonitorBackground() error {
 		return fmt.Errorf("raddr of RTP is not present. Is RemoteSDP called. Monitor RTP Session failed")
 	}
 
+	log := slog.Default()
 	go func() {
 		sess := s.Sess
-		sess.log.Debug().Str("laddr", sess.rtcpConn.LocalAddr().String()).Msg("RTCP reader started")
+		log.Debug("RTCP reader started", "laddr", sess.rtcpConn.LocalAddr().String())
 		if err := s.readRTCP(); err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
-				sess.log.Debug().Msg("RTP session RTCP reader exit")
+				log.Debug("RTP session RTCP reader exit")
 				return
 			}
 
 			if e, ok := err.(net.Error); ok && e.Timeout() {
 				// Must be  closed
-				sess.log.Debug().Msg("RTP session RTCP closed with timeout")
+				log.Debug("RTP session RTCP closed with timeout")
 				return
 			}
 
-			sess.log.Error().Err(err).Msg("RTP session RTCP reader stopped with error")
+			log.Error("RTP session RTCP reader stopped with error", "error", err)
 		}
 	}()
 
 	go func() {
 		sess := s.Sess
-		sess.log.Debug().Str("raddr", sess.rtcpRaddr.String()).Msg("RTCP writer started")
+		log.Debug("RTCP writer started", "raddr", sess.rtcpRaddr.String())
 		for {
 			var now time.Time
 			select {
 			case now = <-s.rtcpTicker.C:
 			case <-s.rtcpClosed:
-				sess.log.Debug().Msg("RTCP writer closed")
+				log.Debug("RTCP writer closed")
 				return
 			}
 
 			if err := s.writeRTCP(now); err != nil {
 				if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
-					sess.log.Debug().Msg("RTP session RTCP writer exit")
+					log.Debug("RTP session RTCP writer exit")
 					return
 				}
-				sess.log.Error().Err(err).Str("now", now.String()).Msg("RTP session RTCP writer stopped with error")
+				log.Error("RTP session RTCP writer stopped with error", "error", err, "now", now.String())
 				return
 			}
 		}
@@ -396,7 +395,7 @@ func (s *RTPSession) readRTCP() error {
 		n, err := sess.ReadRTCP(buf, rtcpBuf)
 		if err != nil {
 			if errors.Is(err, errRTCPFailedToUnmarshal) {
-				s.log.Err(err).Msg("RTCP Unmarshal error. Continue listen")
+				slog.Error("RTCP Unmarshal error. Continue listen", "error", err)
 				continue
 			}
 			return err
@@ -446,7 +445,7 @@ func (s *RTPSession) readRTCPPacket(pkt rtcp.Packet) {
 func (s *RTPSession) readReceptionReport(rr rtcp.ReceptionReport, now time.Time) {
 	// For now only use single SSRC
 	if rr.SSRC != s.writeStats.SSRC {
-		s.Sess.log.Warn().Uint32("ssrc", rr.SSRC).Uint32("expected", s.readStats.SSRC).Msg("Reception report SSRC does not match our internal")
+		slog.Warn("Reception report SSRC does not match our internal", "ssrc", rr.SSRC, "expected", s.readStats.SSRC)
 		return
 	}
 
@@ -457,7 +456,7 @@ func (s *RTPSession) readReceptionReport(rr rtcp.ReceptionReport, now time.Time)
 		var skewed bool
 		s.readStats.RTT, skewed = calcRTT(now, rr.LastSenderReport, rr.Delay)
 		if skewed {
-			s.Sess.log.Warn().Uint32("ssrc", rr.SSRC).Str("rtt", s.readStats.RTT.String()).Msg("Internal RTCP clock skew detected")
+			slog.Warn("Internal RTCP clock skew detected", "ssrc", rr.SSRC, "rtt", s.readStats.RTT.String())
 		}
 	}
 	// used to calc fraction lost

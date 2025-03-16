@@ -5,17 +5,14 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"os/signal"
-	"time"
 
 	"github.com/emiago/diago"
-	"github.com/emiago/diago/media"
+	"github.com/emiago/diago/examples"
 	"github.com/emiago/diago/testdata"
 	"github.com/emiago/sipgo"
-	"github.com/emiago/sipgo/sip"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 // Dial this app with
@@ -25,23 +22,11 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	lev, err := zerolog.ParseLevel(os.Getenv("LOG_LEVEL"))
-	if err != nil || lev == zerolog.NoLevel {
-		lev = zerolog.InfoLevel
-	}
+	examples.SetupLogger()
 
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMicro
-	log.Logger = zerolog.New(zerolog.ConsoleWriter{
-		Out:        os.Stdout,
-		TimeFormat: time.StampMicro,
-	}).With().Timestamp().Logger().Level(lev)
-
-	sip.SIPDebug = os.Getenv("SIP_DEBUG") == "true"
-	media.RTCPDebug = os.Getenv("RTCP_DEBUG") == "true"
-
-	err = start(ctx)
+	err := start(ctx)
 	if err != nil {
-		log.Fatal().Err(err).Msg("PBX finished with error")
+		slog.Error("PBX finished with error", "error", err)
 	}
 }
 
@@ -51,10 +36,10 @@ func start(ctx context.Context) error {
 	tu := diago.NewDiago(ua)
 
 	return tu.Serve(ctx, func(inDialog *diago.DialogServerSession) {
-		log.Info().Str("id", inDialog.ID).Msg("New dialog request")
-		defer log.Info().Str("id", inDialog.ID).Msg("Dialog finished")
+		slog.Info("New dialog request", "id", inDialog.ID)
+		defer slog.Info("Dialog finished", "id", inDialog.ID)
 		if err := Playback(inDialog); err != nil {
-			log.Error().Err(err).Msg("Failed to play")
+			slog.Error("Failed to play", "error", err)
 		}
 	})
 }
@@ -65,7 +50,7 @@ func Playback(inDialog *diago.DialogServerSession) error {
 	inDialog.Answer()   // Answer -> 200 Response
 
 	playfile, _ := testdata.OpenFile("demo-echodone.wav")
-	log.Info().Str("file", "demo-echodone.wav").Msg("Playing a file")
+	slog.Info("Playing a file", "file", "demo-echodone.wav")
 
 	pb, err := inDialog.PlaybackCreate()
 	if err != nil {

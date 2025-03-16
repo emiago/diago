@@ -6,6 +6,7 @@ package media
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"strconv"
 	"strings"
@@ -16,8 +17,6 @@ import (
 	"github.com/emiago/sipgo/sip"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -32,6 +31,34 @@ var (
 	RTPDebug  = false
 	RTCPDebug = false
 )
+
+func logRTPRead(m *MediaSession, raddr net.Addr, p *rtp.Packet) {
+	if RTPDebug {
+		s := raddr.String()
+
+		slog.Debug(fmt.Sprintf("RTP read %s < %s:\n%s", m.Laddr.String(), s, p.String()))
+	}
+}
+
+func logRTPWrite(m *MediaSession, p *rtp.Packet) {
+	if RTPDebug {
+		slog.Debug(fmt.Sprintf("RTP write %s > %s:\n%s", m.Laddr.String(), m.Raddr.String(), p.String()))
+	}
+}
+
+func logRTCPRead(m *MediaSession, pkts []rtcp.Packet) {
+	if RTCPDebug {
+		for _, p := range pkts {
+			slog.Debug(fmt.Sprintf("RTCP read %s < %s:\n%s", m.Laddr.String(), m.Raddr.String(), StringRTCP(p)))
+		}
+	}
+}
+
+func logRTCPWrite(m *MediaSession, p rtcp.Packet) {
+	if RTCPDebug {
+		slog.Debug(fmt.Sprintf("RTCP write %s > %s:\n%s", m.Laddr.String(), m.Raddr.String(), StringRTCP(p)))
+	}
+}
 
 // MediaSession represents active media session with RTP/RTCP
 // TODO: multiple media descriptions.
@@ -66,8 +93,6 @@ type MediaSession struct {
 
 	// TODO: Support RTP Symetric
 	rtpSymetric bool
-
-	log zerolog.Logger
 }
 
 func NewMediaSession(ip net.IP, port int) (s *MediaSession, e error) {
@@ -76,7 +101,6 @@ func NewMediaSession(ip net.IP, port int) (s *MediaSession, e error) {
 			CodecAudioUlaw, CodecAudioAlaw, CodecTelephoneEvent8000,
 		},
 		Mode: sdp.ModeSendrecv,
-		log:  log.Logger,
 	}
 	s.Laddr.IP = ip
 	s.Laddr.Port = port
@@ -87,10 +111,6 @@ func NewMediaSession(ip net.IP, port int) (s *MediaSession, e error) {
 // Init should be called if session is created manually
 // Use NewMediaSession for default building
 func (s *MediaSession) Init() error {
-	// NOTE: Creating custom logger with zerolog creates new allocation buffer, which here we have no big use case
-	// s.log = log.With().Str("caller", "media").Logger()
-	s.log = log.Logger
-
 	if s.Codecs == nil || len(s.Codecs) == 0 {
 		return fmt.Errorf("media session: formats can not be empty")
 	}
@@ -111,7 +131,6 @@ func (s *MediaSession) Init() error {
 }
 
 func (s *MediaSession) InitWithListeners(lRTP net.PacketConn, lRTCP net.PacketConn, raddr *net.UDPAddr) {
-	s.log = log.Logger
 	s.Mode = sdp.ModeSendrecv
 	s.rtpConn = lRTP
 	s.rtcpConn = lRTCP
@@ -169,10 +188,6 @@ func (s *MediaSession) Close() {
 	}
 }
 
-func (s *MediaSession) SetLogger(log zerolog.Logger) {
-	s.log = log
-}
-
 // SetRemoteAddr is helper to set Raddr and rtcp address.
 // It is not thread safe
 func (s *MediaSession) SetRemoteAddr(raddr *net.UDPAddr) {
@@ -203,7 +218,6 @@ func (s *MediaSession) LocalSDP() []byte {
 func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	sd := sdp.SessionDescription{}
 	if err := sdp.Unmarshal(sdpReceived, &sd); err != nil {
-		// p.log.Debug().Err(err).Msgf("Fail to parse SDP\n%q", string(r.Body()))
 		return fmt.Errorf("fail to parse received SDP: %w", err)
 	}
 
@@ -220,8 +234,8 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			// Nothing parsed, break
 			return err
 		}
-		// TODO: Should we be strict?
-		s.log.Error().Err(err).Msg("Reading codecs from sdp was not full")
+
+		return fmt.Errorf("reading codecs from SDP was not full: %w", err)
 	}
 	if n == 0 {
 		return fmt.Errorf("no codecs found in SDP")
@@ -342,9 +356,7 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	// 	return err
 	// }
 
-	if RTPDebug {
-		m.log.Debug().Msgf("RTP read0 %s < %s \n%s", m.Laddr.String(), from.String(), pkt.String())
-	}
+	logRTPRead(m, from, pkt)
 	return n, err
 }
 
@@ -363,9 +375,7 @@ func (m *MediaSession) readRTPParsed() (rtp.Packet, error) {
 		return p, err
 	}
 
-	if RTPDebug {
-		m.log.Debug().Msgf("Recv RTP\n%s", p.String())
-	}
+	logRTPRead(m, &m.Raddr, &p)
 	return p, err
 }
 
@@ -399,11 +409,7 @@ func (m *MediaSession) ReadRTCP(buf []byte, pkts []rtcp.Packet) (n int, err erro
 		return 0, err
 	}
 
-	if RTCPDebug {
-		for _, p := range pkts[:n] {
-			m.log.Debug().Msgf("RTCP read:\n%s", StringRTCP(p))
-		}
-	}
+	logRTCPRead(m, pkts[:n])
 	return n, err
 }
 
@@ -428,9 +434,7 @@ func (m *MediaSession) ReadRTCPRawDeadline(buf []byte, t time.Time) (int, error)
 }
 
 func (m *MediaSession) WriteRTP(p *rtp.Packet) error {
-	if RTPDebug {
-		m.log.Debug().Msgf("RTP write %s > %s:\n%s", m.Laddr.String(), m.Raddr.String(), p.String())
-	}
+	logRTPWrite(m, p)
 
 	data, err := p.Marshal()
 	if err != nil {
@@ -454,9 +458,7 @@ func (m *MediaSession) WriteRTPRaw(data []byte) (n int, err error) {
 }
 
 func (m *MediaSession) WriteRTCP(p rtcp.Packet) error {
-	if RTCPDebug {
-		m.log.Debug().Msgf("RTCP write: \n%s", StringRTCP(p))
-	}
+	logRTCPWrite(m, p)
 
 	data, err := p.Marshal()
 	if err != nil {

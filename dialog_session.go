@@ -6,11 +6,11 @@ package diago
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/rs/zerolog/log"
 )
 
 type DialogSession interface {
@@ -65,7 +65,7 @@ func dialogHandleReferNotify(d DialogSession, req *sip.Request, tx sip.ServerTra
 
 	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusOK, "OK", nil))
 
-	log.Info().Msg("Handling NOTIFY: " + string(req.Body()))
+	slog.Info("Handling NOTIFY: " + string(req.Body()))
 	switch frag[:11] {
 	case "SIP/2.0 100":
 	case "SIP/2.0 200":
@@ -79,16 +79,16 @@ func dialogHandleRefer(d DialogSession, dg *Diago, req *sip.Request, tx sip.Serv
 	// 	An agent responding to a REFER method MUST return a 400 (Bad Request)
 	//    if the request contained zero or more than one Refer-To header field
 	//    values.
-	log := &dg.log
+	log := dg.log
 	if referTo == nil {
-		log.Info().Msg("Received REFER without Refer-To header")
+		log.Info("Received REFER without Refer-To header")
 		tx.Respond(sip.NewResponseFromRequest(req, 400, "Bad Request", nil))
 		return
 	}
 
 	referToUri := sip.Uri{}
 	if err := sip.ParseUri(referTo.Value(), &referToUri); err != nil {
-		log.Info().Err(err).Msg("Received REFER bud failed to parse Refer-To uri")
+		log.Info("Received REFER bud failed to parse Refer-To uri", "error", err)
 		tx.Respond(sip.NewResponseFromRequest(req, 400, "Bad Request", nil))
 		return
 	}
@@ -100,7 +100,7 @@ func dialogHandleRefer(d DialogSession, dg *Diago, req *sip.Request, tx sip.Serv
 	}
 
 	// TODO can we locate this more checks
-	log.Info().Msg("Accepting refer")
+	log.Info("Accepting refer")
 	// emptySess := &DialogClientSession{
 	// 	DialogClientSession: &sipgo.DialogClientSession{
 	// 		Dialog: sipgo.Dialog{
@@ -132,18 +132,14 @@ func dialogHandleRefer(d DialogSession, dg *Diago, req *sip.Request, tx sip.Serv
 	// FROM, TO, CALLID must be same to make SUBSCRIBE working
 	_, err := d.Do(ctx, notify100)
 	if err != nil {
-		log.Info().Err(err).Msg("REFER NOTIFY 100 failed to sent")
+		log.Info("REFER NOTIFY 100 failed to sent", "error", err)
 		return
 	}
-	// if res.StatusCode != 200 {
-	// 	log.Info().Int("res", int(res.StatusCode)).Msg("REFER NOTIFY 100 non 200 resposne")
-	// 	return
-	// }
 
 	referDialog, err := dg.Invite(ctx, referToUri, InviteOptions{})
 	if err != nil {
 		// DO notify?
-		log.Error().Err(err).Msg("REFER dialog failed to dial")
+		log.Error("REFER dialog failed to dial", "error", err)
 		return
 	}
 	// We send ref dialog to processing. After sending 200 OK this session will terminate
@@ -154,16 +150,10 @@ func dialogHandleRefer(d DialogSession, dg *Diago, req *sip.Request, tx sip.Serv
 	addSipFrag(notify200, 200, "OK")
 	_, err = d.Do(ctx, notify200)
 	if err != nil {
-		log.Info().Err(err).Msg("REFER NOTIFY 100 failed to sent")
+		log.Info("REFER NOTIFY 100 failed to sent", "error", err)
 		return
 	}
 
 	// Now this dialog will receive BYE and it will terminate
 	// We need to send this referDialog to control of caller
-
-	// if res.StatusCode != 200 {
-	// 	dg.log.Info().Int("res", int(res.StatusCode)).Msg("REFER NOTIFY 100 non 200 resposne")
-	// 	return
-	// }
-
 }

@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"strconv"
 	"time"
@@ -15,8 +16,6 @@ import (
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 type ServeDialogFunc func(d *DialogServerSession)
@@ -32,7 +31,7 @@ type Diago struct {
 	auth      sipgo.DigestAuth
 	mediaConf MediaConfig
 
-	log zerolog.Logger
+	log *slog.Logger
 }
 
 // We can extend this WithClientOptions, WithServerOptions
@@ -81,7 +80,7 @@ func WithTransport(t Transport) DiagoOption {
 			var err error
 			t.mediaBindIP, _, err = sip.ResolveInterfacesIP(network, nil)
 			if err != nil {
-				dg.log.Error().Err(err).Msg("failed to resolve real IP")
+				dg.log.Error("failed to resolve real IP", "error", err)
 			}
 		}
 
@@ -117,7 +116,7 @@ func WithTransport(t Transport) DiagoOption {
 		t.client = dg.createClient(t)
 		dg.transports = append(dg.transports, t)
 
-		dg.log.Debug().Interface("t", t).Msg("Loaded transport")
+		dg.log.Debug("Loaded transport", "t", t)
 	}
 }
 
@@ -153,7 +152,7 @@ func WithClient(client *sipgo.Client) DiagoOption {
 	}
 }
 
-func WithLogger(l zerolog.Logger) DiagoOption {
+func WithLogger(l *slog.Logger) DiagoOption {
 	return func(dg *Diago) {
 		dg.log = l
 	}
@@ -163,7 +162,7 @@ func WithLogger(l zerolog.Logger) DiagoOption {
 func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	dg := &Diago{
 		ua:  ua,
-		log: log.Logger,
+		log: slog.Default(),
 		serveHandler: func(d *DialogServerSession) {
 			fmt.Println("Serve Handler not implemented")
 		},
@@ -189,13 +188,12 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	if dg.server == nil {
 		dg.server, _ = sipgo.NewServer(ua)
 	}
-
 	server := dg.server
 
 	errHandler := func(f func(req *sip.Request, tx sip.ServerTransaction) error) sipgo.RequestHandler {
 		return func(req *sip.Request, tx sip.ServerTransaction) {
 			if err := f(req, tx); err != nil {
-				dg.log.Error().Err(err).Str("req.method", req.Method.String()).Msg("Failed to handle request")
+				dg.log.Error("Failed to handle request", "error", err, "req.method", req.Method.String())
 				return
 			}
 
@@ -410,7 +408,7 @@ func (dg *Diago) handleReInvite(req *sip.Request, tx sip.ServerTransaction, id s
 	if err != nil {
 		id, err := sip.UACReadRequestDialogID(req)
 		if err != nil {
-			dg.log.Info().Err(err).Msg("Reinvite failed to read request dialog ID")
+			dg.log.Info("Reinvite failed to read request dialog ID", "error", err)
 			return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil))
 
 		}
@@ -452,7 +450,7 @@ func (dg *Diago) serve(ctx context.Context, f ServeDialogFunc, readyCh func()) e
 				}
 				readyCh()
 
-				log.Info().Str("addr", addr).Str("protocol", tran.Transport).Msg("Listening on transport")
+				dg.log.Info("Listening on transport", "addr", addr, "protocol", tran.Transport)
 			}))
 
 			if tran.TLSConf != nil {
@@ -469,7 +467,6 @@ func (dg *Diago) serve(ctx context.Context, f ServeDialogFunc, readyCh func()) e
 
 	// tran := dg.transports[0]
 	// hostport := net.JoinHostPort(tran.BindHost, strconv.Itoa(tran.BindPort))
-	// log.Info().Str("addr", hostport).Str("protocol", tran.Transport).Msg("Listening on transport")
 	// return server.ListenAndServe(ctx, tran.Transport, hostport)
 }
 
@@ -490,7 +487,7 @@ func (dg *Diago) ServeBackground(ctx context.Context, f ServeDialogFunc) error {
 		case err := <-chErr:
 			return err
 		case <-readyCh:
-			dg.log.Info().Msg("Network ready")
+			dg.log.Info("Network ready")
 		}
 	}
 	return nil
@@ -752,10 +749,10 @@ func (dg *Diago) Register(ctx context.Context, recipient sip.Uri, opts RegisterO
 		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 		err := t.Unregister(ctx)
 		if err != nil {
-			log.Error().Err(err).Msg("Fail to unregister")
+			dg.log.Error("Failed to unregister", "error", err)
 			return
 		}
-		dg.log.Debug().Msg("Unregister successfull")
+		dg.log.Debug("Unregister successfull")
 	}()
 
 	return t.QualifyLoop(ctx)
@@ -820,7 +817,7 @@ func (dg *Diago) createClient(tran Transport) (client *sipgo.Client) {
 		sipgo.WithClientPort(bindPort),
 	)
 	if err != nil {
-		dg.log.Error().Err(err).Msg("Failed to create transport client")
+		dg.log.Error("Failed to create transport client", "error", err)
 		cli, _ = sipgo.NewClient(ua) // Make some defaut
 	}
 	return cli

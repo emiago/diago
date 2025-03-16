@@ -16,9 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 func (p *AudioPlayback) PlayURL(urlStr string) (int64, error) {
@@ -89,7 +86,7 @@ func (p *AudioPlayback) playURL(urlStr string, written *int64) error {
 		defer writer.Close()
 
 		// BETTER DESIGN needed
-		httpPartial := func(log zerolog.Logger, res *http.Response, writer io.Writer) error {
+		httpPartial := func(res *http.Response, writer io.Writer) error {
 			chunk, err := io.ReadAll(res.Body)
 			if err != nil {
 				return fmt.Errorf("reading chunk stopped: %w", err)
@@ -104,7 +101,6 @@ func (p *AudioPlayback) playURL(urlStr string, written *int64) error {
 			var offset int64 = 64 * 1024 // 512K
 			for ; start < maxSize; start += offset {
 				end := min(start+offset-1, maxSize)
-				log.Debug().Int64("start", start).Int64("end", end).Int64("max", maxSize).Msg("Reading chunk size")
 				// Range is inclusive
 				rangeHDR := fmt.Sprintf("bytes=%d-%d", start, end)
 
@@ -137,8 +133,7 @@ func (p *AudioPlayback) playURL(urlStr string, written *int64) error {
 
 		httpErr := make(chan error)
 		go func() {
-			// TODO have here context logger
-			err := httpPartial(log.Logger, res, writer)
+			err := httpPartial(res, writer)
 			writer.Close()
 			httpErr <- err
 		}()

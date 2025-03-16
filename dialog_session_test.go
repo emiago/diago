@@ -6,15 +6,12 @@ package diago
 import (
 	"context"
 	"math/rand/v2"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -39,26 +36,6 @@ func dialogEcho(sess DialogSession) error {
 		return err
 	}
 	return nil
-}
-
-func TestMain(m *testing.M) {
-	lev, err := zerolog.ParseLevel(os.Getenv("LOG_LEVEL"))
-	if err != nil || lev == zerolog.NoLevel {
-		lev = zerolog.InfoLevel
-	}
-
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMicro
-	log.Logger = zerolog.New(zerolog.ConsoleWriter{
-		Out:        os.Stdout,
-		TimeFormat: time.StampMicro,
-	}).With().Timestamp().Logger().Level(lev)
-
-	sip.SIPDebug = os.Getenv("SIP_DEBUG") != ""
-	media.RTPDebug = os.Getenv("RTP_DEBUG") != ""
-	media.RTCPDebug = os.Getenv("RTCP_DEBUG") != ""
-	sip.TransactionFSMDebug = os.Getenv("SIP_TRANSACTIONS_DEBUG") != ""
-
-	m.Run()
 }
 
 func TestIntegrationInbound(t *testing.T) {
@@ -159,13 +136,13 @@ func TestIntegrationBridging(t *testing.T) {
 		bridge := NewBridge()
 		// Add us in bridge
 		if err := bridge.AddDialogSession(in); err != nil {
-			log.Error().Err(err).Msg("Adding dialog in bridge failed")
+			t.Log("Adding dialog in bridge failed", err)
 			return
 		}
 
 		out, err := tu.InviteBridge(ctx, sip.Uri{User: "test", Host: "127.0.0.200", Port: 5090}, &bridge, InviteOptions{})
 		if err != nil {
-			log.Error().Err(err).Msg("Dialing failed")
+			t.Log("Dialing failed", err)
 			return
 		}
 
