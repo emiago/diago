@@ -544,6 +544,8 @@ func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts InviteOptio
 		Originator: opts.Originator,
 		OnResponse: opts.OnResponse,
 		Headers:    opts.Headers,
+		Username:   opts.Username,
+		Password:   opts.Password,
 	}); err != nil {
 		d.Close()
 		return nil, err
