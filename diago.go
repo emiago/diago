@@ -196,12 +196,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 				dg.log.Error("Failed to handle request", "error", err, "req.method", req.Method.String())
 				return
 			}
-
-			// For retransmissions we want to wait transaction to complete it self
-			if tx.Err() != nil {
-				return
-			}
-			<-tx.Done()
+			// Termination gracefull will be done by sipgo now
 		}
 	}
 
