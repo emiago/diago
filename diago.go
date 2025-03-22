@@ -572,6 +572,8 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		Originator: opts.Originator,
 		OnResponse: opts.OnResponse,
 		Headers:    opts.Headers,
+		Username:   opts.Username,
+		Password:   opts.Password,
 	}); err != nil {
 		d.Close()
 		return nil, err
