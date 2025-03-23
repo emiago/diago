@@ -273,12 +273,12 @@ func (d *DialogClientSession) ack(ctx context.Context, body []byte) error {
 	}
 
 	// Now dialog is established and can be add into store
-	if err := DialogsClientCache.DialogStore(ctx, d.ID, d); err != nil {
-		return err
-	}
-	d.OnClose(func() error {
-		return DialogsClientCache.DialogDelete(context.Background(), d.ID)
-	})
+	// if err := DialogsClientCache.DialogStore(ctx, d.ID, d); err != nil {
+	// 	return err
+	// }
+	// d.OnClose(func() error {
+	// 	return DialogsClientCache.DialogDelete(context.Background(), d.ID)
+	// })
 	return nil
 }
 

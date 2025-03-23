@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/emiago/diago/media"
@@ -32,6 +33,8 @@ type Diago struct {
 	mediaConf MediaConfig
 
 	log *slog.Logger
+
+	cache DialogCachePool
 }
 
 // We can extend this WithClientOptions, WithServerOptions
@@ -170,6 +173,11 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		mediaConf: MediaConfig{
 			Codecs: []media.Codec{media.CodecAudioUlaw, media.CodecAudioAlaw, media.CodecTelephoneEvent8000},
 		},
+
+		cache: DialogCachePool{
+			client: &dialogCacheMap[*DialogClientSession]{sync.Map{}},
+			server: &dialogCacheMap[*DialogServerSession]{sync.Map{}},
+		},
 	}
 
 	for _, o := range opts {
@@ -235,10 +243,14 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 
 		defer closeAndLog(dWrap, "closing dialog server returned error")
 
-		DialogsServerCache.DialogStore(dWrap.Context(), dWrap.ID, dWrap)
+		if err := dg.cache.server.DialogStore(dWrap.Context(), dWrap.ID, dWrap); err != nil {
+			return fmt.Errorf("failed to store server dialog: %w", err)
+		}
 		defer func() {
 			// TODO: have better context
-			DialogsServerCache.DialogDelete(context.Background(), dWrap.ID)
+			if err := dg.cache.server.DialogDelete(context.Background(), dWrap.ID); err != nil {
+				dg.log.Error("Failed to delete server dialog", "error", err)
+			}
 		}()
 
 		dg.serveHandler(dWrap)
@@ -267,7 +279,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	})
 
 	server.OnAck(errHandler(func(req *sip.Request, tx sip.ServerTransaction) error {
-		d, err := MatchDialogServer(req)
+		d, err := dg.cache.MatchDialogServer(req)
 		if err != nil {
 			// Normally ACK will be received if some out of dialog request is received or we responded negatively
 			// tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
@@ -278,7 +290,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	}))
 
 	server.OnBye(errHandler(func(req *sip.Request, tx sip.ServerTransaction) error {
-		sd, cd, err := MatchDialog(req)
+		sd, cd, err := dg.cache.MatchDialog(req)
 		if err != nil {
 			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
 				return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
@@ -306,7 +318,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
 		}
 
-		sd, cd, err := MatchDialog(req)
+		sd, cd, err := dg.cache.MatchDialog(req)
 		if err != nil {
 			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
 				return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
@@ -346,7 +358,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	}))
 
 	dg.server.OnRefer(func(req *sip.Request, tx sip.ServerTransaction) {
-		sd, cd, err := MatchDialog(req)
+		sd, cd, err := dg.cache.MatchDialog(req)
 		if err != nil {
 			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
 				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
@@ -367,7 +379,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 
 	dg.server.OnNotify(func(req *sip.Request, tx sip.ServerTransaction) {
 		// THIS should match now subscribtion instead dialog
-		sd, cd, err := MatchDialog(req)
+		sd, cd, err := dg.cache.MatchDialog(req)
 		if err != nil {
 			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
 				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
@@ -399,7 +411,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 func (dg *Diago) handleReInvite(req *sip.Request, tx sip.ServerTransaction, id string) error {
 	ctx := context.TODO()
 	// No Error means we have ID
-	s, err := DialogsServerCache.DialogLoad(ctx, id)
+	s, err := dg.cache.server.DialogLoad(ctx, id)
 	if err != nil {
 		id, err := sip.UACReadRequestDialogID(req)
 		if err != nil {
@@ -408,7 +420,7 @@ func (dg *Diago) handleReInvite(req *sip.Request, tx sip.ServerTransaction, id s
 
 		}
 		// No Error means we have ID
-		s, err := DialogsClientCache.DialogLoad(ctx, id)
+		s, err := dg.cache.client.DialogLoad(ctx, id)
 		if err != nil {
 			return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, "Call/Transaction Does Not Exist", nil))
 		}
@@ -655,6 +667,21 @@ func (dg *Diago) NewDialog(recipient sip.Uri, opts NewDialogOptions) (d *DialogC
 		return nil, err
 	}
 
+	// This should be run on ACK
+	d.OnState(func(s sip.DialogState) {
+		if s != sip.DialogStateConfirmed {
+			return
+		}
+
+		// Now dialog is established and can be add into store
+		if err := dg.cache.client.DialogStore(context.Background(), d.ID, d); err != nil {
+			dg.log.Error("Failed to store in dialog cache", "error", err)
+		}
+	})
+
+	d.OnClose(func() error {
+		return dg.cache.client.DialogDelete(context.Background(), d.ID)
+	})
 	return d, nil
 }
 
@@ -820,4 +847,12 @@ func (dg *Diago) createClient(tran Transport) (client *sipgo.Client) {
 		cli, _ = sipgo.NewClient(ua) // Make some defaut
 	}
 	return cli
+}
+
+func (dg *Diago) DialogCacheServer() DialogCache[*DialogServerSession] {
+	return dg.cache.server
+}
+
+func (dg *Diago) DialogCacheClient() DialogCache[*DialogClientSession] {
+	return dg.cache.client
 }

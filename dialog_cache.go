@@ -12,12 +12,6 @@ import (
 	"github.com/emiago/sipgo/sip"
 )
 
-var (
-	// TODO, replace with typed versions
-	DialogsClientCache DialogCache[*DialogClientSession] = &dialogCacheMap[*DialogClientSession]{sync.Map{}}
-	DialogsServerCache DialogCache[*DialogServerSession] = &dialogCacheMap[*DialogServerSession]{sync.Map{}}
-)
-
 type DialogCache[T DialogSession] interface {
 	DialogStore(ctx context.Context, id string, v T) error
 	DialogLoad(ctx context.Context, id string) (T, error)
@@ -59,13 +53,18 @@ type DialogData struct {
 	State         sip.DialogState
 }
 
-func MatchDialogClient(req *sip.Request) (*DialogClientSession, error) {
+type DialogCachePool struct {
+	client DialogCache[*DialogClientSession]
+	server DialogCache[*DialogServerSession]
+}
+
+func (p *DialogCachePool) MatchDialogClient(req *sip.Request) (*DialogClientSession, error) {
 	id, err := sip.UACReadRequestDialogID(req)
 	if err != nil {
 		return nil, errors.Join(err, sipgo.ErrDialogOutsideDialog)
 	}
 
-	val, err := DialogsClientCache.DialogLoad(context.Background(), id)
+	val, err := p.client.DialogLoad(context.Background(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -73,13 +72,13 @@ func MatchDialogClient(req *sip.Request) (*DialogClientSession, error) {
 	return val, nil
 }
 
-func MatchDialogServer(req *sip.Request) (*DialogServerSession, error) {
+func (p *DialogCachePool) MatchDialogServer(req *sip.Request) (*DialogServerSession, error) {
 	id, err := sip.UASReadRequestDialogID(req)
 	if err != nil {
 		return nil, errors.Join(err, sipgo.ErrDialogOutsideDialog)
 	}
 
-	val, err := DialogsServerCache.DialogLoad(context.Background(), id)
+	val, err := p.server.DialogLoad(context.Background(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -87,14 +86,14 @@ func MatchDialogServer(req *sip.Request) (*DialogServerSession, error) {
 	return val, nil
 }
 
-func MatchDialog(req *sip.Request) (*DialogServerSession, *DialogClientSession, error) {
-	d, err := MatchDialogServer(req)
+func (p *DialogCachePool) MatchDialog(req *sip.Request) (*DialogServerSession, *DialogClientSession, error) {
+	d, err := p.MatchDialogServer(req)
 	if err != nil {
 		if !errors.Is(err, sipgo.ErrDialogDoesNotExists) {
 			return nil, nil, err
 		}
 
-		cd, err := MatchDialogClient(req)
+		cd, err := p.MatchDialogClient(req)
 		return nil, cd, err
 	}
 	return d, nil, nil
