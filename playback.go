@@ -4,6 +4,7 @@
 package diago
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -163,3 +164,104 @@ func (p *AudioPlayback) calcPlayoutSize() int {
 // 		}
 // 	}
 // }
+
+// PlayWithContext streams audio while respecting context cancellation,
+// seamlessly handling different MIME types, and ensuring graceful termination.
+func (p *AudioPlayback) PlayWithContext(ctx context.Context, reader io.Reader, mimeType string) (int64, error) {
+	var written int64
+	var err error
+
+	switch mimeType {
+	case "":
+		written, err = p.streamWithContext(ctx, reader, p.writer)
+	case "audio/wav", "audio/x-wav", "audio/wav-x", "audio/vnd.wave":
+		written, err = p.streamWavWithContext(ctx, reader, p.writer)
+	default:
+		return 0, fmt.Errorf("unsupported content type %q", mimeType)
+	}
+
+	p.totalWritten += written
+	if errors.Is(err, io.EOF) {
+		return written, nil
+	}
+	return written, err
+}
+
+// streamWithContext reads audio data in chunks and writes to the output,
+// ensuring playback respects context cancellation for smooth interruption.
+func (p *AudioPlayback) streamWithContext(ctx context.Context, reader io.Reader, writer io.Writer) (int64, error) {
+	payloadSize := p.calcPlayoutSize()
+	buf := playBufPool.Get()
+	defer playBufPool.Put(buf)
+	payloadBuf := buf.([]byte)[:payloadSize]
+
+	var totalWritten int64
+	for {
+		select {
+		case <-ctx.Done():
+			return totalWritten, ctx.Err()
+		default:
+			n, err := reader.Read(payloadBuf)
+			if n > 0 {
+				written, wErr := writer.Write(payloadBuf[:n])
+				totalWritten += int64(written)
+				if wErr != nil {
+					return totalWritten, wErr
+				}
+			}
+			if err != nil {
+				return totalWritten, err
+			}
+		}
+	}
+}
+
+// streamWavWithContext decodes and streams WAV audio while verifying format compatibility,
+// converting it to PCM as needed, and allowing for controlled termination via context.
+func (p *AudioPlayback) streamWavWithContext(ctx context.Context, reader io.Reader, writer io.Writer) (int64, error) {
+	codec := &p.codec
+	dec := audio.NewWavReader(reader)
+	if err := dec.ReadHeaders(); err != nil {
+		return 0, err
+	}
+	if dec.BitsPerSample != uint16(p.BitDepth) {
+		return 0, fmt.Errorf("wav file bitdepth=%d does not match expected=%d", dec.BitsPerSample, p.BitDepth)
+	}
+	if dec.SampleRate != codec.SampleRate {
+		return 0, fmt.Errorf("wav file samplerate=%d does not match expected=%d", dec.SampleRate, codec.SampleRate)
+	}
+	if dec.NumChannels != uint16(codec.NumChannels) {
+		return 0, fmt.Errorf("wav file numchannels=%d does not match expected=%d", dec.NumChannels, codec.NumChannels)
+	}
+
+	payloadSize := p.codec.SamplesPCM(int(dec.BitsPerSample))
+
+	buf := playBufPool.Get()
+	defer playBufPool.Put(buf)
+	payloadBuf := buf.([]byte)[:payloadSize]
+
+	enc, err := audio.NewPCMEncoderWriter(codec.PayloadType, writer)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create PCM encoder: %w", err)
+	}
+
+	var totalWritten int64
+	for {
+		select {
+		case <-ctx.Done():
+			return totalWritten, ctx.Err()
+		default:
+			n, err := dec.Read(payloadBuf)
+			if n > 0 {
+				written, wErr := enc.Write(payloadBuf[:n])
+				totalWritten += int64(written)
+				if wErr != nil {
+					return totalWritten, wErr
+				}
+			}
+			if err != nil {
+				return totalWritten, err
+			}
+		}
+	}
+}
