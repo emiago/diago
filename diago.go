@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -50,11 +51,13 @@ func WithAuth(auth sipgo.DigestAuth) DiagoOption {
 type Transport struct {
 	ID string
 
-	// Transport must be udp,tcp or ws.
+	// Transport must be udp,tcp or ws, or even forcing v4 like udp4, tcp4
 	Transport string
-	BindHost  string
-	BindPort  int
-	bindIP    net.IP
+	network   string // network will keep original transport value
+
+	BindHost string
+	BindPort int
+	bindIP   net.IP
 
 	ExternalHost string // SIP signaling and media external addr
 	ExternalPort int
@@ -114,6 +117,9 @@ func WithTransport(t Transport) DiagoOption {
 		}
 
 		t.Transport = sip.NetworkToLower(t.Transport)
+		t.network = t.Transport
+		t.Transport = strings.TrimSuffix(t.Transport, "4") // udp4, tcp4
+		t.Transport = strings.TrimSuffix(t.Transport, "6") // udp6, tcp6
 
 		// we want to handle SIP networking better per each transport
 		t.client = dg.createClient(t)
@@ -457,14 +463,14 @@ func (dg *Diago) serve(ctx context.Context, f ServeDialogFunc, readyCh func()) e
 				}
 				readyCh()
 
-				dg.log.Info("Listening on transport", "addr", addr, "protocol", tran.Transport)
+				dg.log.Info("Listening on transport", "addr", addr, "protocol", tran.network)
 			}))
 
 			if tran.TLSConf != nil {
-				errCh <- server.ListenAndServeTLS(ctx, tran.Transport, hostport, tran.TLSConf)
+				errCh <- server.ListenAndServeTLS(ctx, tran.network, hostport, tran.TLSConf)
 				return
 			}
-			errCh <- server.ListenAndServe(ctx, tran.Transport, hostport)
+			errCh <- server.ListenAndServe(ctx, tran.network, hostport)
 		}(i, tran)
 	}
 
