@@ -48,7 +48,7 @@ Here we explain some of main built in concepts and usage.
 Dialog Sessions diago can act as UAS(User Agent Server) and UAC(User Agent Client), and adds bridging capability to build B2BUA services.
 It intentionally distincts dialog received (Acting as server) and dialog created (Acting as client):
 DialogServerSession when receving incoming dialog (SIP INVITE) and setups session (media) DialogClientSession when it creates outgoing dialog (SIP INVITE) and setups session (media) For best understanding here some docs with short code reference.">
-  <meta itemprop="wordCount" content="639">
+  <meta itemprop="wordCount" content="659">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="API Docs">
   <meta name="twitter:description" content="Library API tries to be well documented through comments. For more reference visit GO DOC
@@ -62,7 +62,7 @@ DialogServerSession when receving incoming dialog (SIP INVITE) and setups sessio
 
 
 
-  <link href="/diago/css/custom.min.e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.css" rel="stylesheet" integrity="sha256-47DEQpj8HBSa&#43;/TImW&#43;5JCeuQeRkm5NMpJWZG3hSuFU=" />
+  <link href="/diago/css/custom.min.132a0932155b4587d924c7e38f9a7c7a40b38b35a51b97696db905288debbec4.css" rel="stylesheet" integrity="sha256-EyoJMhVbRYfZJMfjj5p8ekCzizWlG5dpbbkFKI3rvsQ=" />
 
 
 
@@ -595,6 +595,8 @@ Dialog created is scoped (Like HTTP request serving). Once dialog exists, it is 
 
   
 </div>
+<p>For more controled dialog handling, checkout out <code>NewDialog</code> which allows you to create dialog and media stack
+before doing INVITE.</p>
 <h2>Answering call<span class="hx-absolute -hx-mt-20" id="answering-call"></span>
     <a href="#answering-call" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
   
