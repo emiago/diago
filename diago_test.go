@@ -85,19 +85,6 @@ func TestDiagoInviteCallerID(t *testing.T) {
 		assert.NotEmpty(t, req.From().Params["tag"])
 	})
 
-	t.Run("SetCallerid", func(t *testing.T) {
-		opts := InviteOptions{}
-		opts.SetCaller("Test", "123456")
-		go dg.Invite(context.Background(), sip.Uri{User: "alice", Host: "localhost"}, opts)
-		req := <-reqCh
-		assert.Equal(t, "Test", req.From().DisplayName)
-		assert.Equal(t, "123456", req.From().Address.User)
-		assert.NotEmpty(t, req.From().Params["tag"])
-	})
-
-	t.Run("SetCalleridWithBridgeOriginator", func(t *testing.T) {
-		t.Skip("NOT IMPLEMENTED")
-	})
 }
 
 func TestDiagoTransportConfs(t *testing.T) {

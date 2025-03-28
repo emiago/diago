@@ -6,6 +6,7 @@ import (
 
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,4 +49,36 @@ func TestIntegrationDialogClientReinvite(t *testing.T) {
 	require.NoError(t, err)
 
 	dialog.Hangup(ctx)
+}
+
+func TestDialogClientInvite(t *testing.T) {
+	reqCh := make(chan *sip.Request)
+	dg := testDiagoClient(t, func(req *sip.Request) *sip.Response {
+		reqCh <- req
+		return sip.NewResponseFromRequest(req, 500, "", nil)
+	})
+
+	t.Run("WithCallerid", func(t *testing.T) {
+		opts := InviteClientOptions{}
+		opts.WithCaller("Test", "123456", "example.com")
+		dialog, err := dg.NewDialog(sip.Uri{User: "alice", Host: "localhost"}, NewDialogOptions{})
+		require.NoError(t, err)
+		go dialog.Invite(context.Background(), opts)
+		req := <-reqCh
+		assert.Equal(t, "Test", req.From().DisplayName)
+		assert.Equal(t, "123456", req.From().Address.User)
+		assert.NotEmpty(t, req.From().Params["tag"])
+	})
+
+	t.Run("WithAnonymous", func(t *testing.T) {
+		opts := InviteClientOptions{}
+		opts.WithAnonymousCaller()
+		dialog, err := dg.NewDialog(sip.Uri{User: "alice", Host: "localhost"}, NewDialogOptions{})
+		require.NoError(t, err)
+		go dialog.Invite(context.Background(), opts)
+		req := <-reqCh
+		assert.Equal(t, "Anonymous", req.From().DisplayName)
+		assert.Equal(t, "anonymous", req.From().Address.User)
+		assert.NotEmpty(t, req.From().Params["tag"])
+	})
 }

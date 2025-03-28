@@ -70,6 +70,7 @@ func (d *DialogClientSession) remoteContactUnsafe() *sip.ContactHeader {
 	return d.InviteResponse.Contact()
 }
 
+// InviteClientOptions is passed on dialog client Invite with extra control over dialog
 type InviteClientOptions struct {
 	Originator DialogSession
 	OnResponse func(res *sip.Response) error
@@ -82,6 +83,24 @@ type InviteClientOptions struct {
 
 	// Custom headers to pass. DO NOT SET THIS to nil
 	Headers []sip.Header
+}
+
+// WithAnonymousCaller sets from user Anonymous per RFC
+func (o *InviteClientOptions) WithAnonymousCaller() {
+	o.Headers = append(o.Headers, &sip.FromHeader{
+		DisplayName: "Anonymous",
+		Address:     sip.Uri{User: "anonymous", Host: "anonymous.invalid"},
+		Params:      sip.NewParams(),
+	})
+}
+
+// WithCaller allows simpler way modifying caller
+func (o *InviteClientOptions) WithCaller(displayName string, callerID string, host string) {
+	o.Headers = append(o.Headers, &sip.FromHeader{
+		DisplayName: displayName,
+		Address:     sip.Uri{User: callerID, Host: host},
+		Params:      sip.NewParams(),
+	})
 }
 
 // Invite sends Invite request and establishes early media.

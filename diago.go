@@ -511,30 +511,6 @@ func (dg *Diago) HandleFunc(f ServeDialogFunc) {
 	dg.serveHandler = f
 }
 
-// func (o InviteOptions) SetCaller(displayName string, callerID string) {
-// 	o.Headers = append(o.Headers, &sip.FromHeader{
-// 		DisplayName: displayName,
-// 		Address:     sip.Uri{User: callerID, Host: },
-// 	})
-// }
-
-// Sets from user to RFC anonymous
-func (o *InviteOptions) SetAnonymousCaller() {
-	o.Headers = append(o.Headers, &sip.FromHeader{
-		DisplayName: "Anonymous",
-		Address:     sip.Uri{User: "anonymous", Host: "anonymous.invalid"},
-		Params:      sip.NewParams(),
-	})
-}
-
-func (o *InviteOptions) SetCaller(displayName string, callerID string) {
-	o.Headers = append(o.Headers, &sip.FromHeader{
-		DisplayName: displayName,
-		Address:     sip.Uri{User: callerID, Host: ""},
-		Params:      sip.NewParams(),
-	})
-}
-
 type InviteOptions struct {
 	Originator DialogSession
 	OnResponse func(res *sip.Response) error
