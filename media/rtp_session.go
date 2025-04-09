@@ -50,10 +50,10 @@ type RTPSession struct {
 	readStats  RTPReadStats
 	writeStats RTPWriteStats
 
-	// Experimental
-	// this intercepts reading or writing rtcp packet. Allows manipulation
-	OnReadRTCP  func(pkt rtcp.Packet, rtpStats RTPReadStats)
-	OnWriteRTCP func(pkt rtcp.Packet, rtpStats RTPWriteStats)
+	// Reading and Writing RTCP can be intercept. For global use DefaultOnReadRTCP, DefaultOnWriteRTCP
+	// Must be set before RTP is read or writen
+	onReadRTCP  func(pkt rtcp.Packet, rtpStats RTPReadStats)
+	onWriteRTCP func(pkt rtcp.Packet, rtpStats RTPWriteStats)
 
 	closed bool
 }
@@ -143,8 +143,8 @@ func NewRTPSession(sess *MediaSession) *RTPSession {
 		Sess:        sess,
 		rtcpTicker:  time.NewTicker(5 * time.Second),
 		rtcpClosed:  make(chan struct{}),
-		OnReadRTCP:  DefaultOnReadRTCP,
-		OnWriteRTCP: DefaultOnWriteRTCP,
+		onReadRTCP:  DefaultOnReadRTCP,
+		onWriteRTCP: DefaultOnWriteRTCP,
 	}
 }
 
@@ -162,6 +162,18 @@ func (s *RTPSession) Close() error {
 	s.rtcpTicker.Stop()
 	err := s.Sess.rtcpConn.SetDeadline(time.Now())
 	return err
+}
+
+func (s *RTPSession) OnReadRTCP(f func(pkt rtcp.Packet, rtpStats RTPReadStats)) {
+	s.rtcpMU.Lock()
+	defer s.rtcpMU.Unlock()
+	s.onReadRTCP = f
+}
+
+func (s *RTPSession) OnWriteRTCP(f func(pkt rtcp.Packet, rtpStats RTPWriteStats)) {
+	s.rtcpMU.Lock()
+	defer s.rtcpMU.Unlock()
+	s.onWriteRTCP = f
 }
 
 // ReadRTP reads RTP
@@ -188,6 +200,7 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 	}
 
 	s.rtcpMU.Lock()
+	defer s.rtcpMU.Unlock()
 	// pktArrival := time.Now()
 	stats := &s.readStats
 	now := time.Now()
@@ -248,8 +261,6 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 
 	// stats.lastRTPTime = now
 	// stats.lastRTPTimestamp = readPkt.Timestamp
-
-	s.rtcpMU.Unlock()
 
 	return n, err
 }
@@ -415,7 +426,7 @@ func (s *RTPSession) readRTCPPacket(pkt rtcp.Packet) {
 	if s.OnReadRTCP != nil {
 		stats := s.readStats
 		s.rtcpMU.Unlock()
-		s.OnReadRTCP(pkt, stats)
+		s.onReadRTCP(pkt, stats)
 		s.rtcpMU.Lock()
 	}
 
@@ -497,10 +508,10 @@ func (s *RTPSession) writeRTCP(now time.Time) error {
 	s.readStats.IntervalPacketsCount = 0
 
 	// Add interceptor
-	if s.OnWriteRTCP != nil {
+	if s.onWriteRTCP != nil {
 		stats := s.writeStats
 		s.rtcpMU.Unlock()
-		s.OnWriteRTCP(pkt, stats)
+		s.onWriteRTCP(pkt, stats)
 	} else {
 		s.rtcpMU.Unlock()
 	}
