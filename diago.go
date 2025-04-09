@@ -514,6 +514,7 @@ func (dg *Diago) HandleFunc(f ServeDialogFunc) {
 type InviteOptions struct {
 	Originator DialogSession
 	OnResponse func(res *sip.Response) error
+	Transport  string
 	// For digest authentication
 	Username string
 	Password string
@@ -524,7 +525,7 @@ type InviteOptions struct {
 // Invite makes outgoing call leg and waits for answer.
 // If you want to bridge call then use helper InviteBridge
 func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts InviteOptions) (d *DialogClientSession, err error) {
-	d, err = dg.NewDialog(recipient, NewDialogOptions{})
+	d, err = dg.NewDialog(recipient, NewDialogOptions{Transport: opts.Transport})
 	if err != nil {
 		return nil, err
 	}
