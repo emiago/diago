@@ -25,6 +25,21 @@ Quick links:
 
 Follow me on [X/Twitter](https://twitter.com/emiago123) for regular updates
 
+## RFCS
+
+SIP: [RFC 3261](https://datatracker.ietf.org/doc/html/rfc3261)|[RFC3581](https://datatracker.ietf.org/doc/html/rfc3581)|[RFC6026](https://datatracker.ietf.org/doc/html/rfc6026)
+> More refer to lib [github.com/emiago/sipgo](https://github.com/emiago/sipgo)
+Full dialog control (client/server), Registering, Authentication ...
+
+SDP: [RFC8866](https://datatracker.ietf.org/doc/html/rfc8866). 
+> Parsing + Auto Generating for media session/audio
+
+RTP/AVP: 
+[RFC3550](https://datatracker.ietf.org/doc/html/rfc3550)
+> RTP Packetizers, Media Forking, RTP Session control, RTCP Sender/Receiver reports, RTCP statistics tracking, DTMF reader/writer ...
+
+NOTE: For specifics and questions what is covered by RFC, please open Issue. Note lot of functionality can be extended even if not built in library. 
+
 ## Contributions
 Please open first issues instead PRs. Library is under development and could not have latest code pushed.
 
