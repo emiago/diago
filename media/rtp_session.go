@@ -423,7 +423,7 @@ func (s *RTPSession) readRTCPPacket(pkt rtcp.Packet) {
 	now := time.Now()
 
 	// Add interceptor
-	if s.OnReadRTCP != nil {
+	if s.onReadRTCP != nil {
 		stats := s.readStats
 		s.rtcpMU.Unlock()
 		s.onReadRTCP(pkt, stats)
