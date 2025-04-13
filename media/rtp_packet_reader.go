@@ -127,6 +127,12 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 		}
 		return 0, err
 	}
+	if rtpN == 0 {
+		// ZERO Payload?
+		r.log.Warn("ZERO Payload on RTP")
+		return 0, nil
+	}
+
 	payloadSize := rtpN - pkt.Header.MarshalSize() - int(pkt.PaddingSize)
 	// In case of DTMF we can receive different payload types
 	// if pt != pkt.PayloadType {
