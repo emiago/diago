@@ -48,6 +48,14 @@ func (c *Codec) SamplesPCM(bitSize int) int {
 }
 
 func CodecFromSession(s *MediaSession) Codec {
+	for _, codec := range s.Codecs {
+		if codec.Name == "telephone-event" {
+			continue
+		}
+
+		return codec
+	}
+
 	return s.Codecs[0]
 }
 
