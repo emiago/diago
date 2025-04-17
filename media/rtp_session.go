@@ -456,7 +456,7 @@ func (s *RTPSession) readRTCPPacket(pkt rtcp.Packet) {
 func (s *RTPSession) readReceptionReport(rr rtcp.ReceptionReport, now time.Time) {
 	// For now only use single SSRC
 	if rr.SSRC != s.writeStats.SSRC {
-		slog.Warn("Reception report SSRC does not match our internal", "ssrc", rr.SSRC, "expected", s.readStats.SSRC)
+		slog.Warn("Reception report SSRC does not match our internal", "ssrc", rr.SSRC, "expected", s.writeStats.SSRC)
 		return
 	}
 
