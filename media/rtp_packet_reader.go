@@ -148,7 +148,7 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 
 		newSeq := r.seqReader.ReadExtendedSeq()
 		if prevSeq+1 != newSeq {
-			r.log.Warn("Out of order pkt received", "expected", prevSeq+1, "actual", newSeq, "real", pkt.SequenceNumber)
+			r.log.Debug("Out of order pkt received", "expected", prevSeq+1, "actual", newSeq, "real", pkt.SequenceNumber)
 		}
 	} else {
 		r.seqReader.InitSeq(pkt.SequenceNumber)

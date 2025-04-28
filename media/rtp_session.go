@@ -188,11 +188,11 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 
 		// Validate pkt. Check is it keep alive
 		if readPkt.Version == 0 {
-			slog.Warn("Received RTP with invalid version. Skipping")
+			slog.Debug("Received RTP with invalid version. Skipping")
 			continue
 		}
 		if len(readPkt.Payload) == 0 {
-			slog.Warn("Received RTP with empty Payload. Skipping")
+			slog.Debug("Received RTP with empty Payload. Skipping")
 			continue
 		}
 
