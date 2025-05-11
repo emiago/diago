@@ -34,10 +34,12 @@ func (c *Codec) String() string {
 	return fmt.Sprintf("name=%s pt=%d rate=%d dur=%s channels=%d", c.Name, c.PayloadType, c.SampleRate, c.SampleDur.String(), c.NumChannels)
 }
 
+// SampleTimestamp returns number of samples as RTP Timestamp measure
 func (c *Codec) SampleTimestamp() uint32 {
 	return uint32(float64(c.SampleRate) * c.SampleDur.Seconds())
 }
 
+// Samples16 returns PCM 16 bit samples size
 func (c *Codec) Samples16() int {
 	return c.SamplesPCM(16)
 }
