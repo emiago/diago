@@ -3,9 +3,9 @@ module github.com/emiago/diago
 go 1.22.4
 
 require (
-	github.com/emiago/sipgo v0.31.0
+	github.com/emiago/sipgo v0.32.1
 	github.com/go-audio/riff v1.0.0
-	github.com/icholy/digest v0.1.22
+	github.com/icholy/digest v1.1.0
 	github.com/pion/rtcp v1.2.14
 	github.com/pion/rtp v1.8.9
 	github.com/stretchr/testify v1.9.0
