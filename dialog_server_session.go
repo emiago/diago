@@ -136,10 +136,6 @@ func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
 		return err
 	}
 
-	if err := d.RespondSDP(sess.LocalSDP()); err != nil {
-		return err
-	}
-
 	d.mu.Lock()
 	d.initRTPSessionUnsafe(sess, rtpSess)
 	// Close RTP session
@@ -147,24 +143,14 @@ func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
 		return rtpSess.Close()
 	})
 	d.mu.Unlock()
-	// Must be called after media and reader writer is setup
-	rtpSess.MonitorBackground()
 
-	// Wait ACK
-	// If we do not wait ACK, hanguping call will fail as ACK can be delayed when we are doing Hangup
-	for {
-		select {
-		case <-time.After(10 * time.Second):
-			return fmt.Errorf("no ACK received")
-		case state := <-d.StateRead():
-			if state == sip.DialogStateConfirmed {
-				return nil
-			}
-			if state == sip.DialogStateEnded {
-				return fmt.Errorf("dialog ended on ack")
-			}
-		}
+	// This will now block until ACK received with 64*T1 as max.
+	// How to let caller to cancel this?
+	if err := d.RespondSDP(sess.LocalSDP()); err != nil {
+		return err
 	}
+	// Must be called after media and reader writer is setup
+	return rtpSess.MonitorBackground()
 }
 
 // AnswerLate does answer with Late offer.
