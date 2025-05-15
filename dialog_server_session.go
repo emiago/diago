@@ -126,6 +126,8 @@ func (d *DialogServerSession) AnswerOptions(opt AnswerOptions) error {
 // answerSession. It allows answering with custom RTP Session.
 // NOTE: Not final API
 func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
+	// Subscribe before sending the response so we don't miss the Confirmed event
+	stateCh := d.StateRead()
 	sess := rtpSess.Sess
 	sdp := d.InviteRequest.Body()
 	if sdp == nil {
@@ -156,7 +158,7 @@ func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
 		select {
 		case <-time.After(10 * time.Second):
 			return fmt.Errorf("no ACK received")
-		case state := <-d.StateRead():
+		case state := <-stateCh:
 			if state == sip.DialogStateConfirmed {
 				return nil
 			}
@@ -172,6 +174,8 @@ func (d *DialogServerSession) AnswerLate() error {
 	if err := d.initMediaSessionFromConf(d.mediaConf); err != nil {
 		return err
 	}
+	// Subscribe before sending the response so we don't miss the Confirmed event
+	stateCh := d.StateRead()
 	sess := d.mediaSession
 	rtpSess := media.NewRTPSession(sess)
 	localSDP := sess.LocalSDP()
@@ -193,7 +197,7 @@ func (d *DialogServerSession) AnswerLate() error {
 		select {
 		case <-time.After(10 * time.Second):
 			return fmt.Errorf("no ACK received")
-		case state := <-d.StateRead():
+		case state := <-stateCh:
 			if state == sip.DialogStateConfirmed {
 				// Must be called after media and reader writer is setup
 				return rtpSess.MonitorBackground()
