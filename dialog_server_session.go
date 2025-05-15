@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"sync/atomic"
-	"time"
 
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
@@ -170,25 +169,13 @@ func (d *DialogServerSession) AnswerLate() error {
 	})
 	d.mu.Unlock()
 
+	// This will now block until ACK received with 64*T1 as max.
+	// How to let caller to cancel this?
 	if err := d.RespondSDP(localSDP); err != nil {
 		return err
 	}
-	// Wait ACK
-	// It is expected that on ReadACK SDP will be updated
-	for {
-		select {
-		case <-time.After(10 * time.Second):
-			return fmt.Errorf("no ACK received")
-		case state := <-d.StateRead():
-			if state == sip.DialogStateConfirmed {
-				// Must be called after media and reader writer is setup
-				return rtpSess.MonitorBackground()
-			}
-			if state == sip.DialogStateEnded {
-				return fmt.Errorf("dialog ended on ack")
-			}
-		}
-	}
+	// Must be called after media and reader writer is setup
+	return rtpSess.MonitorBackground()
 }
 
 func (d *DialogServerSession) ReadAck(req *sip.Request, tx sip.ServerTransaction) error {
