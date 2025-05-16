@@ -1,0 +1,840 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="description" content="WebRTC" />
+    <meta name="auther" content="freepbx" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/css/bootstrap.min.css"
+      integrity="sha384-B0vP5xmATw1+K9KRQjQERJvTumQW0nPEzvF6L/Z6nronJ3oUOFUFpCjEUQouq2+l"
+      crossorigin="anonymous"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/gitbrent/bootstrap4-toggle@3.6.1/css/bootstrap4-toggle.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://use.fontawesome.com/releases/v5.8.2/css/all.css"
+      integrity="sha384-oS3vJWv+0UjzBfQzYUhtDYW+Pj2yciDJxpsK1OYPAYjqT085Qq/1cq5FLXAZQ7Ay"
+      crossorigin="anonymous"
+    />
+    <link rel="icon" type="image/png" href="/favicon.ico" />
+    <title>WebPhone</title>
+    <style>
+      .dialpad-btn {
+        border-radius: 0px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="row justify-content-center mt-1">
+        <div class="col-12">
+          <h1 class="h1">WebPhone</h1>
+        </div>
+      </div>
+      <div class="row justify-content-center mt-1">
+        <div class="col-12">
+          <div class="row">
+            <div class="col-12">
+              <h3 class="h3">Setup</h3>
+            </div>
+          </div>
+          <!-- Server Configuration -->
+          <div class="row">
+            <div class="col-12">
+              <label>Server</label>
+              <input
+                type="text"
+                class="form-control"
+                id="server"
+                placeholder="Enter the server"
+                value="127.0.0.1"
+              />
+            </div>
+          </div>
+
+          <div class="row mt-1">
+            <div class="col-12">
+              <label>SIP Port</label>
+              <input
+                type="number"
+                class="form-control"
+                id="sip-port"
+                placeholder="Enter the sip port"
+                value="5060"
+              />
+            </div>
+          </div>
+
+          <div class="row mt-1">
+            <div class="col-12">
+              <label>WebSocket Port</label>
+              <input
+                type="number"
+                class="form-control"
+                id="websocket-port"
+                placeholder="Enter the WebSocket port"
+                value="8080"
+              />
+            </div>
+          </div>
+
+          <!-- User Configuration -->
+          <div class="row mt-1">
+            <div class="col-12">
+              <label>User</label>
+              <input
+                type="tel"
+                class="form-control"
+                id="extension-number"
+                placeholder="enter the user"
+              />
+            </div>
+          </div>
+
+          <div class="row mt-1">
+            <div class="col-12">
+              <label>Password</label>
+              <input
+                type="password"
+                class="form-control"
+                data-toggle="password"
+                id="password"
+                placeholder="enter the password"
+              />
+            </div>
+          </div>
+          <div class="row mt-4">
+            <div class="col-12">
+              <button
+                type="button"
+                id="login-status"
+                class="btn btn-primary btn-block"
+              >
+                Login
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="row justify-content-center mt-1">
+        <div class="col-12">
+          <div id="wrapper">
+            <!-- Incoming Call -->
+            <div class="row">
+              <div class="col-12">
+                <div id="incoming-call" style="display: none">
+                  <hr />
+                  <div class="row">
+                    <div class="col-12">
+                      <h3 class="h3">Incoming Call</h3>
+                      <p>
+                        <label>Incoming:</label>
+                        <span id="incoming-call-number">Unknown</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div class="row mt-1">
+                    <div class="col-12 col-lg-6">
+                      <button
+                        type="button"
+                        id="answer"
+                        class="btn btn-success btn-block"
+                      >
+                        Answer
+                      </button>
+                    </div>
+                    <div class="col-12 col-lg-6">
+                      <button
+                        type="button"
+                        id="reject"
+                        class="btn btn-danger btn-block"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div id="call-status" style="display: none">
+                  <div class="row">
+                    <div class="col-12">
+                      <h5 class="h5" id="call-info-text">
+                        info text goes here
+                      </h5>
+                      <p>
+                        <label>Peer:</label>
+                        <span id="call-info-number">info number goes here</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- Dial Field -->
+            <div class="row">
+              <div class="col-12">
+                <div id="dial-field" style="display: none">
+                  <hr />
+                  <!-- To Field -->
+                  <div class="row">
+                    <div class="col-12">
+                      <h3 class="h3">Dial Pad</h3>
+                      <div class="row">
+                        <div class="col-12">
+                          <input
+                            type="tel"
+                            id="to-field"
+                            class="form-control"
+                            placeholder="enter the number"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="row mt-1">
+                    <div class="col-12 col-lg-6">
+                      <button
+                        type="button"
+                        id="clear-field"
+                        class="btn btn-outline-secondary btn-block"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <div class="col-12 col-lg-6">
+                      <button
+                        type="button"
+                        id="delete-field"
+                        class="btn btn-outline-danger btn-block"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                  <!-- Dial Pad -->
+                  <div class="row mt-3">
+                    <div class="col-7 offset-2 col-md-4 offset-md-4">
+                      <div class="row no-gutters">
+                        <div class="col-4">
+                          <button
+                            type="button"
+                            class="btn btn-outline-dark btn-block dialpad-btn"
+                          >
+                            1
+                          </button>
+                        </div>
+                        <div class="col-4">
+                          <button
+                            type="button"
+                            class="btn btn-outline-dark btn-block dialpad-btn"
+                          >
+                            2
+                          </button>
+                        </div>
+                        <div class="col-4">
+                          <button
+                            type="button"
+                            class="btn btn-outline-dark btn-block dialpad-btn"
+                          >
+                            3
+                          </button>
+                        </div>
+                      </div>
+                      <div class="row no-gutters">
+                        <div class="col-4">
+                          <button
+                            type="button"
+                            class="btn btn-outline-dark btn-block dialpad-btn"
+                          >
+                            4
+                          </button>
+                        </div>
+                        <div class="col-4">
+                          <button
+                            type="button"
+                            class="btn btn-outline-dark btn-block dialpad-btn"
+                          >
+                            5
+                          </button>
+                        </div>
+                        <div class="col-4">
+                          <button
+                            type="button"
+                            class="btn btn-outline-dark btn-block dialpad-btn"
+                          >
+                            6
+                          </button>
+                        </div>
+                      </div>
+                      <div class="row no-gutters">
+                        <div class="col-4">
+                          <button
+                            type="button"
+                            class="btn btn-outline-dark btn-block dialpad-btn"
+                          >
+                            7
+                          </button>
+                        </div>
+                        <div class="col-4">
+                          <button
+                            type="button"
+                            class="btn btn-outline-dark btn-block dialpad-btn"
+                          >
+                            8
+                          </button>
+                        </div>
+                        <div class="col-4">
+                          <button
+                            type="button"
+                            class="btn btn-outline-dark btn-block dialpad-btn"
+                          >
+                            9
+                          </button>
+                        </div>
+                      </div>
+                      <div class="row no-gutters">
+                        <div class="col-4">
+                          <button
+                            type="button"
+                            class="btn btn-outline-dark btn-block dialpad-btn"
+                          >
+                            *
+                          </button>
+                        </div>
+                        <div class="col-4">
+                          <button
+                            type="button"
+                            class="btn btn-outline-dark btn-block dialpad-btn"
+                          >
+                            0
+                          </button>
+                        </div>
+                        <div class="col-4">
+                          <button
+                            type="button"
+                            class="btn btn-outline-dark btn-block dialpad-btn"
+                          >
+                            #
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="row mt-3">
+                    <div class="col-12">
+                      <div class="row mt-1">
+                        <div class="col-12">
+                          <button
+                            type="button"
+                            id="call"
+                            class="btn btn-success btn-block"
+                          >
+                            Call
+                          </button>
+                        </div>
+                      </div>
+                      <div class="row mt-1">
+                        <div class="col-12 col-lg-6">
+                          <button
+                            type="button"
+                            id="hangup"
+                            class="btn btn-danger btn-block"
+                          >
+                            Hangup
+                          </button>
+                        </div>
+                        <div class="col-12 col-lg-6">
+                          <button
+                            type="button"
+                            id="mute-mode"
+                            class="btn btn-primary btn-block"
+                          >
+                            Mute (sound are not muted now)
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"
+      integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg=="
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-Piv4xVNRyMGpqkS2by6br4gNJ7DXjqk09RmUpJ8jgGtD7zP9yug3goQfGII0yAns"
+      crossorigin="anonymous"
+    ></script>
+    <script src="https://cdn.jsdelivr.net/gh/gitbrent/bootstrap4-toggle@3.6.1/js/bootstrap4-toggle.min.js"></script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/jssip/3.1.2/jssip.js"
+      integrity="sha512-QWvPQCHjnZ9MksHgz1GRkjRVuj+BJZIV/3fBvFOs7N99N2dBaeHesIQ/+52jJOLowS2JLU6fGjQZFJfIzzFN7A=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
+    <script src="https://unpkg.com/bootstrap-show-password@1.2.1/dist/bootstrap-show-password.min.js"></script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/EventEmitter/5.2.8/EventEmitter.min.js"
+      integrity="sha512-AbgDRHOu/IQcXzZZ6WrOliwI8umwOgLE7sZgRAsNzmcOWlQA8RhXQzBx99Ho0jlGPWIPoT9pwk4kmeeR4qsV/g=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
+    <script>
+      (function () {
+        class WebPhone extends EventEmitter {
+          constructor() {
+            super();
+            JsSIP.debug.enable("JsSIP:*");
+            // Setup server information - These will be set when login is triggered
+            this.serverName = "";
+            this.sipPort = "";
+            this.websocketPort = "";
+            this.sipUrl = "";
+            this.config = {
+              sockets: [],
+              uri: null,
+              password: null,
+              session_timers: false,
+              realm: "diago",
+              display_name: null,
+            };
+            this.callOptions = {
+              mediaConstraints: { audio: true, video: false },
+            };
+            this.noAnswerTimeout = 15; // Time (in seconds) after which an incoming call is rejected if not answered
+            const baseUrl = `${location.protocol}//${location.host}`;
+            this.ringTone = new window.Audio(`${baseUrl}/audio/ringtone.mp3`);
+            this.dtmfTone = new window.Audio(`${baseUrl}/audio/dtmf.wav`);
+            this.ringTone.loop = true;
+            this.remoteAudio = new Audio();
+            this.remoteAudio.autoplay = true;
+            this.phone = null;
+            this.session = null;
+            this.confirmCall = false;
+            this.lockDtmf = false;
+            this.isEnable = false;
+            this.dtmfTone.onended = () => {
+              this.lockDtmf = false;
+            };
+
+            // bind
+            this.login = this.login.bind(this);
+            this.logout = this.logout.bind(this);
+            this.call = this.call.bind(this);
+            this.answer = this.answer.bind(this);
+            this.hangup = this.hangup.bind(this);
+            this.updateMuteMode = this.updateMuteMode.bind(this);
+            this.updateDtmf = this.updateDtmf.bind(this);
+            this.getPhoneParameter = this.getPhoneParameter.bind(this);
+            this.getPhoneStatus = this.getPhoneStatus.bind(this);
+          }
+          login(user, password, serverName, sipPort, websocketPort) {
+            if (this.phone) {
+              return;
+            }
+
+            // Set server information
+            this.serverName = serverName;
+            this.sipPort = sipPort;
+            this.websocketPort = websocketPort;
+            this.sipUrl = `${this.serverName}:${this.sipPort}`;
+
+            // Create WebSocket connection
+            const socket = new JsSIP.WebSocketInterface(
+              `ws://${this.serverName}:${this.websocketPort}`
+            );
+
+            const config = $.extend(true, $.extend(true, {}, this.config), {
+              sockets: [socket],
+              uri: `sip:${user}@${this.sipUrl}`,
+              password: password,
+              display_name: user,
+            });
+            this.phone = new JsSIP.UA(config);
+            // In the case of user's authentication is success
+            this.phone.on("registered", (event) => {
+              this.isEnable = true;
+              this.emit("registered", this.getPhoneParameter());
+            });
+            // In the case of user's authentication is failed
+            this.phone.on("registrationFailed", (event) => {
+              const err = `Registering on SIP server failed with error: ${event.cause}`;
+              this.logout();
+              this.emit("registrationFailed", err, this.getPhoneParameter());
+            });
+            // In the case of firing an incoming or outgoing session/call
+            this.phone.on("newRTCSession", (event) => {
+              // Reset current session
+              const resetSession = () => {
+                this.ringTone.pause();
+                this.ringTone.currentTime = 0;
+                this.session = null;
+                this.emit("resetSession", this.getPhoneParameter());
+              };
+              // Enable the remote audio
+              const addAudioTrack = () => {
+                this.session.connection.ontrack = (ev) => {
+                  this.ringTone.pause();
+                  this.ringTone.currentTime = 0;
+                  this.remoteAudio.srcObject = ev.streams[0];
+                };
+              };
+
+              if (this.session) {
+                this.session.terminate();
+              }
+              this.session = event.session;
+              this.session.on("ended", resetSession);
+              this.session.on("failed", resetSession);
+              this.session.on("accepted", () =>
+                this.emit("accepted", this.getPhoneParameter())
+              );
+              this.session.on("peerconnection", addAudioTrack);
+              this.session.on("confirmed", () =>
+                this.emit("confirmed", this.getPhoneParameter())
+              );
+
+              // Check the direction of this session
+              if (this.session._direction === "incoming") {
+                // In the case of incoming
+                this.ringTone.play();
+                this.confirmCall = setTimeout(() => {
+                  this.hangup();
+                  this.emit("noanswer", this.getPhoneParameter());
+                }, this.noAnswerTimeOut * 1000);
+              } else {
+                // In the case of outgoing
+                addAudioTrack();
+              }
+              this.emit("newRTCSession", this.getPhoneParameter());
+              this.emit("changeMuteMode", false);
+            });
+            this.phone.start();
+          }
+          logout() {
+            if (this.phone) {
+              this.phone.stop();
+              this.phone = null;
+              this.session = null;
+              this.confirmCall = false;
+              this.lockDtmf = false;
+              this.isEnable = false;
+            }
+          }
+          call(destNum) {
+            if (this.phone) {
+              this.phone.call(destNum, this.callOptions);
+            }
+          }
+          answer() {
+            if (this.session) {
+              this.session.answer(this.callOptions);
+
+              if (this.confirmCall) {
+                clearTimeout(this.confirmCall);
+                this.confirmCall = false;
+              }
+            }
+          }
+          hangup() {
+            if (this.session) {
+              this.ringTone.pause();
+              this.ringTone.currentTime = 0;
+              this.session.terminate();
+            }
+          }
+          updateMuteMode() {
+            if (this.session) {
+              const isMuted = this.session.isMuted().audio;
+
+              if (isMuted) {
+                this.session.unmute({ audio: true });
+              } else {
+                this.session.mute({ audio: true });
+              }
+              this.emit("changeMuteMode", !isMuted);
+            }
+          }
+          updateDtmf(text) {
+            if (!this.lockDtmf) {
+              this.lockDtmf = true;
+              this.dtmfTone.play();
+
+              if (this.session) {
+                this.session.sendDTMF(text);
+              }
+              this.emit("pushdial", text);
+            }
+          }
+          getPhoneParameter() {
+            const ret = {
+              session: this.session,
+              ringTone: this.ringTone,
+              isEnable: this.isEnable,
+            };
+
+            return ret;
+          }
+          getPhoneStatus() {
+            return this.isEnable;
+          }
+        }
+
+        // Update Login Status
+        const updateLoginStatus = (isEnable) => {
+          const element = $("#login-status");
+
+          if (isEnable) {
+            element.text("Logout");
+            element.removeClass("btn-primary");
+            element.addClass("btn-danger");
+          } else {
+            element.text("Login");
+            element.addClass("btn-primary");
+            element.removeClass("btn-danger");
+          }
+        };
+
+        const init = () => {
+          const updateCallUI = (callType) => {
+            const answer = $("#answer");
+            const hangup = $("#hangup");
+            const reject = $("#reject");
+            const muteMode = $("#mute-mode");
+            const call = $("#call");
+
+            // In the case of incoming
+            if (callType === "incoming") {
+              // hide
+              hangup.hide();
+              hangup.prop("disabled", true);
+              muteMode.hide();
+              muteMode.prop("disabled", true);
+              // show
+              answer.show();
+              answer.prop("disabled", false);
+              reject.show();
+              reject.prop("disabled", false);
+            }
+            // In the case of outgoing or busy
+            else {
+              // hide
+              answer.hide();
+              answer.prop("disabled", true);
+              reject.hide();
+              reject.prop("disabled", true);
+              // show
+              hangup.show();
+              hangup.prop("disabled", false);
+              muteMode.show();
+              muteMode.prop("disabled", false);
+            }
+            call.hide();
+            call.prop("disabled", true);
+          };
+
+          // Create Web Phone instance
+          const webPhone = new WebPhone();
+          // Register callback functions
+          webPhone.on("registered", (params) => {
+            updateLoginStatus(params.isEnable);
+            $("#wrapper").show();
+            $("#incoming-call").hide();
+            $("#call-status").hide();
+            $("#dial-field").show();
+            $("#call").show();
+            $("#call").prop("disabled", false);
+            $("#hangup").hide();
+            $("#hangup").prop("disabled", true);
+            $("#mute-mode").hide();
+            $("#mute-mode").prop("disabled", true);
+            $("#to-field").focus();
+          });
+          webPhone.on("registrationFailed", (err, params) => {
+            $("#wrapper").hide();
+            updateLoginStatus(params.isEnable);
+            console.log(err);
+            alert(err);
+          });
+          webPhone.on("resetSession", (params) => {
+            $("#wrapper").show();
+            $("#incoming-call").hide();
+            $("#call-status").hide();
+            $("#dial-field").show();
+            $("#call").show();
+            $("#call").prop("disabled", false);
+            $("#hangup").hide();
+            $("#hangup").prop("disabled", true);
+            $("#mute-mode").hide();
+            $("#mute-mode").prop("disabled", true);
+          });
+          webPhone.on("accepted", () => {
+            return;
+          });
+          webPhone.on("confirmed", (params) => {
+            const session = params.session;
+
+            if (session.isEstablished()) {
+              const extension = session.remote_identity.uri.user;
+              const name = session.remote_identity.display_name;
+              const infoNumber = name ? `${extension} (${name})` : extension;
+
+              $("#incoming-call").hide();
+              $("#incoming-call-number").html("");
+              $("#call-info-text").html("In Call");
+              $("#call-info-number").html(infoNumber);
+              $("#call-status").show();
+              $("#dial-field").show();
+              params.ringTone.pause();
+              updateCallUI("busy");
+            }
+          });
+          webPhone.on("newRTCSession", (params) => {
+            const session = params.session;
+
+            if (session.isInProgress()) {
+              const extension = session.remote_identity.uri.user;
+              const name = session.remote_identity.display_name;
+              const infoNumber = name ? `${extension} (${name})` : extension;
+
+              if (session._direction === "incoming") {
+                $("#incoming-call").show();
+                $("#incoming-call-number").html(infoNumber);
+                $("#call-status").hide();
+                updateCallUI("incoming");
+              } else {
+                $("#incoming-call").hide();
+                $("#incoming-call-number").html("");
+                $("#call-info-text").html("Ringing...");
+                $("#call-info-number").html(infoNumber);
+                $("#call-status").show();
+                updateCallUI("outgoing");
+              }
+            }
+          });
+          webPhone.on("noanswer", (params) => {
+            $("#incoming-call-number").html("Unknown");
+            $("#call-info-text").html("No Answer");
+            $("#call-info-number").html("Unknown");
+          });
+          webPhone.on("changeMuteMode", (isMuted) => {
+            const muteMode = $("#mute-mode");
+
+            if (isMuted) {
+              muteMode.text("Unmute (sound are muted now)");
+              muteMode.addClass("btn-warning");
+              muteMode.removeClass("btn-primary");
+            } else {
+              muteMode.text("Mute (sound are not muted now)");
+              muteMode.removeClass("btn-warning");
+              muteMode.addClass("btn-primary");
+            }
+          });
+          webPhone.on("pushdial", (text) => {
+            const toField = $("#to-field");
+            const fieldValue = toField.val();
+            toField.val(fieldValue + text);
+          });
+
+          // Register callback functions of html elements
+          const chkEnterKey = (event, element) => {
+            if (event.key === "Enter") {
+              element.click();
+            }
+          };
+          $("#extension-number").focus();
+          $("#extension-number").keyup((event) =>
+            chkEnterKey(event, $("#login-status"))
+          );
+          $("#password").keyup((event) =>
+            chkEnterKey(event, $("#login-status"))
+          );
+          $("#login-status").click((event) => {
+            const validator = (user, password, serverName, sipPort, websocketPort) => {
+              const judge = (val) => !val || !val.match(/\S/g);
+              if (judge(password)) {
+                throw new Error("Invalid Password");
+              }
+              if (judge(serverName)) {
+                throw new Error("Invalid server");
+              }
+
+              if (judge(websocketPort) || !/\d+/.test(websocketPort)) {
+                throw new Error("Invalid WebSocket Port");
+              }
+            };
+
+            if (webPhone.getPhoneStatus()) {
+              webPhone.logout();
+              $("#wrapper").hide();
+              updateLoginStatus(false);
+            } else {
+              const user = $("#extension-number").val();
+              const password = $("#password").val();
+              const serverName = $("#server").val();
+              const sipPort = $("#sip-port").val();
+              const websocketPort = $("#websocket-port").val();
+
+              try {
+                validator(user, password, serverName, sipPort, websocketPort);
+                webPhone.login(user, password, serverName, sipPort, websocketPort);
+              } catch (err) {
+                alert(err.message);
+              }
+            }
+          });
+          $(".dialpad-btn").click((event) => {
+            const text = $(event.currentTarget).text();
+            webPhone.updateDtmf(text);
+          });
+          $("#clear-field").click((event) => {
+            const toField = $("#to-field");
+            toField.val("");
+          });
+          $("#delete-field").click((event) => {
+            const toField = $("#to-field");
+            const fieldValue = toField.val();
+            toField.val(fieldValue.substring(0, fieldValue.length - 1));
+          });
+          $("#call").click(() => {
+            const destNum = $("#to-field").val();
+            webPhone.call(destNum);
+          });
+          $("#answer").click(webPhone.answer);
+          $("#hangup").click(webPhone.hangup);
+          $("#reject").click(webPhone.hangup);
+          $("#mute-mode").click(webPhone.updateMuteMode);
+          $("#to-field").keyup((event) => chkEnterKey(event, $("#call")));
+          $("#to-field").keypress((event) => {
+            const value = String.fromCharCode(event.which);
+            const ret = /[0-9\*#]/.test(value);
+
+            return ret;
+          });
+          $("#to-field").change((event) => {
+            const element = $(event.currentTarget);
+            const value = element.val();
+            element.val(value.replace(/[^0-9\*#]/g, ""));
+          });
+        };
+
+        $(init);
+      })();
+    </script>
+  </body>
+</html>
