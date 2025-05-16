@@ -3,9 +3,12 @@ package diago
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -63,4 +66,33 @@ func TestIntegrationDialogServerReinvite(t *testing.T) {
 	require.NoError(t, err)
 
 	d.Hangup(context.TODO())
+}
+
+func TestIntegrationDialogServerPlayback(t *testing.T) {
+	rtpBuf := newRTPWriterBuffer()
+	dialog := &DialogServerSession{
+		DialogMedia: DialogMedia{
+			mediaSession:    &media.MediaSession{Codecs: []media.Codec{media.CodecAudioUlaw}},
+			RTPPacketWriter: media.NewRTPPacketWriter(rtpBuf, media.CodecAudioUlaw),
+		},
+	}
+
+	playback, err := dialog.PlaybackCreate()
+	require.NoError(t, err)
+
+	initTS := dialog.RTPPacketWriter.InitTimestamp()
+	_, err = playback.PlayFile("testdata/files/demo-echodone.wav")
+	require.NoError(t, err)
+	diffTS := dialog.RTPPacketWriter.PacketHeader.Timestamp - initTS
+	assert.Greater(t, diffTS, uint32(1000))
+
+	time.Sleep(100 * time.Millisecond) // 4 frames
+	initTS = dialog.RTPPacketWriter.InitTimestamp()
+	_, err = playback.PlayFile("testdata/files/demo-echodone.wav")
+	require.NoError(t, err)
+	diffTS2 := dialog.RTPPacketWriter.PacketHeader.Timestamp - initTS
+	t.Log(initTS, diffTS2)
+
+	// Timestamp should be offset more than previous diff by Sleep
+	assert.Greater(t, diffTS2, diffTS+5*media.CodecAudioUlaw.SampleTimestamp())
 }

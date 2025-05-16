@@ -70,6 +70,7 @@ func TestIntegrationPlaybackStreamWAV(t *testing.T) {
 func TestIntegrationPlaybackFile(t *testing.T) {
 	r, w := io.Pipe()
 	go func() {
+		defer t.Log("Reader stopped")
 		io.ReadAll(r)
 	}()
 
@@ -101,4 +102,5 @@ func TestIntegrationPlaybackFile(t *testing.T) {
 		require.Greater(t, written, int64(10000))
 		t.Log("Written on RTP stream", written)
 	})
+
 }

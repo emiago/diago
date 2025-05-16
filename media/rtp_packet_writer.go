@@ -48,6 +48,7 @@ type RTPPacketWriter struct {
 	// Internals
 	// clock rate is decided based on media
 	sampleRateTimestamp uint32
+	lastSampleTime      time.Time
 	seqWriter           RTPExtendedSequenceNumber
 	nextTimestamp       uint32
 	initTimestamp       uint32
@@ -100,6 +101,31 @@ func (w *RTPPacketWriter) updateClockRate(cod Codec) {
 	}
 }
 
+// ResetTimestamp can mark new stream comming. If stream is continuous it will add timestamp difference
+// MUST Not be called during stream Write
+func (p *RTPPacketWriter) ResetTimestamp() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if !p.lastSampleTime.IsZero() {
+		// Detect delays in audio and update RTP timestamp
+		t := time.Now()
+		diff := t.Sub(p.lastSampleTime)
+		diffTimestamp := uint32(diff.Seconds() * float64(p.sampleRate))
+
+		p.nextTimestamp += diffTimestamp
+		p.initTimestamp = p.nextTimestamp // This will now make Marker true
+		return
+	}
+}
+
+// InitTimestamp returns init RTP timestamp
+func (p *RTPPacketWriter) InitTimestamp() uint32 {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.initTimestamp
+}
+
 // Write implements io.Writer and does payload RTP packetization
 // Media clock rate is determined
 // For more control or dynamic payload WriteSamples can be used
@@ -108,7 +134,7 @@ func (p *RTPPacketWriter) Write(b []byte) (int, error) {
 	p.mu.RLock()
 	n, err := p.WriteSamples(b, p.sampleRateTimestamp, p.nextTimestamp == p.initTimestamp, p.payloadType)
 	p.mu.RUnlock()
-	<-p.clockTicker.C
+	p.lastSampleTime = <-p.clockTicker.C
 	return n, err
 }
 

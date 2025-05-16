@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/emiago/diago/media"
+	"github.com/pion/rtp"
 )
 
 var rtpBufPool = sync.Pool{
@@ -25,4 +26,19 @@ func closeAndLog(closer io.Closer, msg string) {
 	if err := closer.Close(); err != nil {
 		slog.Error(msg, "error", err)
 	}
+}
+
+type rtpWriterBuffer struct {
+	buf []*rtp.Packet
+}
+
+func newRTPWriterBuffer() *rtpWriterBuffer {
+	return &rtpWriterBuffer{
+		buf: make([]*rtp.Packet, 0, 1000),
+	}
+}
+
+func (w *rtpWriterBuffer) WriteRTP(p *rtp.Packet) error {
+	w.buf = append(w.buf, p)
+	return nil
 }

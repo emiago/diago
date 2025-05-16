@@ -204,6 +204,10 @@ func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransacti
 
 // Must be protected with lock
 func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
+	if d.mediaSession == nil {
+		return fmt.Errorf("no media session present")
+	}
+
 	msess := d.mediaSession.Fork()
 	if err := msess.RemoteSDP(sdp); err != nil {
 		return fmt.Errorf("reinvite media remote SDP applying failed: %w", err)
@@ -419,6 +423,8 @@ func (d *DialogMedia) PlaybackCreate() (AudioPlayback, error) {
 		return AudioPlayback{}, fmt.Errorf("no media setup")
 	}
 	p := NewAudioPlayback(w, mprops.Codec)
+	// On each play it needs reset RTP timestamp
+	p.onPlay = d.RTPPacketWriter.ResetTimestamp
 	return p, nil
 }
 

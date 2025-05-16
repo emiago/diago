@@ -29,6 +29,7 @@ var playBufPool = sync.Pool{
 type AudioPlayback struct {
 	writer io.Writer
 	codec  media.Codec
+	onPlay func()
 
 	// Read only values
 	// This will influence playout sampling buffer
@@ -54,6 +55,12 @@ func NewAudioPlayback(writer io.Writer, codec media.Codec) AudioPlayback {
 func (p *AudioPlayback) Play(reader io.Reader, mimeType string) (int64, error) {
 	var written int64
 	var err error
+
+	if p.onPlay != nil {
+		// Execute hook on play
+		p.onPlay()
+	}
+
 	switch mimeType {
 	case "":
 		written, err = p.stream(reader, p.writer)
