@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/emiago/diago/audio"
 	"github.com/emiago/diago/media"
 	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/sip"
@@ -389,7 +390,7 @@ func (d *DialogMedia) audioWriterProps(p *MediaProps) io.Writer {
 }
 
 // SetAudioWriter adds/changes audio reader.
-// Use this when you want to have interceptors of your audio
+// Use this when you want to have pipelines of your audio
 func (d *DialogMedia) SetAudioWriter(r io.Writer) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -447,6 +448,41 @@ func (d *DialogMedia) PlaybackControlCreate() (AudioPlaybackControl, error) {
 		control:       control,
 	}
 	return p, nil
+}
+
+// RecordStereoWavCreate creates Stereo Waw Recording audio Pipeline
+// For audio to be recorded use AudioReader and AudioWriter from Recording
+func (d *DialogMedia) RecordStereoWavCreate(wawFile *os.File) (AudioStereoRecordingWav, error) {
+	mpropsW := MediaProps{}
+	aw := d.audioWriterProps(&mpropsW)
+	if aw == nil {
+		return AudioStereoRecordingWav{}, fmt.Errorf("no media setup")
+	}
+
+	mpropsR := MediaProps{}
+	ar := d.audioReaderProps(&mpropsR)
+	if aw == nil {
+		return AudioStereoRecordingWav{}, fmt.Errorf("no media setup")
+	}
+	codec := mpropsW.Codec
+	if mpropsR.Codec != mpropsW.Codec {
+		return AudioStereoRecordingWav{}, fmt.Errorf("codecs of reader and writer need to match for stereo")
+	}
+	// Create wav file to store recording
+	// Now create WavWriter to have Wav Container written
+	wawWriter := audio.NewWavWriter(wawFile)
+
+	mon := audio.MonitorPCMStereo{}
+	if err := mon.Init(wawWriter, codec, ar, aw); err != nil {
+		wawWriter.Close()
+		return AudioStereoRecordingWav{}, err
+	}
+
+	r := AudioStereoRecordingWav{
+		wawWriter: wawWriter,
+		mon:       mon,
+	}
+	return r, nil
 }
 
 type loggingTransport struct{}
