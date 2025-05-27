@@ -4,6 +4,7 @@
 package audio
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -172,6 +173,28 @@ func (d *PCMDecoderWriter) Write(b []byte) (n int, err error) {
 	}
 
 	return len(b), nil
+}
+
+type PCMDecoderBuffer struct {
+	buf *bytes.Buffer
+	PCMDecoderWriter
+}
+
+func (d *PCMDecoderBuffer) Init(codec media.Codec) error {
+	d.buf = bytes.NewBuffer(make([]byte, 0, codec.Samples16()))
+	return d.PCMDecoderWriter.Init(codec, d.buf)
+}
+
+func (d *PCMDecoderBuffer) ReadFull() []byte {
+	bytes := d.buf.Bytes()
+	d.buf.Reset()
+	return bytes
+}
+
+func (d *PCMDecoderBuffer) ReadAll() []byte {
+	bytes := d.buf.Bytes()
+	d.buf.Reset()
+	return bytes
 }
 
 type PCMEncoder struct {
