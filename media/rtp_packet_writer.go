@@ -126,6 +126,12 @@ func (p *RTPPacketWriter) InitTimestamp() uint32 {
 	return p.initTimestamp
 }
 
+func (p *RTPPacketWriter) DelayTimestamp(ofsset uint32) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.nextTimestamp += ofsset
+}
+
 // Write implements io.Writer and does payload RTP packetization
 // Media clock rate is determined
 // For more control or dynamic payload WriteSamples can be used
