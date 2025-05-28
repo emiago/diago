@@ -26,7 +26,7 @@ type DialogSession interface {
 // Here are many common functions built for dialog
 //
 
-func dialogRefer(ctx context.Context, d DialogSession, recipient sip.Uri, referTo sip.Uri) error {
+func dialogRefer(ctx context.Context, d DialogSession, recipient sip.Uri, referTo sip.Uri, headers ...sip.Header,) error {
 	if d.DialogSIP().LoadState() != sip.DialogStateConfirmed {
 		return fmt.Errorf("Can only be called on answered dialog")
 	}
@@ -34,6 +34,12 @@ func dialogRefer(ctx context.Context, d DialogSession, recipient sip.Uri, referT
 	req := sip.NewRequest(sip.REFER, recipient)
 	// Invite request tags must be preserved but switched
 	req.AppendHeader(sip.NewHeader("Refer-To", referTo.String()))
+
+	for _, h := range headers {
+		if h != nil {
+			req.AppendHeader(h)
+		}
+	}
 
 	res, err := d.Do(ctx, req)
 	if err != nil {

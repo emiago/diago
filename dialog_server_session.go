@@ -244,9 +244,9 @@ func (d *DialogServerSession) ReInvite(ctx context.Context) error {
 }
 
 // Refer tries todo refer (blind transfer) on call
-func (d *DialogServerSession) Refer(ctx context.Context, referTo sip.Uri) error {
+func (d *DialogServerSession) Refer(ctx context.Context, referTo sip.Uri, headers ...sip.Header,) error {
 	cont := d.InviteRequest.Contact()
-	return dialogRefer(ctx, d, cont.Address, referTo)
+	return dialogRefer(ctx, d, cont.Address, referTo, headers...)
 }
 
 func (d *DialogServerSession) handleReferNotify(req *sip.Request, tx sip.ServerTransaction) {
