@@ -450,9 +450,14 @@ func (d *DialogMedia) PlaybackControlCreate() (AudioPlaybackControl, error) {
 	return p, nil
 }
 
-// RecordStereoWavCreate creates Stereo Waw Recording audio Pipeline
+// AudioStereoRecordingCreate creates Stereo Recording audio Pipeline and stores as Wav file format
 // For audio to be recorded use AudioReader and AudioWriter from Recording
-func (d *DialogMedia) RecordStereoWavCreate(wawFile *os.File) (AudioStereoRecordingWav, error) {
+//
+// Tips:
+// If you want to make permanent in audio pipeline use SetAudioReader, SetAudioWriter
+//
+// NOTE: API WILL change
+func (d *DialogMedia) AudioStereoRecordingCreate(wawFile *os.File) (AudioStereoRecordingWav, error) {
 	mpropsW := MediaProps{}
 	aw := d.audioWriterProps(&mpropsW)
 	if aw == nil {

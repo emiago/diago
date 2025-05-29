@@ -5,14 +5,12 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"os/signal"
 
 	"github.com/emiago/diago"
-	"github.com/emiago/diago/audio"
 	"github.com/emiago/diago/examples"
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
@@ -54,34 +52,27 @@ func Record(inDialog *diago.DialogServerSession) error {
 		return err
 	} // Answer -> 200 Response
 
-	mpropsR := diago.MediaProps{}
-	mpropsW := diago.MediaProps{}
-	ar, _ := inDialog.AudioReader(diago.WithAudioReaderMediaProps(&mpropsR))
-	aw, _ := inDialog.AudioWriter(diago.WithAudioWriterMediaProps(&mpropsW))
-	if mpropsR.Codec != mpropsW.Codec {
-		// We can not use stereo monitor.
-		if mpropsR.Codec.SampleDur != mpropsW.Codec.SampleDur &&
-			mpropsR.Codec.SampleRate != mpropsW.Codec.SampleRate {
-			return fmt.Errorf("Codecs do not match. Can not create stereo recording")
-		}
-	}
-
 	// Create wav file to store recording
 	wawFile, err := os.OpenFile("/tmp/diago_record_"+inDialog.InviteRequest.CallID().Value()+".wav", os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
 		return err
 	}
 	defer wawFile.Close()
-	// Now create WavWriter to have Wav Container written
-	wawWriter := audio.NewWavWriter(wawFile)
-	defer wawWriter.Close() // Must be called for header update
 
-	mon := audio.MonitorPCMStereo{}
-	mon.Init(wawWriter, mpropsR.Codec, ar, aw)
-	defer mon.Close()
+	// Create recording audio pipeline
+	rec, err := inDialog.AudioStereoRecordingCreate(wawFile)
+	if err != nil {
+		return err
+	}
+	// Must be closed for correct flushing
+	defer func() {
+		if err := rec.Close(); err != nil {
+			slog.Error("Failed to close recording", "error", err)
+		}
+	}()
 
-	// Do echo
-	_, err = media.Copy(&mon, &mon)
+	// Do echo with audio reader and writer from recording object
+	_, err = media.Copy(rec.AudioReader(), rec.AudioWriter())
 	if errors.Is(err, io.EOF) {
 		// Call finished
 		return nil

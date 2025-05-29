@@ -32,7 +32,7 @@ func TestIntegrationRecordingStereoWav(t *testing.T) {
 	require.NoError(t, err)
 	defer recordFile.Close()
 
-	rec, err := dialog.RecordStereoWavCreate(recordFile)
+	rec, err := dialog.AudioStereoRecordingCreate(recordFile)
 	require.NoError(t, err)
 
 	media.ReadAll(rec.AudioReader(), 160)
