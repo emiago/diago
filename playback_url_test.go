@@ -46,7 +46,7 @@ func TestIntegrationPlaybackURL(t *testing.T) {
 	wg.Add(1)
 	err := tu.ServeBackground(ctx, func(in *DialogServerSession) {
 		defer wg.Done()
-		in.Progress()
+		in.Trying()
 		in.Ringing()
 		in.Answer()
 		t.Log("Playing url ", urlStr)

@@ -52,7 +52,7 @@ ua, _ := sipgo.NewUA()
 dg := diago.NewDiago(ua)
 
 dg.Serve(ctx, func(inDialog *diago.DialogServerSession) {
-	inDialog.Progress() // Progress -> 100 Trying
+	inDialog.Trying() // Progress -> 100 Trying
 	inDialog.Answer(); // Answer
 
 	// Make sure file below exists in work dir

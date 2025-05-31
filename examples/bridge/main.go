@@ -57,8 +57,8 @@ func start(ctx context.Context, recipientUri string) error {
 }
 
 func BridgeCall(d *diago.Diago, inDialog *diago.DialogServerSession, recipient sip.Uri) error {
-	inDialog.Progress() // Progress -> 100 Trying
-	inDialog.Ringing()  // Ringing -> 180 Response
+	inDialog.Trying()  // Progress -> 100 Trying
+	inDialog.Ringing() // Ringing -> 180 Response
 
 	inCtx := inDialog.Context()
 	ctx, cancel := context.WithTimeout(inCtx, 5*time.Second)

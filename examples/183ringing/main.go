@@ -39,13 +39,13 @@ func start(ctx context.Context) error {
 	return tu.Serve(ctx, func(inDialog *diago.DialogServerSession) {
 		slog.Info("New dialog request", "id", inDialog.ID)
 		defer slog.Info("Dialog finished", "id", inDialog.ID)
-		if err := Record(inDialog); err != nil {
+		if err := AnswerEarly(inDialog); err != nil {
 			slog.Error("Record finished with error", "error", err)
 		}
 	})
 }
 
-func Record(inDialog *diago.DialogServerSession) error {
+func AnswerEarly(inDialog *diago.DialogServerSession) error {
 	inDialog.Trying()  // Progress -> 100 Trying
 	inDialog.Ringing() // Ringing -> 180 Response
 	if err := inDialog.Answer(); err != nil {

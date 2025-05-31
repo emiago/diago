@@ -53,6 +53,13 @@ func (d *DialogServerSession) Transport() string {
 	return d.InviteRequest.Transport()
 }
 
+func (d *DialogServerSession) Trying() error {
+	return d.Respond(sip.StatusTrying, "Trying", nil)
+}
+
+// Progress sends 100 trying.
+//
+// Deprecated: Use Trying. It will change behavior to 183 Sesion Progress in future releases
 func (d *DialogServerSession) Progress() error {
 	return d.Respond(sip.StatusTrying, "Trying", nil)
 }
@@ -244,7 +251,7 @@ func (d *DialogServerSession) ReInvite(ctx context.Context) error {
 }
 
 // Refer tries todo refer (blind transfer) on call
-func (d *DialogServerSession) Refer(ctx context.Context, referTo sip.Uri, headers ...sip.Header,) error {
+func (d *DialogServerSession) Refer(ctx context.Context, referTo sip.Uri, headers ...sip.Header) error {
 	cont := d.InviteRequest.Contact()
 	return dialogRefer(ctx, d, cont.Address, referTo, headers...)
 }

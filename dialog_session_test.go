@@ -53,7 +53,7 @@ func TestIntegrationInbound(t *testing.T) {
 	err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
 		// Add some routing
 		if d.ToUser() == "alice" {
-			d.Progress()
+			d.Trying()
 			d.Ringing()
 			d.Answer()
 
@@ -124,7 +124,7 @@ func TestIntegrationBridging(t *testing.T) {
 	))
 
 	err := tu.ServeBackground(ctx, func(in *DialogServerSession) {
-		in.Progress()
+		in.Trying()
 		in.Ringing()
 		in.Answer()
 
@@ -235,7 +235,7 @@ func TestIntegrationDialogCancel(t *testing.T) {
 
 	dg.ServeBackground(ctx, func(d *DialogServerSession) {
 		ctx := d.Context()
-		d.Progress()
+		d.Trying()
 		d.Ringing()
 
 		<-ctx.Done()

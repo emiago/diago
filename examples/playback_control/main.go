@@ -47,8 +47,8 @@ func start(ctx context.Context) error {
 }
 
 func Playback(inDialog *diago.DialogServerSession) error {
-	inDialog.Progress() // Progress -> 100 Trying
-	inDialog.Ringing()  // Ringing -> 180 Response
+	inDialog.Trying()  // Progress -> 100 Trying
+	inDialog.Ringing() // Ringing -> 180 Response
 
 	playfile, _ := testdata.OpenFile("demo-echotest.wav")
 	defer playfile.Close()

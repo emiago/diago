@@ -44,9 +44,9 @@ func start(ctx context.Context) error {
 }
 
 func ReadMedia(inDialog *diago.DialogServerSession) error {
-	inDialog.Progress() // Progress -> 100 Trying
-	inDialog.Ringing()  // Ringing -> 180 Response
-	inDialog.Answer()   // Answqer -> 200 Response
+	inDialog.Trying()  // Progress -> 100 Trying
+	inDialog.Ringing() // Ringing -> 180 Response
+	inDialog.Answer()  // Answqer -> 200 Response
 
 	lastPrint := time.Now()
 	pktsCount := 0
