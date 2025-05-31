@@ -562,8 +562,9 @@ type DTMFReader struct {
 // AudioReaderDTMF is DTMF over RTP. It reads audio and provides hook for dtmf while listening for audio
 // Use Listen or OnDTMF after this call
 func (m *DialogMedia) AudioReaderDTMF() *DTMFReader {
+	ar, _ := m.AudioReader()
 	return &DTMFReader{
-		dtmfReader:   media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, m.RTPPacketReader, m.getAudioReader()),
+		dtmfReader:   media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, m.RTPPacketReader, ar),
 		mediaSession: m.mediaSession,
 	}
 }
