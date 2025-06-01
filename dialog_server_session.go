@@ -64,6 +64,26 @@ func (d *DialogServerSession) Progress() error {
 	return d.Respond(sip.StatusTrying, "Trying", nil)
 }
 
+// ProgressMedia sends 183 Session Progress and creates early media
+//
+// Experimental: Naming of API might change
+func (d *DialogServerSession) ProgressMedia() error {
+	if err := d.initMediaSessionFromConf(d.mediaConf); err != nil {
+		return err
+	}
+	rtpSess := media.NewRTPSession(d.mediaSession)
+	if err := d.setupRTPSession(rtpSess); err != nil {
+		return err
+	}
+
+	headers := []sip.Header{sip.NewHeader("Content-Type", "application/sdp")}
+	body := rtpSess.Sess.LocalSDP()
+	if err := d.DialogServerSession.Respond(183, "Session Progress", body, headers...); err != nil {
+		return err
+	}
+	return rtpSess.MonitorBackground()
+}
+
 func (d *DialogServerSession) Ringing() error {
 	return d.Respond(sip.StatusRinging, "Ringing", nil)
 }
@@ -88,8 +108,18 @@ func (d *DialogServerSession) RespondSDP(body []byte) error {
 }
 
 // Answer creates media session and answers
+// After this new AudioReader and AudioWriter are created for audio manipulation
 // NOTE: Not final API
 func (d *DialogServerSession) Answer() error {
+	// Media Exists as early
+	if d.mediaSession != nil {
+		// This will now block until ACK received with 64*T1 as max.
+		if err := d.RespondSDP(d.mediaSession.LocalSDP()); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	if err := d.initMediaSessionFromConf(d.mediaConf); err != nil {
 		return err
 	}
@@ -116,6 +146,15 @@ func (d *DialogServerSession) AnswerOptions(opt AnswerOptions) error {
 	d.onMediaUpdate = opt.OnMediaUpdate
 	d.mu.Unlock()
 
+	// If media exists as early, only respond 200
+	if d.mediaSession != nil {
+		// Check do codecs match
+		if err := d.RespondSDP(d.mediaSession.LocalSDP()); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	// Let override of formats
 	conf := d.mediaConf
 	if opt.Codecs != nil {
@@ -132,6 +171,7 @@ func (d *DialogServerSession) AnswerOptions(opt AnswerOptions) error {
 // answerSession. It allows answering with custom RTP Session.
 // NOTE: Not final API
 func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
+	// TODO: Use setupRTPSession
 	sess := rtpSess.Sess
 	sdp := d.InviteRequest.Body()
 	if sdp == nil {
@@ -157,6 +197,27 @@ func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
 	}
 	// Must be called after media and reader writer is setup
 	return rtpSess.MonitorBackground()
+}
+
+func (d *DialogServerSession) setupRTPSession(rtpSess *media.RTPSession) error {
+	sess := rtpSess.Sess
+	sdp := d.InviteRequest.Body()
+	if sdp == nil {
+		return fmt.Errorf("no sdp present in INVITE")
+	}
+
+	if err := sess.RemoteSDP(sdp); err != nil {
+		return err
+	}
+
+	d.mu.Lock()
+	d.initRTPSessionUnsafe(sess, rtpSess)
+	// Close RTP session
+	d.onCloseUnsafe(func() error {
+		return rtpSess.Close()
+	})
+	d.mu.Unlock()
+	return nil
 }
 
 // AnswerLate does answer with Late offer.
