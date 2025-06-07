@@ -262,12 +262,20 @@ func (t *RegisterTransaction) doRequest(ctx context.Context, req *sip.Request) e
 }
 
 func getResponse(ctx context.Context, tx sip.ClientTransaction) (*sip.Response, error) {
-	select {
-	case <-tx.Done():
-		return nil, fmt.Errorf("transaction died")
-	case res := <-tx.Responses():
-		return res, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	for {
+		select {
+		case <-tx.Done():
+			return nil, fmt.Errorf("transaction died before final reply")
+		case res := <-tx.Responses():
+			// If this is a provisional (1xx), just loop again
+			if code := res.StatusCode; code >= 100 && code < 200 {
+				// quietly ignore the 1xx
+				continue
+			}
+			// Otherwise this is the first non-1xx (200, 401, 5xx, etc.)
+			return res, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 }
