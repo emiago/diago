@@ -20,13 +20,14 @@ type DialogSession interface {
 	Media() *DialogMedia
 	DialogSIP() *sipgo.Dialog
 	Do(ctx context.Context, req *sip.Request) (*sip.Response, error)
+	Close() error
 }
 
 //
 // Here are many common functions built for dialog
 //
 
-func dialogRefer(ctx context.Context, d DialogSession, recipient sip.Uri, referTo sip.Uri, headers ...sip.Header,) error {
+func dialogRefer(ctx context.Context, d DialogSession, recipient sip.Uri, referTo sip.Uri, headers ...sip.Header) error {
 	if d.DialogSIP().LoadState() != sip.DialogStateConfirmed {
 		return fmt.Errorf("Can only be called on answered dialog")
 	}
