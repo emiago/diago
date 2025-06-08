@@ -49,16 +49,30 @@ func (c *Codec) SamplesPCM(bitSize int) int {
 	return bitSize / 8 * int(float64(c.SampleRate)*c.SampleDur.Seconds()) * c.NumChannels
 }
 
-func CodecFromSession(s *MediaSession) Codec {
-	for _, codec := range s.Codecs {
+func CodecAudioFromSession(s *MediaSession) Codec {
+	codec, exists := CodecAudioFromList(s.filterCodecs)
+	if !exists {
+		return s.Codecs[0]
+	}
+
+	return codec
+}
+
+func CodecAudioFromList(codecs []Codec) (Codec, bool) {
+	for _, codec := range codecs {
 		if codec.Name == "telephone-event" {
 			continue
 		}
 
-		return codec
+		return codec, true
 	}
 
-	return s.Codecs[0]
+	return Codec{}, false
+}
+
+// Deprecated: Use CodecAudioFromSession
+func CodecFromSession(s *MediaSession) Codec {
+	return CodecAudioFromSession(s)
 }
 
 // Deprecated: Use CodecAudioFromPayloadType

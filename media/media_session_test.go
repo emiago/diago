@@ -124,19 +124,19 @@ func TestMediaSessionUpdateCodec(t *testing.T) {
 
 	m := newM()
 	m.updateRemoteCodecs([]Codec{CodecAudioAlaw, CodecAudioUlaw})
-	assert.Equal(t, []Codec{CodecAudioAlaw, CodecAudioUlaw}, m.Codecs)
+	assert.Equal(t, []Codec{CodecAudioAlaw, CodecAudioUlaw}, m.filterCodecs)
 
 	m = newM()
 	m.updateRemoteCodecs([]Codec{CodecAudioAlaw})
-	assert.Equal(t, []Codec{CodecAudioAlaw}, m.Codecs)
+	assert.Equal(t, []Codec{CodecAudioAlaw}, m.filterCodecs)
 
 	m = newM()
 	m.updateRemoteCodecs([]Codec{})
-	assert.Equal(t, []Codec{}, m.Codecs)
+	assert.Equal(t, []Codec{}, m.filterCodecs)
 
 	m = newM()
 	m.updateRemoteCodecs([]Codec{{Name: "NonExisting"}})
-	assert.Equal(t, []Codec{}, m.Codecs)
+	assert.Equal(t, []Codec{}, m.filterCodecs)
 }
 
 func TestMediaSessionUpdateSDP(t *testing.T) {
@@ -163,9 +163,35 @@ a=sendrecv`
 	err := m.RemoteSDP([]byte(sd))
 	require.NoError(t, err)
 
-	require.Len(t, m.Codecs, 4)
-	assert.Equal(t, CodecAudioUlaw, m.Codecs[0])
-	assert.Equal(t, CodecAudioAlaw, m.Codecs[1])
-	assert.Equal(t, CodecAudioOpus, m.Codecs[2])
-	assert.Equal(t, CodecTelephoneEvent8000, m.Codecs[3])
+	require.Len(t, m.filterCodecs, 4)
+	assert.Equal(t, CodecAudioUlaw, m.filterCodecs[0])
+	assert.Equal(t, CodecAudioAlaw, m.filterCodecs[1])
+	assert.Equal(t, CodecAudioOpus, m.filterCodecs[2])
+	assert.Equal(t, CodecTelephoneEvent8000, m.filterCodecs[3])
+
+	// Test forking
+	{
+		sd = `v=0
+o=- 3948988145 3948988145 IN IP4 192.168.178.54
+s=Sip Go Media
+c=IN IP4 192.168.178.54
+t=0 0
+m=audio 34391 RTP/AVP 0 96 101
+a=rtpmap:0 PCMU/8000
+a=rtpmap:96 opus/48000/2
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=ptime:20
+a=maxptime:20
+a=sendrecv`
+
+		m = *m.Fork()
+		err = m.RemoteSDP([]byte(sd))
+		require.NoError(t, err)
+
+		require.Len(t, m.filterCodecs, 3)
+		assert.Equal(t, CodecAudioUlaw, m.filterCodecs[0])
+		assert.Equal(t, CodecAudioOpus, m.filterCodecs[1])
+		assert.Equal(t, CodecTelephoneEvent8000, m.filterCodecs[2])
+	}
 }

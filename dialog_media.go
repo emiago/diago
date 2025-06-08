@@ -29,6 +29,8 @@ var (
 	client = http.Client{
 		Timeout: 10 * time.Second,
 	}
+
+	errNoRTPSession = errors.New("no rtp session")
 )
 
 func init() {
@@ -209,29 +211,15 @@ func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 		return fmt.Errorf("no media session present")
 	}
 
-	msess := d.mediaSession.Fork()
-	if err := msess.RemoteSDP(sdp); err != nil {
-		return fmt.Errorf("reinvite media remote SDP applying failed: %w", err)
+	if err := d.sdpUpdateUnsafe(sdp); err != nil {
+		return err
 	}
-
-	d.mediaSession = msess
-
-	rtpSess := media.NewRTPSession(msess)
-	d.onCloseUnsafe(func() error {
-		return rtpSess.Close()
-	})
-
-	d.RTPPacketReader.UpdateRTPSession(rtpSess)
-	d.RTPPacketWriter.UpdateRTPSession(rtpSess)
-	rtpSess.MonitorBackground()
-
-	// hold the reference
-	d.rtpSession = rtpSess
 
 	if d.onMediaUpdate != nil {
 		d.onMediaUpdate(d)
 	} else {
 		fmts := ""
+		msess := d.mediaSession
 		for _, c := range msess.Codecs {
 			fmts += c.Name
 		}
@@ -245,6 +233,48 @@ func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 	return nil
 }
 
+func (d *DialogMedia) checkEarlyMedia(remoteSDP []byte) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	// RTP Session is only created when negotiation is finished. We use this to detect existing media
+	if d.rtpSession == nil {
+		return errNoRTPSession
+	}
+	return d.sdpUpdateUnsafe(remoteSDP)
+}
+
+func (d *DialogMedia) sdpUpdateUnsafe(sdp []byte) error {
+	msess := d.mediaSession.Fork()
+	if err := msess.RemoteSDP(sdp); err != nil {
+		return fmt.Errorf("sdp update media remote SDP applying failed: %w", err)
+	}
+
+	// Stop existing rtp
+	if d.rtpSession != nil {
+		if err := d.rtpSession.Close(); err != nil {
+			return err
+		}
+	}
+
+	rtpSess := media.NewRTPSession(msess)
+	d.onCloseUnsafe(func() error {
+		return rtpSess.Close()
+	})
+
+	if err := rtpSess.MonitorBackground(); err != nil {
+		rtpSess.Close()
+		return err
+	}
+
+	d.RTPPacketReader.UpdateRTPSession(rtpSess)
+	d.RTPPacketWriter.UpdateRTPSession(rtpSess)
+
+	// update the reference
+	d.mediaSession = msess
+	d.rtpSession = rtpSess
+	return nil
+}
+
 type AudioReaderOption func(d *DialogMedia) error
 
 type MediaProps struct {
@@ -255,7 +285,7 @@ type MediaProps struct {
 
 func WithAudioReaderMediaProps(p *MediaProps) AudioReaderOption {
 	return func(d *DialogMedia) error {
-		p.Codec = media.CodecFromSession(d.mediaSession)
+		p.Codec = media.CodecAudioFromSession(d.mediaSession)
 		p.Laddr = d.mediaSession.Laddr.String()
 		p.Raddr = d.mediaSession.Raddr.String()
 		return nil
@@ -331,7 +361,7 @@ type AudioWriterOption func(d *DialogMedia) error
 
 func WithAudioWriterMediaProps(p *MediaProps) AudioWriterOption {
 	return func(d *DialogMedia) error {
-		p.Codec = media.CodecFromSession(d.mediaSession)
+		p.Codec = media.CodecAudioFromSession(d.mediaSession)
 		p.Laddr = d.mediaSession.Laddr.String()
 		p.Raddr = d.mediaSession.Raddr.String()
 		return nil

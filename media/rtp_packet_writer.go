@@ -82,7 +82,7 @@ func NewRTPPacketWriter(writer RTPWriter, codec Codec) *RTPPacketWriter {
 
 // NewRTPPacketWriterSession creates RTPPacketWriter and attaches RTP Session expected values
 func NewRTPPacketWriterSession(sess *RTPSession) *RTPPacketWriter {
-	codec := CodecFromSession(sess.Sess)
+	codec := CodecAudioFromSession(sess.Sess)
 	w := NewRTPPacketWriter(sess, codec)
 	// We need to add our SSRC due to sender report, which can be empty until data comes
 	// It is expected that nothing travels yet through rtp session
@@ -188,7 +188,7 @@ func (w *RTPPacketWriter) UpdateRTPSession(rtpSess *RTPSession) {
 	defer w.mu.Unlock()
 
 	// In case of codec cha
-	codec := CodecFromSession(rtpSess.Sess)
+	codec := CodecAudioFromSession(rtpSess.Sess)
 	w.payloadType = codec.PayloadType
 	w.sampleRate = codec.SampleRate
 	w.updateClockRate(codec)

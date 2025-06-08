@@ -74,7 +74,8 @@ func (d *DialogClientSession) remoteContactUnsafe() *sip.ContactHeader {
 type InviteClientOptions struct {
 	Originator DialogSession
 	OnResponse func(res *sip.Response) error
-	// OnMediaUpdate called when media is changed. NOTE: you should not block this call
+	// OnMediaUpdate called when media is changed.
+	// NOTE: you should not block this call as it blocks response processing.
 	OnMediaUpdate func(d *DialogMedia)
 	OnRefer       func(referDialog *DialogClientSession)
 	// For digest authentication
@@ -149,7 +150,12 @@ func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptio
 			audioCodec := media.Codec{}
 			telEventCodec := media.Codec{}
 
-			for _, c := range sess.Codecs {
+			codecs := sess.CommonCodecs()
+			if len(codecs) == 0 { // No negotiation yet happened
+				codecs = sess.Codecs
+			}
+
+			for _, c := range codecs {
 				// TODO refactor this
 				if strings.HasPrefix(c.Name, "telephone-event") {
 					if telEventCodec.SampleRate == 0 {
@@ -162,8 +168,10 @@ func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptio
 					audioCodec = c
 				}
 			}
+
 			// TODO: DO we need to be thread safe here?
-			// TODO: Should we honor formats set on this session?
+			// In this case we want to rewrite what should be Offered in our SDP
+			// NOTE: Generally this would require Session Fork, but for now we avoid this extra step.
 			sessCodecs := sess.Codecs[:0]
 			if audioCodec.SampleRate != 0 {
 				sessCodecs = append(sessCodecs, audioCodec)
@@ -215,11 +223,13 @@ func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptio
 		return err
 	}
 
-	return d.waitAnswer(ctx, sipgo.AnswerOptions{
+	ansOpts := sipgo.AnswerOptions{
 		Username:   opts.Username,
 		Password:   opts.Password,
 		OnResponse: opts.OnResponse,
-	})
+	}
+
+	return d.waitAnswer(ctx, ansOpts)
 }
 
 // InviteLate does not send SDP offer
@@ -227,9 +237,55 @@ func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptio
 // func (d *DialogClientSession) InviteLate(ctx context.Context, opts InviteOptions) error {
 
 // }
-
 func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerOptions) error {
 	sess := d.mediaSession
+	onResps := opts.OnResponse
+
+	// Add early media check
+	opts.OnResponse = func(res *sip.Response) error {
+		// https://datatracker.ietf.org/doc/html/rfc3261#section-8.1.3.2
+		// 		UAC MUST treat any provisional response different than 100 that it
+		//    does not recognize as 183 (Session Progress).
+		// Check any existing
+		if onResps != nil {
+			if err := onResps(res); err != nil {
+				return err
+			}
+		}
+
+		// handle 183 Session Progress early media
+		if res.StatusCode != sip.StatusSessionInProgress {
+			return nil
+		}
+
+		if cont := res.ContentType(); cont == nil || cont.Value() != "application/sdp" {
+			return nil
+		}
+
+		remoteSDP := res.Body()
+		if remoteSDP == nil {
+			return nil
+		}
+
+		if err := sess.RemoteSDP(remoteSDP); err != nil {
+			return err
+		}
+
+		rtpSess := media.NewRTPSession(sess)
+		d.mu.Lock()
+		d.initRTPSessionUnsafe(sess, rtpSess)
+		d.onCloseUnsafe(func() error {
+			return rtpSess.Close()
+		})
+		d.mu.Unlock()
+
+		// Must be called after reader and writer setup due to race
+		if err := rtpSess.MonitorBackground(); err != nil {
+			return err
+		}
+
+		return nil
+	}
 
 	if err := d.WaitAnswer(ctx, opts); err != nil {
 		return err
@@ -239,6 +295,12 @@ func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerO
 	if remoteSDP == nil {
 		return fmt.Errorf("no SDP in response")
 	}
+
+	// Apply SDP on Early media if it exists
+	if err := d.checkEarlyMedia(remoteSDP); err != errNoRTPSession {
+		return err
+	}
+
 	if err := sess.RemoteSDP(remoteSDP); err != nil {
 		return err
 	}

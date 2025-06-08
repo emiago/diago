@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -70,27 +71,31 @@ func logRTCPWrite(m *MediaSession, p rtcp.Packet) {
 // - With multi descriptions, or reinvites it should be forked and create new media Session
 //
 // NOTE: Not thread safe, read only after SDP negotiation or have locking in place
+//       Object should be immutable, that is post session changes like codecs, remote addr would require Forking object with Fork call.
+
 type MediaSession struct {
 	// SDP stuff
 	// TODO:
 	// 1. make this list of codecs as we need to match also sample rate and ptime
 	// 2. rtp session when matching incoming packet sample rate for RTCP should use this
+
+	// Codecs are initial list of Codecs that would be used in SDP generation
 	Codecs []Codec
+
 	// Mode is sdp mode. Check consts sdp.ModeRecvOnly etc...
 	Mode string
 	// Laddr our local address which has full IP and port after media session creation
 	Laddr net.UDPAddr
-
 	// Raddr is our target remote address. Normally it is resolved by SDP parsing.
-	// Checkout SetRemoteAddr
 	Raddr net.UDPAddr
-
 	// ExternalIP that should be used for building SDP
 	ExternalIP net.IP
 
-	rtpConn   net.PacketConn
-	rtcpConn  net.PacketConn
-	rtcpRaddr net.UDPAddr
+	// filterCodecs is common list of codecs after negotiation
+	filterCodecs []Codec
+	rtpConn      net.PacketConn
+	rtcpConn     net.PacketConn
+	rtcpRaddr    net.UDPAddr
 
 	// TODO: Support RTP Symetric
 	rtpSymetric bool
@@ -171,10 +176,8 @@ func (s *MediaSession) Fork() *MediaSession {
 		Laddr:    s.Laddr, // TODO clone it although it is read only
 		rtpConn:  s.rtpConn,
 		rtcpConn: s.rtcpConn,
-		Codecs: []Codec{
-			CodecAudioUlaw, CodecAudioAlaw, CodecTelephoneEvent8000,
-		},
-		Mode: sdp.ModeSendrecv,
+		Codecs:   slices.Clone(s.Codecs),
+		Mode:     sdp.ModeSendrecv,
 	}
 	return &cp
 }
@@ -273,7 +276,13 @@ func (s *MediaSession) updateRemoteCodecs(codecs []Codec) {
 			}
 		}
 	}
-	s.Codecs = filter
+	s.filterCodecs = filter
+}
+
+// CommonCodecs returns common codecs if negotiation is finished, that is Local and Remote SDP are exchanged
+// NOTE: Not thread safe, should be called after negotiation or session must be Forked
+func (s *MediaSession) CommonCodecs() []Codec {
+	return s.filterCodecs
 }
 
 // Listen creates listeners instead
@@ -505,25 +514,6 @@ func (m *MediaSession) WriteRTCPs(pkts []rtcp.Packet) error {
 func (m *MediaSession) WriteRTCPRaw(data []byte) (int, error) {
 	n, err := m.rtcpConn.WriteTo(data, &m.rtcpRaddr)
 	return n, err
-}
-
-func selectFormats(sendCodecs []string, recvCodecs []string) []int {
-	formats := make([]int, 0, cap(sendCodecs))
-	parseErr := []error{}
-	for _, cr := range recvCodecs {
-		for _, cs := range sendCodecs {
-			if cr == cs {
-				f, err := strconv.Atoi(cs)
-				// keep going
-				if err != nil {
-					parseErr = append(parseErr, err)
-					continue
-				}
-				formats = append(formats, f)
-			}
-		}
-	}
-	return formats
 }
 
 func StringRTCP(p rtcp.Packet) string {

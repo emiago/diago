@@ -1,14 +1,77 @@
 package diago
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
+	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestIntegrationDialogClientEarlyMedia(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	{
+		ua, _ := sipgo.NewUA(sipgo.WithUserAgent("server"))
+		defer ua.Close()
+
+		dg := NewDiago(ua, WithTransport(
+			Transport{
+				Transport: "udp",
+				BindHost:  "127.0.0.1",
+				BindPort:  15060,
+			},
+		))
+		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+			t.Log("Call received")
+			d.Trying()
+			if err := d.ProgressMedia(); err != nil {
+				t.Log("Failed to progress media", err)
+				return
+			}
+
+			// Write frame
+			w, _ := d.AudioWriter()
+			if _, err := w.Write(bytes.Repeat([]byte{0, 100}, 80)); err != nil {
+				t.Log("Failed to write frame", err)
+				return
+			}
+
+			if err := d.Answer(); err != nil {
+				t.Log("Failed to answer", err)
+				return
+			}
+			return
+		})
+		require.NoError(t, err)
+	}
+
+	ua, _ := sipgo.NewUA()
+	defer ua.Close()
+
+	dg := newDialer(ua)
+	err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
+	require.NoError(t, err)
+
+	dialog, err := dg.NewDialog(sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15060}, NewDialogOptions{})
+	require.NoError(t, err)
+	defer dialog.Close()
+
+	err = dialog.Invite(ctx, InviteClientOptions{})
+	require.NoError(t, err)
+	require.NoError(t, dialog.Ack(ctx))
+
+	r, _ := dialog.AudioReader()
+	earlyMedBuf, _ := media.ReadAll(r, 160)
+	assert.Len(t, earlyMedBuf, 160) // 1 frame
+
+	<-dialog.Context().Done()
+}
 
 func TestIntegrationDialogClientReinvite(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

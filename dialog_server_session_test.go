@@ -63,6 +63,7 @@ func TestIntegrationDialogServerEarlyMedia(t *testing.T) {
 		defer wg.Done()
 		dialog, err := dialer.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15010}, InviteOptions{
 			OnResponse: func(res *sip.Response) error {
+				t.Log("Received resp", res.StatusCode)
 				allResponses = append(allResponses, *res.Clone())
 				return nil
 			},
@@ -103,6 +104,7 @@ func TestIntegrationDialogServerEarlyMedia(t *testing.T) {
 	d.Hangup(context.TODO())
 
 	wg.Wait()
+	require.Len(t, allResponses, 3)
 	assert.Equal(t, 183, allResponses[0].StatusCode)
 	assert.Equal(t, 180, allResponses[1].StatusCode)
 	assert.Equal(t, 200, allResponses[2].StatusCode)

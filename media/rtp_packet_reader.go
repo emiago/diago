@@ -65,7 +65,7 @@ func NewRTPPacketReaderSession(sess *RTPSession) *RTPPacketReader {
 
 // used for tests only
 func newRTPPacketReaderMedia(sess *MediaSession) *RTPPacketReader {
-	codec := CodecFromSession(sess)
+	codec := CodecAudioFromSession(sess)
 	w := NewRTPPacketReader(sess, codec)
 	return w
 }
