@@ -62,15 +62,29 @@ func TestIntegrationDialogClientEarlyMedia(t *testing.T) {
 	require.NoError(t, err)
 	defer dialog.Close()
 
-	err = dialog.Invite(ctx, InviteClientOptions{})
-	require.NoError(t, err)
-	require.NoError(t, dialog.Ack(ctx))
+	err = dialog.Invite(ctx, InviteClientOptions{
+		EarlyMediaDetect: true,
+	})
+	require.ErrorIs(t, err, ErrClientEarlyMedia)
 
-	r, _ := dialog.AudioReader()
-	earlyMedBuf, _ := media.ReadAll(r, 160)
-	assert.Len(t, earlyMedBuf, 160) // 1 frame
+	// Now we should be able to read media
+	r, err := dialog.AudioReader()
+	require.NoError(t, err)
+
+	// Read early media in background
+	var earlyMediaBuf []byte
+	doneEarly := make(chan struct{})
+	go func() {
+		defer close(doneEarly)
+		earlyMediaBuf, _ = media.ReadAll(r, 160)
+	}()
+
+	dialog.WaitAnswer(ctx, sipgo.AnswerOptions{})
+	dialog.Ack(ctx)
 
 	<-dialog.Context().Done()
+	<-doneEarly
+	assert.Len(t, earlyMediaBuf, 160) // 1 frame
 }
 
 func TestIntegrationDialogClientReinvite(t *testing.T) {

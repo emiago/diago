@@ -16,6 +16,10 @@ import (
 	"github.com/emiago/sipgo/sip"
 )
 
+var (
+	ErrClientEarlyMedia = errors.New("Early media detected")
+)
+
 // DialogClientSession represents outbound channel
 type DialogClientSession struct {
 	*sipgo.DialogClientSession
@@ -84,6 +88,8 @@ type InviteClientOptions struct {
 
 	// Custom headers to pass. DO NOT SET THIS to nil
 	Headers []sip.Header
+	// Stop on early media. ErrClientEarlyMedia will be returned
+	EarlyMediaDetect bool
 }
 
 // WithAnonymousCaller sets from user Anonymous per RFC
@@ -104,8 +110,16 @@ func (o *InviteClientOptions) WithCaller(displayName string, callerID string, ho
 	})
 }
 
-// Invite sends Invite request and establishes early media.
-// NOTE: You must call Ack after to acknowledge session.
+// Invite sends Invite request and establishes [early] media.
+//
+// Early Media Detect:
+// - It RETURNS ErrClientEarlyMedia if remote answers with 183 Session in Progress
+// - Media is negotiated and setuped
+// - You need to call WaitAnswer() if you want to proceed with answering call
+//
+// Normal Answer with 200 OK (SDP)
+// - You MUST call Ack() after to acknowledge session.
+//
 // NOTE: It updates internal invite request so NOT THREAD SAFE.
 // If you pass originator it will use originator to set correct from header and avoid media transcoding
 //
@@ -229,15 +243,20 @@ func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptio
 		OnResponse: opts.OnResponse,
 	}
 
+	if opts.EarlyMediaDetect {
+		return d.waitAnswerEarly(ctx, ansOpts)
+	}
+
 	return d.waitAnswer(ctx, ansOpts)
 }
 
-// InviteLate does not send SDP offer
-// NOTE: call AckLate to complete negotiation
-// func (d *DialogClientSession) InviteLate(ctx context.Context, opts InviteOptions) error {
+// WaitAnswer waits dialog on answer. It should only be used if you have error Invite but still want to continue
+// ex. ErrClientEarlyMedia was returned but you want to proceed with answering
+func (d *DialogClientSession) WaitAnswer(ctx context.Context, opts sipgo.AnswerOptions) error {
+	return d.waitAnswer(ctx, opts)
+}
 
-// }
-func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerOptions) error {
+func (d *DialogClientSession) waitAnswerEarly(ctx context.Context, opts sipgo.AnswerOptions) error {
 	sess := d.mediaSession
 	onResps := opts.OnResponse
 
@@ -284,10 +303,14 @@ func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerO
 			return err
 		}
 
-		return nil
+		return ErrClientEarlyMedia
 	}
+	return d.waitAnswer(ctx, opts)
+}
 
-	if err := d.WaitAnswer(ctx, opts); err != nil {
+func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerOptions) error {
+	sess := d.mediaSession
+	if err := d.DialogClientSession.WaitAnswer(ctx, opts); err != nil {
 		return err
 	}
 
@@ -296,7 +319,7 @@ func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerO
 		return fmt.Errorf("no SDP in response")
 	}
 
-	// Apply SDP on Early media if it exists
+	// Apply SDP on existing (Early) media if it exists
 	if err := d.checkEarlyMedia(remoteSDP); err != errNoRTPSession {
 		return err
 	}
