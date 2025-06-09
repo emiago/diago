@@ -85,15 +85,9 @@ func (t *RegisterTransaction) Register(ctx context.Context) error {
 	// Send request and parse response
 	// req.SetDestination(*dst)
 	log.Info("REGISTER", "uri", req.Recipient.String(), "expiry", int(expiry))
-	tx, err := client.TransactionRequest(ctx, req, sipgo.ClientRequestRegisterBuild)
+	res, err := client.Do(ctx, req, sipgo.ClientRequestRegisterBuild)
 	if err != nil {
 		return fmt.Errorf("fail to create transaction req=%q: %w", req.StartLine(), err)
-	}
-	defer tx.Terminate()
-
-	res, err := getResponse(ctx, tx)
-	if err != nil {
-		return fmt.Errorf("fail to get response req=%q : %w", req.StartLine(), err)
 	}
 
 	via := res.Via()
@@ -118,8 +112,6 @@ func (t *RegisterTransaction) Register(ctx context.Context) error {
 
 	log.Info("Received status", "status", int(res.StatusCode))
 	if res.StatusCode == sip.StatusUnauthorized || res.StatusCode == sip.StatusProxyAuthRequired {
-		tx.Terminate() //Terminate previous
-
 		log.Info("Unathorized. Doing digest auth")
 		res, err = client.DoDigestAuth(ctx, req, res, sipgo.DigestAuth{
 			Username: username,
