@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"time"
 
 	"github.com/emiago/diago/media"
@@ -100,6 +101,7 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 			if errors.Is(err, io.EOF) {
 				return
 			}
+
 			b.log.Error("Proxy media stopped", "error", err)
 		}
 	}()
@@ -139,7 +141,8 @@ func (b *Bridge) proxyMedia() error {
 		r := m1.audioReaderProps(&p1)
 		w := m2.audioWriterProps(&p2)
 
-		log.Debug("Starting proxy media routine", "from", p1.Raddr+" > "+p1.Laddr, "to", p2.Laddr+" > "+p2.Raddr)
+		log := log.With("from", p1.Raddr+" > "+p1.Laddr, "to", p2.Laddr+" > "+p2.Raddr)
+		log.Debug("Starting proxy media routine")
 		go proxyMediaBackground(log, r, w, errCh)
 	}()
 
@@ -148,7 +151,8 @@ func (b *Bridge) proxyMedia() error {
 		p1, p2 := MediaProps{}, MediaProps{}
 		r := m2.audioReaderProps(&p1)
 		w := m1.audioWriterProps(&p2)
-		log.Debug("Starting proxy media routine", "from", p1.Raddr+" > "+p1.Laddr, "to", p2.Laddr+" > "+p2.Raddr)
+		log := log.With("from", p1.Raddr+" > "+p1.Laddr, "to", p2.Laddr+" > "+p2.Raddr)
+		log.Debug("Starting proxy media routine")
 		go proxyMediaBackground(log, r, w, errCh)
 	}()
 
@@ -164,7 +168,11 @@ func proxyMediaBackground(log *slog.Logger, reader io.Reader, writer io.Writer, 
 	defer rtpBufPool.Put(buf)
 
 	written, err := copyWithBuf(reader, writer, buf.([]byte))
-	log.Debug("Bridge proxy stream finished", "bytes", written)
+	log.Debug("Proxy media routine finished", "bytes", written)
+	if err, ok := err.(net.Error); ok && err.Timeout() {
+		log.Debug("Proxy media stopped with timeout. RTP Deadline", "error", err)
+		err = nil
+	}
 	ch <- err
 }
 
