@@ -551,7 +551,7 @@ func (d *DialogMedia) ListenContext(ctx context.Context) error {
 	buf := make([]byte, media.RTPBufSize)
 	go func() {
 		<-ctx.Done()
-		d.mediaSession.StopRTP(2, 0)
+		d.mediaSession.StopRTP(1, 0)
 	}()
 	audioRader := d.getAudioReader()
 	for {
@@ -565,7 +565,7 @@ func (d *DialogMedia) ListenContext(ctx context.Context) error {
 func (d *DialogMedia) ListenUntil(dur time.Duration) error {
 	buf := make([]byte, media.RTPBufSize)
 
-	d.mediaSession.StopRTP(2, dur)
+	d.mediaSession.StopRTP(1, dur)
 	audioReader := d.getAudioReader()
 	for {
 		_, err := audioReader.Read(buf)
