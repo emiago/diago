@@ -120,6 +120,10 @@ func (o *InviteClientOptions) WithCaller(displayName string, callerID string, ho
 // Normal Answer with 200 OK (SDP)
 // - You MUST call Ack() after to acknowledge session.
 //
+// Errors:
+// - sipgo.ErrDialogResponse
+// - ErrClientEarlyMedia
+//
 // NOTE: It updates internal invite request so NOT THREAD SAFE.
 // If you pass originator it will use originator to set correct from header and avoid media transcoding
 //
