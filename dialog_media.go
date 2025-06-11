@@ -487,7 +487,7 @@ func (d *DialogMedia) PlaybackControlCreate() (AudioPlaybackControl, error) {
 // If you want to make permanent in audio pipeline use SetAudioReader, SetAudioWriter
 //
 // NOTE: API WILL change
-func (d *DialogMedia) AudioStereoRecordingCreate(wawFile *os.File) (AudioStereoRecordingWav, error) {
+func (d *DialogMedia) AudioStereoRecordingCreate(wavFile *os.File) (AudioStereoRecordingWav, error) {
 	mpropsW := MediaProps{}
 	aw := d.audioWriterProps(&mpropsW)
 	if aw == nil {
@@ -496,7 +496,7 @@ func (d *DialogMedia) AudioStereoRecordingCreate(wawFile *os.File) (AudioStereoR
 
 	mpropsR := MediaProps{}
 	ar := d.audioReaderProps(&mpropsR)
-	if aw == nil {
+	if ar == nil {
 		return AudioStereoRecordingWav{}, fmt.Errorf("no media setup")
 	}
 	codec := mpropsW.Codec
@@ -505,16 +505,16 @@ func (d *DialogMedia) AudioStereoRecordingCreate(wawFile *os.File) (AudioStereoR
 	}
 	// Create wav file to store recording
 	// Now create WavWriter to have Wav Container written
-	wawWriter := audio.NewWavWriter(wawFile)
+	wavWriter := audio.NewWavWriter(wavFile)
 
 	mon := audio.MonitorPCMStereo{}
-	if err := mon.Init(wawWriter, codec, ar, aw); err != nil {
-		wawWriter.Close()
+	if err := mon.Init(wavWriter, codec, ar, aw); err != nil {
+		wavWriter.Close()
 		return AudioStereoRecordingWav{}, err
 	}
 
 	r := AudioStereoRecordingWav{
-		wawWriter: wawWriter,
+		wavWriter: wavWriter,
 		mon:       mon,
 	}
 	return r, nil

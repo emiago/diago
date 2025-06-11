@@ -7,7 +7,7 @@ import (
 )
 
 type AudioStereoRecordingWav struct {
-	wawWriter *audio.WavWriter
+	wavWriter *audio.WavWriter
 	mon       audio.MonitorPCMStereo
 }
 
@@ -22,6 +22,6 @@ func (r *AudioStereoRecordingWav) AudioWriter() *audio.MonitorPCMStereo {
 func (r *AudioStereoRecordingWav) Close() error {
 	return errors.Join(
 		r.mon.Close(),
-		r.wawWriter.Close(),
+		r.wavWriter.Close(),
 	)
 }
