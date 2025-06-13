@@ -104,7 +104,7 @@ func (p *AudioPlayback) stream(body io.Reader, playWriter io.Writer) (int64, err
 }
 
 func (p *AudioPlayback) streamWav(body io.Reader, playWriter io.Writer) (int64, error) {
-	codec := &p.codec
+	codec := p.codec
 	dec := audio.NewWavReader(body)
 	if err := dec.ReadHeaders(); err != nil {
 		return 0, err
@@ -128,8 +128,8 @@ func (p *AudioPlayback) streamWav(body io.Reader, playWriter io.Writer) (int64, 
 	defer playBufPool.Put(buf)
 	payloadBuf := buf.([]byte)[:payloadSize] // 20 ms
 
-	enc, err := audio.NewPCMEncoderWriter(codec.PayloadType, playWriter)
-	if err != nil {
+	enc := &audio.PCMEncoderWriter{}
+	if err := enc.Init(codec, playWriter); err != nil {
 		return 0, fmt.Errorf("failed to create PCM encoder: %w", err)
 	}
 
