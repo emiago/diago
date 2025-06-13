@@ -538,9 +538,12 @@ func (s *loggingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func (d *DialogMedia) Listen() error {
 	buf := make([]byte, media.RTPBufSize)
-	audioRader := d.getAudioReader()
+	audioReader, err := d.AudioReader()
+	if err != nil {
+		return err
+	}
 	for {
-		_, err := audioRader.Read(buf)
+		_, err := audioReader.Read(buf)
 		if err != nil {
 			return err
 		}
@@ -553,9 +556,12 @@ func (d *DialogMedia) ListenContext(ctx context.Context) error {
 		<-ctx.Done()
 		d.mediaSession.StopRTP(1, 0)
 	}()
-	audioRader := d.getAudioReader()
+	audioReader, err := d.AudioReader()
+	if err != nil {
+		return err
+	}
 	for {
-		_, err := audioRader.Read(buf)
+		_, err := audioReader.Read(buf)
 		if err != nil {
 			return err
 		}
@@ -566,7 +572,10 @@ func (d *DialogMedia) ListenUntil(dur time.Duration) error {
 	buf := make([]byte, media.RTPBufSize)
 
 	d.mediaSession.StopRTP(1, dur)
-	audioReader := d.getAudioReader()
+	audioReader, err := d.AudioReader()
+	if err != nil {
+		return err
+	}
 	for {
 		_, err := audioReader.Read(buf)
 		if err != nil {
