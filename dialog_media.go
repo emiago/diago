@@ -584,12 +584,12 @@ func (d *DialogMedia) ListenUntil(dur time.Duration) error {
 	}
 }
 
-func (d *DialogMedia) StopRTP(rw int8, dur time.Duration) {
-	d.mediaSession.StopRTP(rw, dur)
+func (d *DialogMedia) StopRTP(rw int8, dur time.Duration) error {
+	return d.mediaSession.StopRTP(rw, dur)
 }
 
-func (d *DialogMedia) StartRTP(rw int8, dur time.Duration) {
-	d.mediaSession.StartRTP(rw)
+func (d *DialogMedia) StartRTP(rw int8, dur time.Duration) error {
+	return d.mediaSession.StartRTP(rw)
 }
 
 type DTMFReader struct {
