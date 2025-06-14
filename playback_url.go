@@ -6,6 +6,7 @@
 package diago
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -16,6 +17,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+)
+
+var (
+	DefaultPlaybackURLRangeSize int = 65536
 )
 
 func (p *AudioPlayback) PlayURL(urlStr string) (int64, error) {
@@ -34,7 +39,12 @@ func (p *AudioPlayback) playURL(urlStr string, written *int64) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Add("Range", "bytes=0-1023") // Try with range request
+	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Range_requests
+	// WAV header size is 44 bytes so we have more than enough
+	// This must be correctly round up in case partial reads
+	pcmSamples := p.codec.Samples16()
+	readSize := (DefaultPlaybackURLRangeSize / pcmSamples) * pcmSamples
+	req.Header.Add("Range", "bytes=0-"+strconv.Itoa(readSize-1)) // Try with range request
 
 	res, err := client.Do(req)
 	if err != nil {
@@ -77,16 +87,8 @@ func (p *AudioPlayback) playURL(urlStr string, written *int64) error {
 		if maxSize <= 0 {
 			return fmt.Errorf("parsing audio size failed")
 		}
-		// https://developer.mozilla.org/en-US/docs/Web/HTTP/Range_requests
 
-		// WAV header size is 44 bytes so we have more than enough
-
-		reader, writer := io.Pipe()
-		defer reader.Close()
-		defer writer.Close()
-
-		// BETTER DESIGN needed
-		httpPartial := func(res *http.Response, writer io.Writer) error {
+		httpPartial := func(res *http.Response, writer io.Writer, size int64) error {
 			chunk, err := io.ReadAll(res.Body)
 			if err != nil {
 				return fmt.Errorf("reading chunk stopped: %w", err)
@@ -97,8 +99,8 @@ func (p *AudioPlayback) playURL(urlStr string, written *int64) error {
 				return err
 			}
 
-			var start int64 = 1024
-			var offset int64 = 64 * 1024 // 512K
+			var start int64 = size
+			var offset int64 = size * 2
 			for ; start < maxSize; start += offset {
 				end := min(start+offset-1, maxSize)
 				// Range is inclusive
@@ -132,23 +134,28 @@ func (p *AudioPlayback) playURL(urlStr string, written *int64) error {
 		}
 
 		httpErr := make(chan error)
+		reader, writer := io.Pipe()
+
+		// Buffering allows that there is always one Write ahead
+		bufferReader := bufio.NewReaderSize(reader, readSize)
 		go func() {
-			err := httpPartial(res, writer)
+			err := httpPartial(res, writer, int64(readSize))
 			writer.Close()
 			httpErr <- err
 		}()
 
-		n, err := p.streamWav(reader, p.writer)
+		n, err := p.streamWav(bufferReader, p.writer)
 		*written = n
 		p.totalWritten += n
 
+		// Closing reader to stop writing routine
+		reader.Close()
 		// There is no reason having http goroutine still running
 		// First make sure http goroutine exited and join errors
 		err = errors.Join(<-httpErr, err)
 		return err
 	}
 
-	// 	// We need some stream wave implementation
 	samples, err := io.ReadAll(res.Body)
 	if err != nil {
 		return err
@@ -160,5 +167,6 @@ func (p *AudioPlayback) playURL(urlStr string, written *int64) error {
 	n, err := p.streamWav(wavBuf, p.writer)
 	*written = n
 	p.totalWritten += n
+
 	return err
 }

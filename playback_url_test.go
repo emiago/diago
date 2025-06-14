@@ -4,6 +4,7 @@
 package diago
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -139,4 +140,42 @@ func testStartAudioStreamServer(t *testing.T) string {
 		srv.Shutdown(context.TODO())
 	})
 	return "http://" + srv.Addr + "/"
+}
+
+func TestPiper(t *testing.T) {
+	// t.Skip("This is just io PIPE tester")
+	reader, writer := io.Pipe()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		bw := make([]byte, 50)
+		for i := 0; i < 4; i++ {
+			t.Log("Writing 50 bytes")
+			if _, err := writer.Write(bw); err != nil {
+				t.Log("Write err", err)
+				return
+			}
+		}
+		writer.Close()
+
+	}()
+
+	// b := make([]byte, 10)
+	// r := bytes.NewReader(b)
+	rr := bufio.NewReaderSize(reader, 50)
+	bb := make([]byte, 11)
+	for {
+		n, err := rr.Read(bb)
+		if err != nil {
+			t.Log("Read  stopped", err)
+			break
+		}
+		t.Log("Read  bytes", n)
+		time.Sleep(1 * time.Second)
+	}
+
+	t.Log("Closing reader")
+	reader.Close()
+	<-done
 }
