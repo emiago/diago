@@ -53,14 +53,14 @@ func AnswerEarly(inDialog *diago.DialogServerSession) error {
 	} // Answer -> 200 Response
 
 	// Create wav file to store recording
-	wawFile, err := os.OpenFile("/tmp/diago_record_"+inDialog.InviteRequest.CallID().Value()+".wav", os.O_RDWR|os.O_CREATE, 0755)
+	wavFile, err := os.OpenFile("/tmp/diago_record_"+inDialog.InviteRequest.CallID().Value()+".wav", os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
 		return err
 	}
-	defer wawFile.Close()
+	defer wavFile.Close()
 
 	// Create recording audio pipeline
-	rec, err := inDialog.AudioStereoRecordingCreate(wawFile)
+	rec, err := inDialog.AudioStereoRecordingCreate(wavFile)
 	if err != nil {
 		return err
 	}
