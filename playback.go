@@ -105,24 +105,24 @@ func (p *AudioPlayback) stream(body io.Reader, playWriter io.Writer) (int64, err
 
 func (p *AudioPlayback) streamWav(body io.Reader, playWriter io.Writer) (int64, error) {
 	codec := p.codec
-	dec := audio.NewWavReader(body)
-	if err := dec.ReadHeaders(); err != nil {
+	wavReader := audio.NewWavReader(body)
+	if err := wavReader.ReadHeaders(); err != nil {
 		return 0, err
 	}
-	if dec.BitsPerSample != uint16(p.BitDepth) {
-		return 0, fmt.Errorf("wav file bitdepth=%d does not match expected=%d", dec.BitsPerSample, p.BitDepth)
+	if wavReader.BitsPerSample != uint16(p.BitDepth) {
+		return 0, fmt.Errorf("wav file bitdepth=%d does not match expected=%d", wavReader.BitsPerSample, p.BitDepth)
 	}
-	if dec.SampleRate != codec.SampleRate {
-		return 0, fmt.Errorf("wav file samplerate=%d does not match expected=%d", dec.SampleRate, codec.SampleRate)
+	if wavReader.SampleRate != codec.SampleRate {
+		return 0, fmt.Errorf("wav file samplerate=%d does not match expected=%d", wavReader.SampleRate, codec.SampleRate)
 	}
-	if dec.NumChannels != uint16(codec.NumChannels) {
-		return 0, fmt.Errorf("wav file numchannels=%d does not match expected=%d", dec.NumChannels, codec.NumChannels)
+	if wavReader.NumChannels != uint16(codec.NumChannels) {
+		return 0, fmt.Errorf("wav file numchannels=%d does not match expected=%d", wavReader.NumChannels, codec.NumChannels)
 	}
 
 	// We need to read and packetize to 20 ms
 	// sampleDurMS := int(codec.SampleDur.Milliseconds())
 	// payloadSize := int(dec.BitsPerSample) / 8 * int(dec.NumChannels) * int(dec.SampleRate) / 1000 * sampleDurMS
-	payloadSize := p.codec.SamplesPCM(int(dec.BitsPerSample))
+	payloadSize := p.codec.SamplesPCM(int(wavReader.BitsPerSample))
 
 	buf := playBufPool.Get()
 	defer playBufPool.Put(buf)
@@ -133,7 +133,7 @@ func (p *AudioPlayback) streamWav(body io.Reader, playWriter io.Writer) (int64, 
 		return 0, fmt.Errorf("failed to create PCM encoder: %w", err)
 	}
 
-	written, err := media.CopyWithBuf(dec, enc, payloadBuf)
+	written, err := media.CopyWithBuf(wavReader, enc, payloadBuf)
 	// written, err := wavCopy(dec, enc, payloadBuf)
 	return written, err
 }
