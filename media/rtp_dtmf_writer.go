@@ -4,6 +4,7 @@
 package media
 
 import (
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -51,7 +52,11 @@ func (w *RTPDtmfWriter) writeDTMF(dtmf rune) error {
 	// DTMF events are send directly to packet writer as they are different Codec
 	packetWriter := w.packetWriter
 
-	evs := RTPDTMFEncode(dtmf)
+	if w.codec.SampleRate != 8000 {
+		return fmt.Errorf("Only 8000Hz is supported")
+	}
+
+	evs := RTPDTMFEncode8000(dtmf)
 	ticker := time.NewTicker(w.codec.SampleDur)
 	defer ticker.Stop()
 	for i, e := range evs {
