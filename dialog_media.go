@@ -536,37 +536,15 @@ func (s *loggingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return resp, err
 }
 
-func (d *DialogMedia) Listen() error {
+// Listen keeps reading stream until it gets closed or deadlined
+// Use ListenBackground or ListenContext for better control
+func (d *DialogMedia) Listen() (err error) {
 	buf := make([]byte, media.RTPBufSize)
-	audioRader := d.getAudioReader()
-	for {
-		_, err := audioRader.Read(buf)
-		if err != nil {
-			return err
-		}
+	audioReader, err := d.AudioReader()
+	if err != nil {
+		return err
 	}
-}
 
-func (d *DialogMedia) ListenContext(ctx context.Context) error {
-	buf := make([]byte, media.RTPBufSize)
-	go func() {
-		<-ctx.Done()
-		d.mediaSession.StopRTP(2, 0)
-	}()
-	audioRader := d.getAudioReader()
-	for {
-		_, err := audioRader.Read(buf)
-		if err != nil {
-			return err
-		}
-	}
-}
-
-func (d *DialogMedia) ListenUntil(dur time.Duration) error {
-	buf := make([]byte, media.RTPBufSize)
-
-	d.mediaSession.StopRTP(2, dur)
-	audioReader := d.getAudioReader()
 	for {
 		_, err := audioReader.Read(buf)
 		if err != nil {
@@ -575,12 +553,89 @@ func (d *DialogMedia) ListenUntil(dur time.Duration) error {
 	}
 }
 
-func (d *DialogMedia) StopRTP(rw int8, dur time.Duration) {
-	d.mediaSession.StopRTP(rw, dur)
+// ListenBackground listens on stream in background and allows correct stoping of stream on network layer
+func (d *DialogMedia) ListenBackground() (stop func() error, err error) {
+	buf := make([]byte, media.RTPBufSize)
+	audioReader, err := d.AudioReader()
+	if err != nil {
+		return nil, err
+	}
+
+	wg := sync.WaitGroup{}
+	var readErr error
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			_, err := audioReader.Read(buf)
+			if err != nil {
+				if err, ok := err.(net.Error); ok && err.Timeout() {
+					return
+				}
+				readErr = err
+				return
+			}
+		}
+	}()
+
+	return func() error {
+		if err := d.mediaSession.StopRTP(1, 0); err != nil {
+			return err
+		}
+		wg.Wait() // This makes sure we have exited reading
+		return readErr
+	}, nil
 }
 
-func (d *DialogMedia) StartRTP(rw int8, dur time.Duration) {
-	d.mediaSession.StartRTP(rw)
+// ListenContext listens until context is canceled.
+func (d *DialogMedia) ListenContext(pctx context.Context) error {
+	buf := make([]byte, media.RTPBufSize)
+	ctx, cancel := context.WithCancel(pctx)
+	defer cancel()
+
+	go func() {
+		<-ctx.Done()
+		if pctx.Err() != nil {
+			d.mediaSession.StopRTP(1, 0)
+		}
+	}()
+	audioReader, err := d.AudioReader()
+	if err != nil {
+		return err
+	}
+	for {
+		_, err := audioReader.Read(buf)
+		if err != nil {
+			if err, ok := err.(net.Error); ok && err.Timeout() {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+func (d *DialogMedia) ListenUntil(dur time.Duration) error {
+	buf := make([]byte, media.RTPBufSize)
+
+	d.mediaSession.StopRTP(1, dur)
+	audioReader, err := d.AudioReader()
+	if err != nil {
+		return err
+	}
+	for {
+		_, err := audioReader.Read(buf)
+		if err != nil {
+			return err
+		}
+	}
+}
+
+func (d *DialogMedia) StopRTP(rw int8, dur time.Duration) error {
+	return d.mediaSession.StopRTP(rw, dur)
+}
+
+func (d *DialogMedia) StartRTP(rw int8, dur time.Duration) error {
+	return d.mediaSession.StartRTP(rw)
 }
 
 type DTMFReader struct {

@@ -51,9 +51,9 @@ func DTMFToRune(dtmf uint8) rune {
 	return dtmfEventMappingRev[dtmf]
 }
 
-// RTPDTMFEncode creates series of DTMF redudant events which should be encoded as payload
+// RTPDTMFEncode8000 creates series of DTMF redudant events which should be encoded as payload
 // It is currently only 8000 sample rate considered for telophone event
-func RTPDTMFEncode(char rune) []DTMFEvent {
+func RTPDTMFEncode8000(char rune) []DTMFEvent {
 	event := dtmfEventMapping[char]
 
 	events := make([]DTMFEvent, 7)
