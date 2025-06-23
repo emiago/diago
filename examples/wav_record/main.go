@@ -55,14 +55,14 @@ func Record(inDialog *diago.DialogServerSession) error {
 	// Create wav file to store recording
 	filename := "/tmp/diago_record_" + inDialog.InviteRequest.CallID().Value() + ".wav"
 	slog.Info("Creating new recording", "filename", filename)
-	wawFile, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0755)
+	wavFile, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
 		return err
 	}
-	defer wawFile.Close()
+	defer wavFile.Close()
 
 	// Create recording audio pipeline
-	rec, err := inDialog.AudioStereoRecordingCreate(wawFile)
+	rec, err := inDialog.AudioStereoRecordingCreate(wavFile)
 	if err != nil {
 		return err
 	}
