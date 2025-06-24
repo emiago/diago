@@ -1,12 +1,12 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Diago – Guides</title>
-    <link>https://emiago.github.io/diago/docs/guides/</link>
+    <link>http://localhost:1313/diago/docs/guides/</link>
     <description>Recent content in Guides on Diago</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     
-	  <atom:link href="https://emiago.github.io/diago/docs/guides/index.xml" rel="self" type="application/rss+xml" />
+	  <atom:link href="http://localhost:1313/diago/docs/guides/index.xml" rel="self" type="application/rss+xml" />
     
     
       
@@ -16,10 +16,10 @@
     
     <item>
       <title>Understading SIP with Call Scenarios</title>
-      <link>https://emiago.github.io/diago/docs/guides/understanding_sip/</link>
+      <link>http://localhost:1313/diago/docs/guides/understanding_sip/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>https://emiago.github.io/diago/docs/guides/understanding_sip/</guid>
+      <guid>http://localhost:1313/diago/docs/guides/understanding_sip/</guid>
       <description>
         
         
@@ -83,10 +83,10 @@ That is why 200 OK is replied&lt;/p&gt;
     
     <item>
       <title>SIP and Media</title>
-      <link>https://emiago.github.io/diago/docs/guides/sip_and_media/</link>
+      <link>http://localhost:1313/diago/docs/guides/sip_and_media/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>https://emiago.github.io/diago/docs/guides/sip_and_media/</guid>
+      <guid>http://localhost:1313/diago/docs/guides/sip_and_media/</guid>
       <description>
         
         
@@ -133,6 +133,46 @@ Description:&lt;/p&gt;
 Other problem is if call is jumping between media servers, above can be changed with new IP received via new INVITE messaging.&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;NOTE&lt;/strong&gt;:
 Publishing local IP like above is problem for NAT and there different approaches to solve this issue, but for now we will skip this part.&lt;/p&gt;
+
+      </description>
+    </item>
+    
+    <item>
+      <title>Understanding RTP</title>
+      <link>http://localhost:1313/diago/docs/guides/understanding_rtp/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>http://localhost:1313/diago/docs/guides/understanding_rtp/</guid>
+      <description>
+        
+        
+        &lt;h2&gt;Understanding RTP&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;understanding-rtp&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#understanding-rtp&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Here we may go deep dive for some RTP concepts&lt;/p&gt;
+&lt;h3&gt;RTP Timestamp&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;rtp-timestamp&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#rtp-timestamp&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;RTP timestamp follows sampling clock rate which is not the same as following Real Time duration.&lt;/p&gt;
+&lt;p&gt;Every audio stream will have constant RTP Timestamp increase based on samples generated, but in case
+of stopping current stream and starting new, this RTP timestamp difference must be calculated.&lt;/p&gt;
+&lt;p&gt;Value should not be based whether streamer is slow or fast in pushing RTP packets&lt;/p&gt;
+&lt;h3&gt;RTP Timestamp when pause or no audio present&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;rtp-timestamp-when-pause-or-no-audio-present&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#rtp-timestamp-when-pause-or-no-audio-present&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;So in case you have pauses in audio stream, RTP timestamp still need to continue and recalculated based on Real Time.
+If RTP timestamp is not recalculated it will affect RTCP metrics as well and therefore wrong calc of jitter and etc.&lt;/p&gt;
+&lt;p&gt;In case of non Real Time audio, like streaming pre downloaded audio, sampling must still apply.
+This means many packets may be sent at once, but RTP timestamp will be virtually increased.&lt;/p&gt;
+&lt;h4&gt;RTP Timestamp modifications visual&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;rtp-timestamp-modifications-visual&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#rtp-timestamp-modifications-visual&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h4&gt;&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;Stream Write: &lt;code&gt;Timestamp = 0&lt;/code&gt;; increase += 160 (20ms Sample duration)&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Stream Stop: &lt;code&gt;Timestamp = 1600&lt;/code&gt;; Written = 10 Frames/Samples&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Pause: &lt;code&gt;100ms&lt;/code&gt; = 5 * 160 = &lt;code&gt;800&lt;/code&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Stream Write: &lt;code&gt;Timestamp = 1600 + 800 = 2400&lt;/code&gt;;  increase += 160 (20ms Sample duration)&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
 
       </description>
     </item>

@@ -2,32 +2,34 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
-    <loc>https://emiago.github.io/diago/docs/guides/</loc>
+    <loc>http://localhost:1313/diago/docs/guides/</loc>
   </url><url>
-    <loc>https://emiago.github.io/diago/docs/getting_started/</loc>
+    <loc>http://localhost:1313/diago/docs/getting_started/</loc>
   </url><url>
-    <loc>https://emiago.github.io/diago/docs/examples/</loc>
+    <loc>http://localhost:1313/diago/docs/examples/</loc>
   </url><url>
-    <loc>https://emiago.github.io/diago/docs/api_docs/</loc>
+    <loc>http://localhost:1313/diago/docs/api_docs/</loc>
   </url><url>
-    <loc>https://emiago.github.io/diago/docs/guides/understanding_sip/</loc>
+    <loc>http://localhost:1313/diago/docs/guides/understanding_sip/</loc>
   </url><url>
-    <loc>https://emiago.github.io/diago/docs/media_codecs/</loc>
+    <loc>http://localhost:1313/diago/docs/media_codecs/</loc>
   </url><url>
-    <loc>https://emiago.github.io/diago/docs/why_diago/</loc>
+    <loc>http://localhost:1313/diago/docs/why_diago/</loc>
   </url><url>
-    <loc>https://emiago.github.io/diago/docs/guides/sip_and_media/</loc>
+    <loc>http://localhost:1313/diago/docs/guides/sip_and_media/</loc>
   </url><url>
-    <loc>https://emiago.github.io/diago/</loc>
+    <loc>http://localhost:1313/diago/docs/guides/understanding_rtp/</loc>
   </url><url>
-    <loc>https://emiago.github.io/diago/blog/</loc>
+    <loc>http://localhost:1313/diago/</loc>
   </url><url>
-    <loc>https://emiago.github.io/diago/blog/unit_testing/</loc>
+    <loc>http://localhost:1313/diago/blog/</loc>
   </url><url>
-    <loc>https://emiago.github.io/diago/docs/</loc>
+    <loc>http://localhost:1313/diago/blog/sip_unit_testing/</loc>
   </url><url>
-    <loc>https://emiago.github.io/diago/categories/</loc>
+    <loc>http://localhost:1313/diago/docs/</loc>
   </url><url>
-    <loc>https://emiago.github.io/diago/tags/</loc>
+    <loc>http://localhost:1313/diago/categories/</loc>
+  </url><url>
+    <loc>http://localhost:1313/diago/tags/</loc>
   </url>
 </urlset>
