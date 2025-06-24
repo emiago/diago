@@ -1,0 +1,7 @@
+sequenceDiagram
+    Alice->>+Bob: INVITE (SDP codec:0,8 IP:1.1.1.1)
+    Bob->>+Alice: 100 Progress
+    Bob->>Alice: 200 (SDP codec:8 IP:2.2.2.2)
+    Alice->>+Bob: ACK
+    Bob->>Alice: BYE
+    Alice->>Bob: 200 OK
