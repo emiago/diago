@@ -19,6 +19,7 @@ Quick links:
 - [Demo Examples](https://emiago.github.io/diago/docs/examples/)
 - [API Docs](https://emiago.github.io/diago/docs/api_docs/)
 - [GO Docs](https://pkg.go.dev/github.com/emiago/diago)
+- [Roadmap](https://emiago.github.io/diago/docs/#core-roadmap)
 
 *If you find this project useful and you want to support/sponzor or need help with your projects, you can contact me more on*
 [mail](mailto:emirfreelance91@gmail.com).
