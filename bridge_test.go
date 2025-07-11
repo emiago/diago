@@ -15,7 +15,7 @@ import (
 
 func TestBridgeProxy(t *testing.T) {
 	b := NewBridge()
-	b.waitDialogsNum = 99 // Do not start proxy
+	b.WaitDialogsNum = 99 // Do not start proxy
 
 	incoming := &DialogServerSession{
 		DialogMedia: DialogMedia{

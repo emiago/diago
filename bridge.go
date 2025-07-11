@@ -32,7 +32,7 @@ type Bridge struct {
 	dialogs []DialogSession
 
 	// minDialogs is just helper flag when to start proxy
-	waitDialogsNum int
+	WaitDialogsNum int
 }
 
 func NewBridge() Bridge {
@@ -43,7 +43,9 @@ func NewBridge() Bridge {
 
 func (b *Bridge) Init(log *slog.Logger) {
 	b.log = log
-	b.waitDialogsNum = 2
+	if b.WaitDialogsNum == 0 {
+		b.WaitDialogsNum = 2
+	}
 }
 
 func (b *Bridge) GetDialogs() []DialogSession {
@@ -78,7 +80,7 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 		b.Originator = d
 	}
 
-	if len(b.dialogs) < b.waitDialogsNum {
+	if len(b.dialogs) < b.WaitDialogsNum {
 		return nil
 	}
 
@@ -106,6 +108,54 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 		}
 	}()
 	return nil
+}
+
+// ProxyMedia is explicit starting proxy media.
+// In some cases you want to control and be signaled when bridge terminates
+//
+// NOTE: Should be only called if you want to start manually proxying.
+// It is required to set WaitDialogsNum higher than 2
+//
+// Experimental
+func (b *Bridge) ProxyMedia() error {
+	if len(b.dialogs) < 2 {
+		return fmt.Errorf("Number of dialogs must equal to 2")
+	}
+
+	if b.WaitDialogsNum < 3 {
+		return fmt.Errorf("You are already running proxy media. Increase WaitDialogsNum")
+	}
+
+	for _, d := range b.dialogs {
+		d.Media().mediaSession.StopRTP(2, 0)
+	}
+	return b.proxyMedia()
+}
+
+// ProxyMediaControl starts proxy in background and allows to stop proxy at any time.
+// Stop should be called once and it is not needed to be called if call is terminating
+//
+// Experimental
+func (b *Bridge) ProxyMediaControl() (func() error, error) {
+	proxyErr := make(chan error, 1)
+	go func() {
+		proxyErr <- b.proxyMedia()
+	}()
+
+	stopF := func() error {
+		for _, d := range b.dialogs {
+			d.Media().mediaSession.StopRTP(2, 0)
+		}
+
+		// Wait goroutine termination
+		err := <-proxyErr
+		for _, d := range b.dialogs {
+			d.Media().mediaSession.StartRTP(2)
+		}
+		return err
+	}
+
+	return stopF, b.proxyMedia()
 }
 
 // proxyMedia starts routine to proxy media between
