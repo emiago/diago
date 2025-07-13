@@ -48,6 +48,11 @@ func (m *MonitorPCMReader) Flush() error {
 	return m.writer.Flush()
 }
 
+// Monitoring starts with first packet arrived, but you can shift with start time. Ex stream are not continious
+func (m *MonitorPCMReader) StartTime(t time.Time) {
+	m.lastTime = t
+}
+
 func (m *MonitorPCMReader) Read(b []byte) (int, error) {
 	n, err := m.audioReader.Read(b)
 	if err != nil {
