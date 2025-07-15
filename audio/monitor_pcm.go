@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"time"
 
 	"github.com/emiago/diago/media"
@@ -162,14 +163,16 @@ func (m *MonitorPCMStereo) Init(record io.Writer, codec media.Codec, audioReader
 	var err error
 	err = func() error {
 		if m.PCMFileRead == nil {
-			m.PCMFileRead, err = os.OpenFile("/tmp/"+uuid+"_monitor_reader.raw", os.O_CREATE|os.O_RDWR, 0755)
+			filepath := path.Join(os.TempDir(), uuid+"_monitor_reader.raw")
+			m.PCMFileRead, err = os.OpenFile(filepath, os.O_CREATE|os.O_RDWR, 0755)
 			if err != nil {
 				return err
 			}
 		}
 
 		if m.PCMFileWrite == nil {
-			m.PCMFileWrite, err = os.OpenFile("/tmp/"+uuid+"_monitor_writer.raw", os.O_CREATE|os.O_RDWR, 0755)
+			filepath := path.Join(os.TempDir(), uuid+"_monitor_writer.raw")
+			m.PCMFileWrite, err = os.OpenFile(filepath, os.O_CREATE|os.O_RDWR, 0755)
 			if err != nil {
 				return err
 			}
