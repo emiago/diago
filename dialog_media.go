@@ -525,7 +525,7 @@ func (d *DialogMedia) AudioStereoRecordingCreate(wawFile *os.File) (AudioStereoR
 
 	mpropsR := MediaProps{}
 	ar := d.audioReaderProps(&mpropsR)
-	if aw == nil {
+	if ar == nil {
 		return AudioStereoRecordingWav{}, fmt.Errorf("no media setup")
 	}
 	codec := mpropsW.Codec
