@@ -480,6 +480,35 @@ func (d *DialogMedia) PlaybackControlCreate() (AudioPlaybackControl, error) {
 	return p, nil
 }
 
+// PlaybackRingtoneCreate is creating playback for ringtone
+//
+// Experimental
+func (d *DialogMedia) PlaybackRingtoneCreate() (AudioRingtone, error) {
+	mprops := MediaProps{}
+	w := d.audioWriterProps(&mprops)
+	if w == nil {
+		return AudioRingtone{}, fmt.Errorf("no media setup")
+	}
+
+	ringtone, err := loadRingTonePCM(mprops.Codec)
+	if err != nil {
+		return AudioRingtone{}, err
+	}
+
+	encoder := audio.PCMEncoderWriter{}
+	if err := encoder.Init(mprops.Codec, w); err != nil {
+		return AudioRingtone{}, err
+	}
+
+	ar := AudioRingtone{
+		writer:       &encoder,
+		ringtone:     ringtone,
+		sampleSize:   mprops.Codec.Samples16(),
+		mediaSession: d.mediaSession,
+	}
+	return ar, nil
+}
+
 // AudioStereoRecordingCreate creates Stereo Recording audio Pipeline and stores as Wav file format
 // For audio to be recorded use AudioReader and AudioWriter from Recording
 //
