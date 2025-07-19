@@ -525,7 +525,7 @@ func (d *DialogMedia) AudioStereoRecordingCreate(wawFile *os.File) (AudioStereoR
 
 	mpropsR := MediaProps{}
 	ar := d.audioReaderProps(&mpropsR)
-	if aw == nil {
+	if ar == nil {
 		return AudioStereoRecordingWav{}, fmt.Errorf("no media setup")
 	}
 	codec := mpropsW.Codec
@@ -534,16 +534,16 @@ func (d *DialogMedia) AudioStereoRecordingCreate(wawFile *os.File) (AudioStereoR
 	}
 	// Create wav file to store recording
 	// Now create WavWriter to have Wav Container written
-	wawWriter := audio.NewWavWriter(wawFile)
+	wavWriter := audio.NewWavWriter(wawFile)
 
 	mon := audio.MonitorPCMStereo{}
-	if err := mon.Init(wawWriter, codec, ar, aw); err != nil {
-		wawWriter.Close()
+	if err := mon.Init(wavWriter, codec, ar, aw); err != nil {
+		wavWriter.Close()
 		return AudioStereoRecordingWav{}, err
 	}
 
 	r := AudioStereoRecordingWav{
-		wawWriter: wawWriter,
+		wawWriter: wavWriter,
 		mon:       mon,
 	}
 	return r, nil
