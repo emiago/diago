@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"log/slog"
 	"math"
 	"net"
 	"sync"
@@ -60,7 +59,6 @@ type AudioRingtone struct {
 	ringtone     []byte
 	sampleSize   int
 	mediaSession *media.MediaSession
-	log          *slog.Logger
 }
 
 func (a *AudioRingtone) PlayBackground() (func() error, error) {
@@ -79,7 +77,6 @@ func (a *AudioRingtone) PlayBackground() (func() error, error) {
 	}()
 
 	return func() error {
-		a.log.Debug("Stoping ringtone")
 		cancel()
 
 		if err := a.mediaSession.StopRTP(2, 0); err != nil {
@@ -105,7 +102,6 @@ func (a *AudioRingtone) Play(ctx context.Context) error {
 }
 
 func (a *AudioRingtone) play(timerCtx context.Context) error {
-	defer a.log.Info("Play stopped")
 	t := time.NewTimer(0)
 	for {
 		_, err := media.WriteAll(a.writer, a.ringtone, a.sampleSize)
