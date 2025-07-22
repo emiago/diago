@@ -50,15 +50,17 @@ func logRTPWrite(m *MediaSession, p *rtp.Packet) {
 
 func logRTCPRead(m *MediaSession, pkts []rtcp.Packet) {
 	if RTCPDebug {
+		laddr := m.rtcpConn.LocalAddr()
 		for _, p := range pkts {
-			slog.Debug(fmt.Sprintf("RTCP read %s < %s:\n%s", m.Laddr.String(), m.Raddr.String(), StringRTCP(p)))
+			slog.Debug(fmt.Sprintf("RTCP read %s < %s:\n%s", laddr.String(), m.rtcpRaddr.String(), StringRTCP(p)))
 		}
 	}
 }
 
 func logRTCPWrite(m *MediaSession, p rtcp.Packet) {
 	if RTCPDebug {
-		slog.Debug(fmt.Sprintf("RTCP write %s > %s:\n%s", m.Laddr.String(), m.Raddr.String(), StringRTCP(p)))
+		laddr := m.rtcpConn.LocalAddr()
+		slog.Debug(fmt.Sprintf("RTCP write %s > %s:\n%s", laddr.String(), m.rtcpRaddr.String(), StringRTCP(p)))
 	}
 }
 
