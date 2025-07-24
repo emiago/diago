@@ -4,6 +4,7 @@
 package media
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -238,25 +239,18 @@ func (s *MediaSession) LocalSDP() []byte {
 
 	var localSDES sdesInline
 	if s.SecureRTP == 1 {
-		// TODO generating
-		inline := "B9I6WpzKutFA2cJoSXt4TsO8Dl4PnIdXp6Yfs+tH"
-		localSDES = sdesInline{
-			alg:    "AES_CM_128_HMAC_SHA1_80",
-			base64: inline,
-		}
-
 		err := func() error {
-			keyBytes, err := base64.StdEncoding.DecodeString(inline)
+			keysalt := make([]byte, 30)
+			masterKey, masterSalt, err := generateMasterKeySalt(keysalt)
 			if err != nil {
-				return fmt.Errorf("failed to decode SDES key: %v", err)
-			}
-			if len(keyBytes) != 30 {
-				return fmt.Errorf("expected 30-byte key, got %d", len(keyBytes))
+				return err
 			}
 
-			// Split into master key (16 bytes) and master salt (14 bytes)
-			masterKey := keyBytes[:16]
-			masterSalt := keyBytes[16:]
+			inline := base64.StdEncoding.EncodeToString(keysalt)
+			localSDES = sdesInline{
+				alg:    "AES_CM_128_HMAC_SHA1_80",
+				base64: inline,
+			}
 
 			// TODO detect algorithm
 			profile := srtp.ProtectionProfileAes128CmHmacSha1_80
@@ -749,4 +743,20 @@ func generateSDPForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode
 
 	res := strings.Join(s, "\r\n") + "\r\n"
 	return []byte(res)
+}
+
+func generateMasterKeySalt(buf []byte) ([]byte, []byte, error) {
+	if len(buf) != 30 {
+		return nil, nil, fmt.Errorf("buffer must be at least 30")
+	}
+	key := buf[:16]
+	salt := buf[16:30]
+	if _, err := rand.Read(key); err != nil {
+		return nil, nil, err
+	}
+
+	if _, err := rand.Read(salt); err != nil {
+		return nil, nil, err
+	}
+	return key, salt, nil
 }
