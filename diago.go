@@ -130,7 +130,8 @@ func WithTransport(t Transport) DiagoOption {
 }
 
 type MediaConfig struct {
-	Codecs []media.Codec
+	Codecs    []media.Codec
+	SecureRTP int
 
 	// Used internally
 	bindIP     net.IP
@@ -638,6 +639,7 @@ func (dg *Diago) NewDialog(recipient sip.Uri, opts NewDialogOptions) (d *DialogC
 	// TODO explicit media format passing
 	mediaConf := MediaConfig{
 		Codecs:     dg.mediaConf.Codecs,
+		SecureRTP:  dg.mediaConf.SecureRTP,
 		bindIP:     tran.mediaBindIP,
 		externalIP: tran.MediaExternalIP,
 	}

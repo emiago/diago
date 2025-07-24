@@ -27,6 +27,11 @@ func RTPUnmarshal(buf []byte, p *rtp.Packet) error {
 	if err != nil {
 		return err
 	}
+
+	return rtpUnmarshalPayload(n, buf, p)
+}
+
+func rtpUnmarshalPayload(n int, buf []byte, p *rtp.Packet) error {
 	if p.Header.Extension {
 		// For now eliminate it as it holds reference on buffer
 		// TODO fix this

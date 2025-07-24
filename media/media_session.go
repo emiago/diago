@@ -4,6 +4,7 @@
 package media
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"github.com/emiago/sipgo/sip"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
+	"github.com/pion/srtp/v3"
 )
 
 var (
@@ -93,11 +95,18 @@ type MediaSession struct {
 	// ExternalIP that should be used for building SDP
 	ExternalIP net.IP
 
+	SecureRTP int // 0 none, 1 - SDES
+
 	// filterCodecs is common list of codecs after negotiation
 	filterCodecs []Codec
 	rtpConn      net.PacketConn
 	rtcpConn     net.PacketConn
 	rtcpRaddr    net.UDPAddr
+	writeRTPBuf  []byte
+
+	// SRTP
+	localCtxSRTP  *srtp.Context
+	remoteCtxSRTP *srtp.Context
 
 	// TODO: Support RTP Symetric
 	rtpSymetric bool
@@ -227,7 +236,44 @@ func (s *MediaSession) LocalSDP() []byte {
 		codecs = s.filterCodecs
 	}
 
-	return generateSDPForAudio(ip, connIP, rtpPort, s.Mode, codecs)
+	var localSDES sdesInline
+	if s.SecureRTP == 1 {
+		// TODO generating
+		inline := "B9I6WpzKutFA2cJoSXt4TsO8Dl4PnIdXp6Yfs+tH"
+		localSDES = sdesInline{
+			alg:    "AES_CM_128_HMAC_SHA1_80",
+			base64: inline,
+		}
+
+		err := func() error {
+			keyBytes, err := base64.StdEncoding.DecodeString(inline)
+			if err != nil {
+				return fmt.Errorf("failed to decode SDES key: %v", err)
+			}
+			if len(keyBytes) != 30 {
+				return fmt.Errorf("expected 30-byte key, got %d", len(keyBytes))
+			}
+
+			// Split into master key (16 bytes) and master salt (14 bytes)
+			masterKey := keyBytes[:16]
+			masterSalt := keyBytes[16:]
+
+			// TODO detect algorithm
+			profile := srtp.ProtectionProfileAes128CmHmacSha1_80
+			ctx, err := srtp.CreateContext(masterKey, masterSalt, profile)
+			if err != nil {
+				return fmt.Errorf("CreateContext failed: %v", err)
+			}
+
+			s.localCtxSRTP = ctx
+			return nil
+		}()
+		if err != nil {
+			slog.Error("Failed to setup SRTP context", "error", err)
+		}
+	}
+
+	return generateSDPForAudio(ip, connIP, rtpPort, s.Mode, codecs, localSDES)
 }
 
 func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
@@ -264,6 +310,36 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	ci, err := sd.ConnectionInformation()
 	if err != nil {
 		return err
+	}
+
+	// Check for SDES
+	for _, v := range attrs {
+		if strings.HasPrefix(v, "crypto:1") {
+			vals := strings.Split(v, " ")
+			inline := strings.TrimPrefix(vals[2], "inline:")
+
+			keyBytes, err := base64.StdEncoding.DecodeString(inline)
+			if err != nil {
+				return fmt.Errorf("failed to decode SDES key: %v", err)
+			}
+			if len(keyBytes) != 30 {
+				return fmt.Errorf("expected 30-byte key, got %d", len(keyBytes))
+			}
+
+			// Split into master key (16 bytes) and master salt (14 bytes)
+			masterKey := keyBytes[:16]
+			masterSalt := keyBytes[16:]
+
+			// TODO detect algorithm
+			profile := srtp.ProtectionProfileAes128CmHmacSha1_80
+			ctx, err := srtp.CreateContext(masterKey, masterSalt, profile)
+			if err != nil {
+				return fmt.Errorf("CreateContext failed: %v", err)
+			}
+			s.remoteCtxSRTP = ctx
+
+			break
+		}
 	}
 
 	s.SetRemoteAddr(&net.UDPAddr{IP: ci.IP, Port: md.Port})
@@ -367,9 +443,28 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 		return 0, err
 	}
 
-	// If from does not match our remote
-	if err := RTPUnmarshal(buf[:n], pkt); err != nil {
-		return n, err
+	if m.remoteCtxSRTP != nil {
+		// TODO reuse pkt.Payload
+		decrypted, err := m.remoteCtxSRTP.DecryptRTP(buf, buf[:n], &pkt.Header)
+		if err != nil {
+			return n, fmt.Errorf("srtp decrypt: %w", err)
+		}
+		if len(decrypted) > len(buf) {
+			slog.Warn("Growing Decrypted RTP buffer", "diff", len(decrypted)-len(buf))
+		}
+
+		buf = decrypted
+		n = len(decrypted)
+
+		// NOTE this is optimiation to avoid double unmarshaling RTP header
+		headerN := pkt.Header.MarshalSize()
+		if err := rtpUnmarshalPayload(headerN, buf, pkt); err != nil {
+			return n, err
+		}
+	} else {
+		if err := RTPUnmarshal(buf[:n], pkt); err != nil {
+			return n, err
+		}
 	}
 
 	// Problem is that this buffer is refferenced in rtp PACKET
@@ -425,6 +520,10 @@ func (m *MediaSession) ReadRTCP(buf []byte, pkts []rtcp.Packet) (n int, err erro
 		return n, err
 	}
 
+	if m.remoteCtxSRTP != nil {
+		return 0, fmt.Errorf("DECRYPTING RTCP NOT HANDLED")
+	}
+
 	n, err = RTCPUnmarshal(buf[:nn], pkts)
 	if err != nil {
 		return 0, err
@@ -457,12 +556,28 @@ func (m *MediaSession) ReadRTCPRawDeadline(buf []byte, t time.Time) (int, error)
 func (m *MediaSession) WriteRTP(p *rtp.Packet) error {
 	logRTPWrite(m, p)
 
-	data, err := p.Marshal()
+	writeBuf := func() []byte {
+		if m.writeRTPBuf == nil {
+			m.writeRTPBuf = make([]byte, RTPBufSize)
+		}
+		return m.writeRTPBuf
+	}()
+
+	n, err := p.MarshalTo(writeBuf)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal to write RTP buf: %w", err)
+	}
+	data := writeBuf[:n]
+	// data, err := p.Marshal()
+
+	if m.localCtxSRTP != nil {
+		data, err = m.localCtxSRTP.EncryptRTP(writeBuf, data, &p.Header)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt written RTP: %w", err)
+		}
 	}
 
-	n, err := m.WriteRTPRaw(data)
+	n, err = m.WriteRTPRaw(data)
 	if err != nil {
 		return err
 	}
@@ -556,7 +671,12 @@ func StringRTCP(p rtcp.Packet) string {
 	return "can not stringify"
 }
 
-func generateSDPForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode string, codecs []Codec) []byte {
+type sdesInline struct {
+	alg    string
+	base64 string
+}
+
+func generateSDPForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode string, codecs []Codec, sdes sdesInline) []byte {
 	ntpTime := GetCurrentNTPTimestamp()
 
 	fmts := make([]string, len(codecs))
@@ -600,6 +720,10 @@ func generateSDPForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode
 		"a=ptime:20", // Needed for opus
 		"a=maxptime:20",
 		"a="+string(mode))
+
+	if sdes.alg != "" {
+		s = append(s, fmt.Sprintf("a=crypto:1 %s inline:%s", sdes.alg, sdes.base64))
+	}
 	// s := []string{
 	// 	"v=0",
 	// 	fmt.Sprintf("o=- %d %d IN IP4 %s", ntpTime, ntpTime, originIP),
