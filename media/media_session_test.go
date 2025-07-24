@@ -11,6 +11,7 @@ import (
 	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/fakes"
 	"github.com/pion/rtcp"
+	"github.com/pion/rtp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -203,5 +204,65 @@ a=sendrecv`
 		assert.Equal(t, CodecAudioUlaw, m.filterCodecs[0])
 		assert.Equal(t, CodecAudioOpus, m.filterCodecs[1])
 		assert.Equal(t, CodecTelephoneEvent8000, m.filterCodecs[2])
+	}
+}
+
+func TestMediaSRTP(t *testing.T) {
+	m1 := MediaSession{
+		Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
+		Codecs:    []Codec{CodecAudioAlaw},
+		SecureRTP: 1,
+		Mode:      sdp.ModeSendrecv,
+	}
+	require.NoError(t, m1.Init())
+
+	m2 := MediaSession{
+		Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
+		Codecs:    []Codec{CodecAudioAlaw},
+		SecureRTP: 1,
+		Mode:      sdp.ModeSendrecv,
+	}
+	require.NoError(t, m2.Init())
+
+	err := m1.RemoteSDP(m2.LocalSDP())
+	require.NoError(t, err)
+	err = m2.RemoteSDP(m1.LocalSDP())
+	require.NoError(t, err)
+
+	require.NotNil(t, m1.remoteCtxSRTP)
+	require.NotNil(t, m1.localCtxSRTP)
+	require.NotNil(t, m2.remoteCtxSRTP)
+	require.NotNil(t, m2.localCtxSRTP)
+
+	pkt := &rtp.Packet{
+		Header: rtp.Header{
+			Version:        2,
+			PayloadType:    96,
+			SequenceNumber: 1234,
+			Timestamp:      56789,
+			SSRC:           0xdeadbeef,
+		},
+		Payload: []byte("Hello SRTP!"),
+	}
+	// Test m1 -> m2 Read
+	{
+		err = m1.WriteRTP(pkt)
+		require.NoError(t, err)
+
+		rPkt := rtp.Packet{}
+		m2.ReadRTP(make([]byte, 1500), &rPkt)
+
+		assert.Equal(t, pkt.Payload, rPkt.Payload)
+	}
+
+	// Test m2 -> m1 Read
+	{
+		err = m2.WriteRTP(pkt)
+		require.NoError(t, err)
+
+		rPkt := rtp.Packet{}
+		m1.ReadRTP(make([]byte, 1500), &rPkt)
+
+		assert.Equal(t, pkt.Payload, rPkt.Payload)
 	}
 }
