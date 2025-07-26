@@ -805,7 +805,7 @@ func (dg *Diago) createClient(tran Transport) (client *sipgo.Client) {
 	}
 
 	hostname := ""
-	if hostIP != nil {
+	if hostIP != nil && !hostIP.IsUnspecified() {
 		hostname = hostIP.String()
 	}
 
@@ -820,11 +820,22 @@ func (dg *Diago) createClient(tran Transport) (client *sipgo.Client) {
 		}
 	}
 
-	cli, err := sipgo.NewClient(ua,
+	opts := []sipgo.ClientOption{
 		sipgo.WithClientNAT(),
-		sipgo.WithClientHostname(hostname),
-		sipgo.WithClientPort(bindPort),
-	)
+	}
+
+	// If resolved use specific connection and port
+	if hostname != "" {
+		opts = append(opts, sipgo.WithClientConnectionAddr(net.JoinHostPort(hostname, strconv.Itoa(bindPort))))
+	}
+
+	// Are we behind public IP
+	if tran.ExternalHost != tran.BindHost {
+		opts = append(opts, sipgo.WithClientHostname(tran.ExternalHost))
+		opts = append(opts, sipgo.WithClientPort(tran.ExternalPort))
+	}
+
+	cli, err := sipgo.NewClient(ua, opts...)
 	if err != nil {
 		dg.log.Error("Failed to create transport client", "error", err)
 		cli, _ = sipgo.NewClient(ua) // Make some defaut
