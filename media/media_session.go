@@ -513,12 +513,16 @@ func (m *MediaSession) ReadRTCP(buf []byte, pkts []rtcp.Packet) (n int, err erro
 	if err != nil {
 		return n, err
 	}
+	data := buf[:nn]
 
 	if m.remoteCtxSRTP != nil {
-		return 0, fmt.Errorf("DECRYPTING RTCP NOT HANDLED")
+		data, err = m.localCtxSRTP.DecryptRTCP(data, data, nil)
+		if err != nil {
+			return 0, err
+		}
 	}
 
-	n, err = RTCPUnmarshal(buf[:nn], pkts)
+	n, err = RTCPUnmarshal(data, pkts)
 	if err != nil {
 		return 0, err
 	}
@@ -590,9 +594,24 @@ func (m *MediaSession) WriteRTPRaw(data []byte) (n int, err error) {
 func (m *MediaSession) WriteRTCP(p rtcp.Packet) error {
 	logRTCPWrite(m, p)
 
+	// TODO: rtcp library needs to support MarshalTo v2
+	// https://github.com/pion/rtcp/issues/127
 	data, err := p.Marshal()
 	if err != nil {
 		return err
+	}
+
+	if m.localCtxSRTP != nil {
+		// sync pool may not be best option and needs benchmarks.
+		// but as RTCP is not realtime this can reduce allocations
+		// TODO: should be reusable with above marshaling
+		writeBuf := rtpBufPool.Get().([]byte)
+		defer rtpBufPool.Put(writeBuf)
+
+		data, err = m.localCtxSRTP.EncryptRTCP(writeBuf, data, nil)
+		if err != nil {
+			return err
+		}
 	}
 
 	n, err := m.WriteRTCPRaw(data)
@@ -638,7 +657,9 @@ func StringRTCP(p rtcp.Packet) string {
 
 	switch r := p.(type) {
 	case *rtcp.SenderReport:
+		h := r.Header()
 		out := fmt.Sprintf("SenderReport from %x\n", r.SSRC)
+		out += fmt.Sprintf("\tHeader: Count:%d Length:%d Type:%d\n", h.Count, h.Length, h.Type)
 		out += fmt.Sprintf("\tNTPTime:\t%d\n", r.NTPTime)
 		out += fmt.Sprintf("\tRTPTIme:\t%d\n", r.RTPTime)
 		out += fmt.Sprintf("\tPacketCount:\t%d\n", r.PacketCount)
@@ -651,7 +672,9 @@ func StringRTCP(p rtcp.Packet) string {
 
 		return out
 	case *rtcp.ReceiverReport:
+		h := r.Header()
 		out := fmt.Sprintf("ReceiverReport from %x\n", r.SSRC)
+		out += fmt.Sprintf("\tHeader: Count:%d Length:%d Type:%d\n", h.Count, h.Length, h.Type)
 		for _, i := range r.Reports {
 			out += fmt.Sprintf("SSRC: %x\tLost: %d/%d\t LastSeq: %d\tLSR: %d.%d\tDLSR: %d\n", i.SSRC, i.FractionLost, i.TotalLost, i.LastSequenceNumber, i.LastSenderReport&0xFFFF0000, i.LastSenderReport&0x0000FFFF, i.Delay)
 		}
