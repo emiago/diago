@@ -7,10 +7,17 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync"
 	"time"
 )
 
 var ntpEpochOffset int64 = 2208988800
+
+var rtpBufPool = sync.Pool{
+	New: func() any {
+		return make([]byte, RTPBufSize)
+	},
+}
 
 func GetCurrentNTPTimestamp() uint64 {
 	now := time.Now()
