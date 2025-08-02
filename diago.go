@@ -132,7 +132,6 @@ func WithTransport(t Transport) DiagoOption {
 type MediaConfig struct {
 	Codecs    []media.Codec
 	SecureRTP int
-
 	// Used internally
 	bindIP     net.IP
 	externalIP net.IP

@@ -97,6 +97,8 @@ type MediaSession struct {
 	ExternalIP net.IP
 
 	SecureRTP int // 0 none, 1 - SDES
+	// TODO support multile for offering
+	SRTPAlg srtp.ProtectionProfile
 
 	// filterCodecs is common list of codecs after negotiation
 	filterCodecs []Codec
@@ -139,6 +141,10 @@ func (s *MediaSession) Init() error {
 
 	if s.Laddr.IP == nil {
 		return fmt.Errorf("media session: local addr must be set")
+	}
+
+	if s.SRTPAlg == 0 {
+		s.SRTPAlg = srtp.ProtectionProfileAes128CmHmacSha1_80
 	}
 
 	// Try to listen on this ports
@@ -240,20 +246,20 @@ func (s *MediaSession) LocalSDP() []byte {
 	var localSDES sdesInline
 	if s.SecureRTP == 1 {
 		err := func() error {
-			keysalt := make([]byte, 30)
-			masterKey, masterSalt, err := generateMasterKeySalt(keysalt)
+			// TODO detect algorithm
+			profile := s.SRTPAlg
+			keysalt, keyLen, err := generateMasterKeySalt(profile)
 			if err != nil {
 				return err
 			}
+			masterKey, masterSalt := keysalt[:keyLen], keysalt[keyLen:]
 
 			inline := base64.StdEncoding.EncodeToString(keysalt)
 			localSDES = sdesInline{
-				alg:    "AES_CM_128_HMAC_SHA1_80",
+				alg:    srtpProfileString(profile),
 				base64: inline,
 			}
 
-			// TODO detect algorithm
-			profile := srtp.ProtectionProfileAes128CmHmacSha1_80
 			ctx, err := srtp.CreateContext(masterKey, masterSalt, profile)
 			if err != nil {
 				return fmt.Errorf("CreateContext failed: %v", err)
@@ -310,6 +316,27 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	for _, v := range attrs {
 		if strings.HasPrefix(v, "crypto:1") {
 			vals := strings.Split(v, " ")
+			if len(vals) < 3 {
+				return fmt.Errorf("sdp: bad crypto attribute attr=%q", v)
+			}
+			// Check do we support crypto alg
+			alg := vals[1]
+
+			var profile srtp.ProtectionProfile
+			switch alg {
+			case "AES_CM_128_HMAC_SHA1_80":
+				profile = srtp.ProtectionProfileAes128CmHmacSha1_80
+			// case "NULL_HMAC_SHA1_80":
+			// 	profile = srtp.ProtectionProfileNullHmacSha1_80
+			default:
+				return fmt.Errorf("sdp: unknown crypto algorithm alg=%q", alg)
+			}
+
+			// When this gets into array, we need to check do we want to support it
+			if s.SRTPAlg != profile {
+				continue
+			}
+
 			inline := strings.TrimPrefix(vals[2], "inline:")
 
 			keyBytes, err := base64.StdEncoding.DecodeString(inline)
@@ -319,13 +346,10 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			if len(keyBytes) != 30 {
 				return fmt.Errorf("expected 30-byte key, got %d", len(keyBytes))
 			}
-
 			// Split into master key (16 bytes) and master salt (14 bytes)
 			masterKey := keyBytes[:16]
 			masterSalt := keyBytes[16:]
 
-			// TODO detect algorithm
-			profile := srtp.ProtectionProfileAes128CmHmacSha1_80
 			ctx, err := srtp.CreateContext(masterKey, masterSalt, profile)
 			if err != nil {
 				return fmt.Errorf("CreateContext failed: %v", err)
@@ -516,7 +540,7 @@ func (m *MediaSession) ReadRTCP(buf []byte, pkts []rtcp.Packet) (n int, err erro
 	data := buf[:nn]
 
 	if m.remoteCtxSRTP != nil {
-		data, err = m.localCtxSRTP.DecryptRTCP(data, data, nil)
+		data, err = m.remoteCtxSRTP.DecryptRTCP(data, data, nil)
 		if err != nil {
 			return 0, err
 		}
@@ -768,18 +792,24 @@ func generateSDPForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode
 	return []byte(res)
 }
 
-func generateMasterKeySalt(buf []byte) ([]byte, []byte, error) {
-	if len(buf) != 30 {
-		return nil, nil, fmt.Errorf("buffer must be at least 30")
-	}
-	key := buf[:16]
-	salt := buf[16:30]
-	if _, err := rand.Read(key); err != nil {
-		return nil, nil, err
+func generateMasterKeySalt(profile srtp.ProtectionProfile) ([]byte, int, error) {
+	keyLen, err := profile.KeyLen()
+	if err != nil {
+		return nil, 0, fmt.Errorf("srtp getting key len: %w", err)
 	}
 
-	if _, err := rand.Read(salt); err != nil {
-		return nil, nil, err
+	saltLen, err := profile.SaltLen()
+	if err != nil {
+		return nil, 0, fmt.Errorf("srtp getting salt len: %w", err)
 	}
-	return key, salt, nil
+
+	buf := make([]byte, keyLen+saltLen)
+	if _, err := rand.Read(buf[:keyLen]); err != nil {
+		return nil, 0, err
+	}
+
+	if _, err := rand.Read(buf[keyLen:]); err != nil {
+		return nil, 0, err
+	}
+	return buf, keyLen, nil
 }
