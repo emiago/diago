@@ -165,8 +165,8 @@ func (d *DialogMedia) initMediaSessionFromConf(conf MediaConfig) error {
 		Laddr:      net.UDPAddr{IP: bindIP, Port: 0},
 		ExternalIP: conf.externalIP,
 		Mode:       sdp.ModeSendrecv,
-		SecureRTP:  conf.SecureRTP,
-		SRTPAlg:    media.SRTPAes128CmHmacSha1_80,
+		SecureRTP:  conf.secureRTP,
+		SRTPAlg:    conf.SecureRTPAlg,
 	}
 
 	if err := sess.Init(); err != nil {

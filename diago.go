@@ -64,10 +64,14 @@ type Transport struct {
 
 	// MediaExternalIP changes SDP IP, by default it tries to use external host if it is IP defined
 	MediaExternalIP net.IP
-	mediaBindIP     net.IP
+	// MediaSRTP offers SRTP
+	MediaSRTP   int // 0-none, 1-sdes
+	mediaBindIP net.IP
 
 	// In case TLS protocol
 	TLSConf *tls.Config
+	// Avoiding SIPS in contact uri https://datatracker.ietf.org/doc/html/rfc5630#section-3.3
+	TLSURINoSIPS bool
 
 	RewriteContact bool
 
@@ -130,9 +134,12 @@ func WithTransport(t Transport) DiagoOption {
 }
 
 type MediaConfig struct {
-	Codecs    []media.Codec
-	SecureRTP int
+	Codecs []media.Codec
+	// Currently supported Single. Check media.SRTP... constants
+	// Experimental
+	SecureRTPAlg uint16
 	// Used internally
+	secureRTP  int // 0 - none, 1 - sdes
 	bindIP     net.IP
 	externalIP net.IP
 
@@ -242,6 +249,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			// TODO we may actually just build media session with this conf here
 			mediaConf: MediaConfig{
 				Codecs:     dg.mediaConf.Codecs,
+				secureRTP:  tran.MediaSRTP,
 				bindIP:     tran.mediaBindIP,
 				externalIP: tran.MediaExternalIP,
 			},
@@ -638,7 +646,7 @@ func (dg *Diago) NewDialog(recipient sip.Uri, opts NewDialogOptions) (d *DialogC
 	// TODO explicit media format passing
 	mediaConf := MediaConfig{
 		Codecs:     dg.mediaConf.Codecs,
-		SecureRTP:  dg.mediaConf.SecureRTP,
+		secureRTP:  tran.MediaSRTP,
 		bindIP:     tran.mediaBindIP,
 		externalIP: tran.MediaExternalIP,
 	}
@@ -672,7 +680,7 @@ func (dg *Diago) NewDialog(recipient sip.Uri, opts NewDialogOptions) (d *DialogC
 func (dg *Diago) contactHDRFromTransport(tran Transport, contact *sip.ContactHeader) {
 	// Find contact hdr matching transport
 	scheme := "sip"
-	if tran.TLSConf != nil {
+	if tran.TLSConf != nil && !tran.TLSURINoSIPS {
 		scheme = "sips"
 	}
 

@@ -98,7 +98,7 @@ type MediaSession struct {
 
 	SecureRTP int // 0 none, 1 - SDES
 	// TODO support multile for offering
-	SRTPAlg srtp.ProtectionProfile
+	SRTPAlg uint16
 
 	// filterCodecs is common list of codecs after negotiation
 	filterCodecs []Codec
@@ -143,8 +143,8 @@ func (s *MediaSession) Init() error {
 		return fmt.Errorf("media session: local addr must be set")
 	}
 
-	if s.SRTPAlg == 0 {
-		s.SRTPAlg = srtp.ProtectionProfileAes128CmHmacSha1_80
+	if s.SecureRTP > 0 && s.SRTPAlg == 0 {
+		s.SRTPAlg = uint16(srtp.ProtectionProfileAes128CmHmacSha1_80)
 	}
 
 	// Try to listen on this ports
@@ -247,7 +247,7 @@ func (s *MediaSession) LocalSDP() []byte {
 	if s.SecureRTP == 1 {
 		err := func() error {
 			// TODO detect algorithm
-			profile := s.SRTPAlg
+			profile := srtp.ProtectionProfile(s.SRTPAlg)
 			keysalt, keyLen, err := generateMasterKeySalt(profile)
 			if err != nil {
 				return err
@@ -333,7 +333,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			}
 
 			// When this gets into array, we need to check do we want to support it
-			if s.SRTPAlg != profile {
+			if s.SRTPAlg != uint16(profile) {
 				continue
 			}
 
