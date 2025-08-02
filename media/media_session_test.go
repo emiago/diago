@@ -212,6 +212,7 @@ func TestMediaSRTP(t *testing.T) {
 		Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
 		Codecs:    []Codec{CodecAudioAlaw},
 		SecureRTP: 1,
+		SRTPAlg:   SRTPAes128CmHmacSha1_80,
 		Mode:      sdp.ModeSendrecv,
 	}
 	require.NoError(t, m1.Init())
@@ -220,6 +221,7 @@ func TestMediaSRTP(t *testing.T) {
 		Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
 		Codecs:    []Codec{CodecAudioAlaw},
 		SecureRTP: 1,
+		SRTPAlg:   SRTPAes128CmHmacSha1_80,
 		Mode:      sdp.ModeSendrecv,
 	}
 	require.NoError(t, m2.Init())
