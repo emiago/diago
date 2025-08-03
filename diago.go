@@ -733,23 +733,6 @@ func (dg *Diago) findTransport(transport string, id string) (Transport, bool) {
 	return dg.getTransport("udp")
 }
 
-type RegisterOptions struct {
-	// Digest auth
-	Username  string
-	Password  string
-	ProxyHost string
-
-	// Expiry is for Expire header
-	Expiry time.Duration
-	// Retry interval is interval before next Register is sent
-	RetryInterval time.Duration
-	AllowHeaders  []string
-
-	// Useragent default will be used on what is provided as NewUA()
-	// UserAgent         string
-	// UserAgentHostname string
-}
-
 // Register will create register transaction and keep registration ongoing until error is hit.
 // For more granular control over registraions user RegisterTransaction
 func (dg *Diago) Register(ctx context.Context, recipient sip.Uri, opts RegisterOptions) error {
@@ -800,7 +783,7 @@ func (dg *Diago) RegisterTransaction(ctx context.Context, recipient sip.Uri, opt
 	// 	return nil, err
 	// }
 	client := dg.getClient(&tran)
-	return newRegisterTransaction(client, recipient, contactHDR, opts), nil
+	return newRegisterTransaction(client, recipient, contactHDR, dg.log, opts), nil
 }
 
 func (dg *Diago) createClient(tran Transport) (client *sipgo.Client) {

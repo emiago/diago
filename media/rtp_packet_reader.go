@@ -77,7 +77,7 @@ func NewRTPPacketReader(reader RTPReader, codec Codec) *RTPPacketReader {
 		seqReader: RTPExtendedSequenceNumber{},
 		// unreadPayload: make([]byte, RTPBufSize),
 		// rtpBuffer:     make([]byte, RTPBufSize),
-		log: slog.Default().With("caller", "media"),
+		log: DefaultLogger().With("caller", "media"),
 	}
 
 	return &w

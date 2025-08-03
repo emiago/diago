@@ -8,7 +8,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log/slog"
 	"sync"
 
 	"github.com/emiago/diago/media"
@@ -279,7 +278,7 @@ func (d *PCMEncoderWriter) Write(lpcm []byte) (int, error) {
 	// We need to have fixed frame sizes due to encoders
 	sampleSize := d.samplesSize
 	if len(lpcm) > sampleSize {
-		slog.Warn("Size of pcm samples does not match our frame", "lenpcm", len(lpcm), "expected", sampleSize)
+		media.DefaultLogger().Warn("Size of pcm samples does not match our frame", "lenpcm", len(lpcm), "expected", sampleSize)
 	}
 
 	// If encoder can not fit our network buffer it will error

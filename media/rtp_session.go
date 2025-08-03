@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -188,11 +187,11 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 
 		// Validate pkt. Check is it keep alive
 		if readPkt.Version == 0 {
-			slog.Debug("Received RTP with invalid version. Skipping")
+			DefaultLogger().Debug("Received RTP with invalid version. Skipping")
 			continue
 		}
 		if len(readPkt.Payload) == 0 {
-			slog.Debug("Received RTP with empty Payload. Skipping")
+			DefaultLogger().Debug("Received RTP with empty Payload. Skipping")
 			continue
 		}
 
@@ -221,7 +220,7 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 			}
 
 			if codec.PayloadType != readPkt.PayloadType {
-				slog.Warn("Received RTP with unsupported payload_type", "pt", readPkt.PayloadType)
+				DefaultLogger().Warn("Received RTP with unsupported payload_type", "pt", readPkt.PayloadType)
 				return 0, nil
 			}
 		}
@@ -334,7 +333,7 @@ func (s *RTPSession) Monitor() error {
 		select {
 		case now = <-s.rtcpTicker.C:
 		case <-s.rtcpClosed:
-			slog.Debug("RTCP writer closed")
+			DefaultLogger().Debug("RTCP writer closed")
 			return nil
 		}
 		if err = s.writeRTCP(now); err != nil {
@@ -351,7 +350,7 @@ func (s *RTPSession) MonitorBackground() error {
 		return fmt.Errorf("raddr of RTP is not present. Is RemoteSDP called. Monitor RTP Session failed")
 	}
 
-	log := slog.Default()
+	log := DefaultLogger()
 	go func() {
 		sess := s.Sess
 		log.Debug("RTCP reader started", "laddr", sess.rtcpConn.LocalAddr().String())
@@ -406,7 +405,7 @@ func (s *RTPSession) readRTCP() error {
 		n, err := sess.ReadRTCP(buf, rtcpBuf)
 		if err != nil {
 			if errors.Is(err, errRTCPFailedToUnmarshal) {
-				slog.Error("RTCP Unmarshal error. Continue listen", "error", err)
+				DefaultLogger().Error("RTCP Unmarshal error. Continue listen", "error", err)
 				continue
 			}
 			return err
@@ -456,7 +455,7 @@ func (s *RTPSession) readRTCPPacket(pkt rtcp.Packet) {
 func (s *RTPSession) readReceptionReport(rr rtcp.ReceptionReport, now time.Time) {
 	// For now only use single SSRC
 	if rr.SSRC != s.writeStats.SSRC {
-		slog.Warn("Reception report SSRC does not match our internal", "ssrc", rr.SSRC, "expected", s.writeStats.SSRC)
+		DefaultLogger().Warn("Reception report SSRC does not match our internal", "ssrc", rr.SSRC, "expected", s.writeStats.SSRC)
 		return
 	}
 
@@ -467,7 +466,7 @@ func (s *RTPSession) readReceptionReport(rr rtcp.ReceptionReport, now time.Time)
 		var skewed bool
 		s.readStats.RTT, skewed = calcRTT(now, rr.LastSenderReport, rr.Delay)
 		if skewed {
-			slog.Warn("Internal RTCP clock skew detected", "ssrc", rr.SSRC, "rtt", s.readStats.RTT.String())
+			DefaultLogger().Warn("Internal RTCP clock skew detected", "ssrc", rr.SSRC, "rtt", s.readStats.RTT.String())
 		}
 	}
 	// used to calc fraction lost
