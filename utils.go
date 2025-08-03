@@ -4,8 +4,11 @@
 package diago
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httputil"
 	"sync"
 
 	"github.com/emiago/diago/media"
@@ -41,4 +44,20 @@ func newRTPWriterBuffer() *rtpWriterBuffer {
 func (w *rtpWriterBuffer) WriteRTP(p *rtp.Packet) error {
 	w.buf = append(w.buf, p)
 	return nil
+}
+
+type loggingTransport struct{}
+
+func (s *loggingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	bytes, _ := httputil.DumpRequestOut(r, false)
+
+	resp, err := http.DefaultTransport.RoundTrip(r)
+	// err is returned after dumping the response
+
+	respBytes, _ := httputil.DumpResponse(resp, false)
+	bytes = append(bytes, respBytes...)
+
+	slog.Debug(fmt.Sprintf("HTTP Debug:\n%s\n", bytes))
+
+	return resp, err
 }

@@ -55,9 +55,9 @@ func (w *RTPDtmfReader) Read(b []byte) (int, error) {
 }
 
 func (w *RTPDtmfReader) processDTMFEvent(ev DTMFEvent) {
-	if slog.Default().Handler().Enabled(context.Background(), slog.LevelDebug) {
+	if DefaultLogger().Handler().Enabled(context.Background(), slog.LevelDebug) {
 		// Expensive call on logger
-		slog.Debug("Processing DTMF event", "ev", ev)
+		DefaultLogger().Debug("Processing DTMF event", "ev", ev)
 	}
 	if ev.EndOfEvent {
 		if w.lastEv.Duration == 0 {
@@ -71,7 +71,7 @@ func (w *RTPDtmfReader) processDTMFEvent(ev DTMFEvent) {
 
 		dur := ev.Duration - w.lastEv.Duration
 		if dur <= 3*160 { // Expect at least ~50ms duration
-			slog.Debug("Received DTMF packet but short duration", "dur", dur)
+			DefaultLogger().Debug("Received DTMF packet but short duration", "dur", dur)
 			return
 		}
 

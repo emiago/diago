@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"slices"
 	"strconv"
@@ -41,13 +40,13 @@ func logRTPRead(m *MediaSession, raddr net.Addr, p *rtp.Packet) {
 	if RTPDebug {
 		s := raddr.String()
 
-		slog.Debug(fmt.Sprintf("RTP read %s < %s:\n%s", m.Laddr.String(), s, p.String()))
+		DefaultLogger().Debug(fmt.Sprintf("RTP read %s < %s:\n%s", m.Laddr.String(), s, p.String()))
 	}
 }
 
 func logRTPWrite(m *MediaSession, p *rtp.Packet) {
 	if RTPDebug {
-		slog.Debug(fmt.Sprintf("RTP write %s > %s:\n%s", m.Laddr.String(), m.Raddr.String(), p.String()))
+		DefaultLogger().Debug(fmt.Sprintf("RTP write %s > %s:\n%s", m.Laddr.String(), m.Raddr.String(), p.String()))
 	}
 }
 
@@ -55,7 +54,7 @@ func logRTCPRead(m *MediaSession, pkts []rtcp.Packet) {
 	if RTCPDebug {
 		laddr := m.rtcpConn.LocalAddr()
 		for _, p := range pkts {
-			slog.Debug(fmt.Sprintf("RTCP read %s < %s:\n%s", laddr.String(), m.rtcpRaddr.String(), StringRTCP(p)))
+			DefaultLogger().Debug(fmt.Sprintf("RTCP read %s < %s:\n%s", laddr.String(), m.rtcpRaddr.String(), StringRTCP(p)))
 		}
 	}
 }
@@ -63,7 +62,7 @@ func logRTCPRead(m *MediaSession, pkts []rtcp.Packet) {
 func logRTCPWrite(m *MediaSession, p rtcp.Packet) {
 	if RTCPDebug {
 		laddr := m.rtcpConn.LocalAddr()
-		slog.Debug(fmt.Sprintf("RTCP write %s > %s:\n%s", laddr.String(), m.rtcpRaddr.String(), StringRTCP(p)))
+		DefaultLogger().Debug(fmt.Sprintf("RTCP write %s > %s:\n%s", laddr.String(), m.rtcpRaddr.String(), StringRTCP(p)))
 	}
 }
 
@@ -269,7 +268,7 @@ func (s *MediaSession) LocalSDP() []byte {
 			return nil
 		}()
 		if err != nil {
-			slog.Error("Failed to setup SRTP context", "error", err)
+			DefaultLogger().Error("Failed to setup SRTP context", "error", err)
 		}
 	}
 
@@ -468,7 +467,7 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 			return n, fmt.Errorf("srtp decrypt: %w", err)
 		}
 		if len(decrypted) > len(buf) {
-			slog.Warn("Growing Decrypted RTP buffer", "diff", len(decrypted)-len(buf))
+			DefaultLogger().Warn("Growing Decrypted RTP buffer", "diff", len(decrypted)-len(buf))
 		}
 
 		buf = decrypted

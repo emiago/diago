@@ -37,7 +37,7 @@ type Bridge struct {
 
 func NewBridge() Bridge {
 	b := Bridge{}
-	b.Init(slog.Default())
+	b.Init(media.DefaultLogger())
 	return b
 }
 

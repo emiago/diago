@@ -6,7 +6,6 @@ package diago
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"github.com/emiago/sipgo"
@@ -72,7 +71,6 @@ func dialogHandleReferNotify(d DialogSession, req *sip.Request, tx sip.ServerTra
 
 	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusOK, "OK", nil))
 
-	slog.Info("Handling NOTIFY: " + string(req.Body()))
 	switch frag[:11] {
 	case "SIP/2.0 100":
 	case "SIP/2.0 200":

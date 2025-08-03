@@ -8,10 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"os"
 	"slices"
 	"sync"
@@ -219,17 +217,6 @@ func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 
 	if d.onMediaUpdate != nil {
 		d.onMediaUpdate(d)
-	} else {
-		fmts := ""
-		msess := d.mediaSession
-		for _, c := range msess.Codecs {
-			fmts += c.Name
-		}
-		slog.Info("Media/RTP session updated",
-			slog.String("formats", fmts),
-			slog.String("localAddr", msess.Laddr.String()),
-			slog.String("remoteAddr", msess.Raddr.String()),
-		)
 	}
 
 	return nil
@@ -549,22 +536,6 @@ func (d *DialogMedia) AudioStereoRecordingCreate(wawFile *os.File) (AudioStereoR
 		mon:       mon,
 	}
 	return r, nil
-}
-
-type loggingTransport struct{}
-
-func (s *loggingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	bytes, _ := httputil.DumpRequestOut(r, false)
-
-	resp, err := http.DefaultTransport.RoundTrip(r)
-	// err is returned after dumping the response
-
-	respBytes, _ := httputil.DumpResponse(resp, false)
-	bytes = append(bytes, respBytes...)
-
-	slog.Debug(fmt.Sprintf("HTTP Debug:\n%s\n", bytes))
-
-	return resp, err
 }
 
 // Listen keeps reading stream until it gets closed or deadlined
