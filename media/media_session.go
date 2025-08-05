@@ -109,6 +109,7 @@ type MediaSession struct {
 	// SRTP
 	localCtxSRTP  *srtp.Context
 	remoteCtxSRTP *srtp.Context
+	srtpRemoteTag int
 
 	// TODO: Support RTP Symetric
 	rtpSymetric bool
@@ -222,6 +223,8 @@ func (s *MediaSession) SetRemoteAddr(raddr *net.UDPAddr) {
 	}
 }
 
+// LocalSDP generates SDP based on local settings and remote SDP
+// It should never be called in parallel to RemoteSDP, as it is expected serial process
 func (s *MediaSession) LocalSDP() []byte {
 	ip := s.Laddr.IP
 	rtpPort := s.Laddr.Port
@@ -257,6 +260,7 @@ func (s *MediaSession) LocalSDP() []byte {
 			localSDES = sdesInline{
 				alg:    srtpProfileString(profile),
 				base64: inline,
+				tag:    1,
 			}
 
 			ctx, err := srtp.CreateContext(masterKey, masterSalt, profile)
@@ -265,6 +269,11 @@ func (s *MediaSession) LocalSDP() []byte {
 			}
 
 			s.localCtxSRTP = ctx
+
+			if s.srtpRemoteTag > 0 {
+				// Match remote tag if exists
+				localSDES.tag = s.srtpRemoteTag
+			}
 			return nil
 		}()
 		if err != nil {
@@ -313,12 +322,17 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 
 	// Check for SDES
 	for _, v := range attrs {
-		if strings.HasPrefix(v, "crypto:1") {
+		if strings.HasPrefix(v, "crypto:") {
 			vals := strings.Split(v, " ")
 			if len(vals) < 3 {
 				return fmt.Errorf("sdp: bad crypto attribute attr=%q", v)
 			}
 			// Check do we support crypto alg
+			tagString := strings.TrimLeft(vals[0], "crypto:")
+			if s.srtpRemoteTag, err = strconv.Atoi(tagString); err != nil {
+				return fmt.Errorf("bad crypto tag in %q", v)
+			}
+
 			alg := vals[1]
 
 			var profile srtp.ProtectionProfile
@@ -328,7 +342,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			// case "NULL_HMAC_SHA1_80":
 			// 	profile = srtp.ProtectionProfileNullHmacSha1_80
 			default:
-				return fmt.Errorf("sdp: unknown crypto algorithm alg=%q", alg)
+				continue
 			}
 
 			// When this gets into array, we need to check do we want to support it
@@ -714,6 +728,7 @@ func StringRTCP(p rtcp.Packet) string {
 type sdesInline struct {
 	alg    string
 	base64 string
+	tag    int
 }
 
 func generateSDPForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode string, codecs []Codec, sdes sdesInline) []byte {
@@ -762,7 +777,7 @@ func generateSDPForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode
 		"a="+string(mode))
 
 	if sdes.alg != "" {
-		s = append(s, fmt.Sprintf("a=crypto:1 %s inline:%s", sdes.alg, sdes.base64))
+		s = append(s, fmt.Sprintf("a=crypto:%d %s inline:%s", sdes.tag, sdes.alg, sdes.base64))
 	}
 	// s := []string{
 	// 	"v=0",
