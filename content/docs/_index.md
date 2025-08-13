@@ -39,11 +39,11 @@ More on [Why Diago](why_diago)
 - [ ] Conferencing audio
 - [ ] DTMF with SIP INFO (Needed more in case webrtc)
 - [ ] Writing Unit Test on Server with SIP and Media Recorder
-- [ ] RTP symetric
-- [ ] SRTP for more critical services
+- [x] RTP symetric
+- [x] SRTP for more critical services
 - [x] Simple Wav Stereo recording
 - [ ] Webrtc as media stack (integration with pion) **Experimental**
-- [ ] Full IPV6 support (sipgo work) **Supported but has corner cases**
+- [x] Full IPV6 support
 - [ ] And plenty more ...
 
 If you want support/sponzor current development roadmap or you want to prioritize different contact me on [mail](mailto:emirfreelance91@gmail.com)
