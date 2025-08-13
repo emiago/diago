@@ -509,12 +509,12 @@ If needed it will be exposed more as special thing.&lt;/p&gt;
         &lt;p&gt;Everything is io.Reader and io.Writer&lt;/p&gt;
 &lt;p&gt;Diago follows GO std lib and providing interface for Reader/Writer when it comes reading and writing media.
 This made easier usage of RTP framework and optimizations, by providing end user standard library io.Reader io.Writer to pass his media.&lt;/p&gt;
-&lt;p&gt;In other words creating reader or writer &lt;strong&gt;pipelines&lt;/strong&gt; allows to build interceptors, encoders, decoders without introducing overhead of contention and buffer reusage.&lt;/p&gt;
+&lt;p&gt;In other words creating reader or writer &lt;strong&gt;pipelines&lt;/strong&gt; allows to build interceptors, encoders, decoders without introducing overhead of contention and buffer reuse.&lt;/p&gt;
 &lt;p&gt;&lt;code&gt;media&lt;/code&gt; and &lt;code&gt;audio&lt;/code&gt; package also provide all this helpers for making audio pipelines straightforward.
 In &lt;strong&gt;realtime media&lt;/strong&gt;  streaming, audio is sampled at constant rate.&lt;br&gt;
-Some of io operations you encounter have helpers &lt;code&gt;media&lt;/code&gt; package like &lt;code&gt;media.Copy&lt;/code&gt; , &lt;code&gt;media.ReadAll&lt;/code&gt;, which are better suited intead std &lt;code&gt;io&lt;/code&gt;&lt;/p&gt;
+Some of io operations you encounter have helpers &lt;code&gt;media&lt;/code&gt; package like &lt;code&gt;media.Copy&lt;/code&gt; , &lt;code&gt;media.ReadAll&lt;/code&gt;, which are better suited instead std &lt;code&gt;io&lt;/code&gt;&lt;/p&gt;
 &lt;h3&gt;Creating Echo&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;creating-echo&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#creating-echo&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Everything mostly begins by getting actuall &lt;code&gt;AudioReader&lt;/code&gt; and &lt;code&gt;AudioWriter&lt;/code&gt; from Dialog Session.&lt;/p&gt;
+    &lt;a href=&#34;#creating-echo&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Everything mostly begins by getting actual &lt;code&gt;AudioReader&lt;/code&gt; and &lt;code&gt;AudioWriter&lt;/code&gt; from Dialog Session.&lt;/p&gt;
 &lt;div class=&#34;hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code&#34;&gt;
   
 
@@ -548,9 +548,9 @@ Some of io operations you encounter have helpers &lt;code&gt;media&lt;/code&gt; 
 
   
 &lt;/div&gt;
-&lt;p&gt;For less memory alloc, better option is &lt;code&gt;media.CopyWithBuf&lt;/code&gt; where controling buffer reusage can be made.&lt;/p&gt;
+&lt;p&gt;For less memory alloc, better option is &lt;code&gt;media.CopyWithBuf&lt;/code&gt; where controlling buffer reuse can be made.&lt;/p&gt;
 &lt;h3&gt;More audio processing&lt;span class=&#34;hx-absolute -hx-mt-20&#34; id=&#34;more-audio-processing&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#more-audio-processing&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;For more &lt;strong&gt;audio&lt;/strong&gt; processing &lt;code&gt;audio&lt;/code&gt; like ex &lt;strong&gt;transcoding&lt;/strong&gt; package provides you with prebuilt helpers for pipelining
+    &lt;a href=&#34;#more-audio-processing&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;For more &lt;strong&gt;audio&lt;/strong&gt; processing &lt;code&gt;audio&lt;/code&gt; (ex &lt;strong&gt;transcoding&lt;/strong&gt;, &lt;strong&gt;wav streaming&lt;/strong&gt;) package provides you with prebuilt helpers for pipelining
 More you can find here &lt;a href=&#34;https://pkg.go.dev/github.com/emiago/diago/audio&#34; target=&#34;_blank&#34; rel=&#34;noopener&#34;&gt;https://pkg.go.dev/github.com/emiago/diago/audio&lt;/a&gt;&lt;/p&gt;
 
       </description>

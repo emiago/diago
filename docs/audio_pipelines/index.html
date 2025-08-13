@@ -14,9 +14,9 @@
   <title>Audio Pipelines – Diago</title>
   <meta name="description" content="Everything is io.Reader and io.Writer
 Diago follows GO std lib and providing interface for Reader/Writer when it comes reading and writing media. This made easier usage of RTP framework and optimizations, by providing end user standard library io.Reader io.Writer to pass his media.
-In other words creating reader or writer pipelines allows to build interceptors, encoders, decoders without introducing overhead of contention and buffer reusage.
+In other words creating reader or writer pipelines allows to build interceptors, encoders, decoders without introducing overhead of contention and buffer reuse.
 media and audio package also provide all this helpers for making audio pipelines straightforward. In realtime media streaming, audio is sampled at constant rate.
-Some of io operations you encounter have helpers media package like media.Copy , media.ReadAll, which are better suited intead std io" />
+Some of io operations you encounter have helpers media package like media.Copy , media.ReadAll, which are better suited instead std io" />
 
   
     <link rel="canonical" href="https://emiago.github.io/diago/docs/audio_pipelines/" itemprop="url" />
@@ -28,10 +28,10 @@ Some of io operations you encounter have helpers media package like media.Copy ,
 <meta property="og:description" content="Everything is io.Reader and io.Writer
 Diago follows GO std lib and providing interface for Reader/Writer when it comes reading and writing media.
 This made easier usage of RTP framework and optimizations, by providing end user standard library io.Reader io.Writer to pass his media.
-In other words creating reader or writer pipelines allows to build interceptors, encoders, decoders without introducing overhead of contention and buffer reusage.
+In other words creating reader or writer pipelines allows to build interceptors, encoders, decoders without introducing overhead of contention and buffer reuse.
 media and audio package also provide all this helpers for making audio pipelines straightforward.
 In realtime media  streaming, audio is sampled at constant rate.
-Some of io operations you encounter have helpers media package like media.Copy , media.ReadAll, which are better suited intead std io" />
+Some of io operations you encounter have helpers media package like media.Copy , media.ReadAll, which are better suited instead std io" />
 <meta property="og:type" content="article" />
 <meta property="og:url" content="https://emiago.github.io/diago/docs/audio_pipelines/" /><meta property="article:section" content="docs" />
 
@@ -41,17 +41,17 @@ Some of io operations you encounter have helpers media package like media.Copy ,
   <meta itemprop="name" content="Audio Pipelines">
   <meta itemprop="description" content="Everything is io.Reader and io.Writer
 Diago follows GO std lib and providing interface for Reader/Writer when it comes reading and writing media. This made easier usage of RTP framework and optimizations, by providing end user standard library io.Reader io.Writer to pass his media.
-In other words creating reader or writer pipelines allows to build interceptors, encoders, decoders without introducing overhead of contention and buffer reusage.
+In other words creating reader or writer pipelines allows to build interceptors, encoders, decoders without introducing overhead of contention and buffer reuse.
 media and audio package also provide all this helpers for making audio pipelines straightforward. In realtime media streaming, audio is sampled at constant rate.
-Some of io operations you encounter have helpers media package like media.Copy , media.ReadAll, which are better suited intead std io">
-  <meta itemprop="wordCount" content="189">
+Some of io operations you encounter have helpers media package like media.Copy , media.ReadAll, which are better suited instead std io">
+  <meta itemprop="wordCount" content="190">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Audio Pipelines">
   <meta name="twitter:description" content="Everything is io.Reader and io.Writer
 Diago follows GO std lib and providing interface for Reader/Writer when it comes reading and writing media. This made easier usage of RTP framework and optimizations, by providing end user standard library io.Reader io.Writer to pass his media.
-In other words creating reader or writer pipelines allows to build interceptors, encoders, decoders without introducing overhead of contention and buffer reusage.
+In other words creating reader or writer pipelines allows to build interceptors, encoders, decoders without introducing overhead of contention and buffer reuse.
 media and audio package also provide all this helpers for making audio pipelines straightforward. In realtime media streaming, audio is sampled at constant rate.
-Some of io operations you encounter have helpers media package like media.Copy , media.ReadAll, which are better suited intead std io">
+Some of io operations you encounter have helpers media package like media.Copy , media.ReadAll, which are better suited instead std io">
 
     <link rel="preload" href="/diago/css/compiled/main.min.23a12191daf50c320fcb5ce50e8c895a47f37ce361f66be7c771e19f254b32b2.css" as="style" integrity="sha256-I6Ehkdr1DDIPy1zlDoyJWkfzfONh9mvnx3HhnyVLMrI=" />
     <link href="/diago/css/compiled/main.min.23a12191daf50c320fcb5ce50e8c895a47f37ce361f66be7c771e19f254b32b2.css" rel="stylesheet" integrity="sha256-I6Ehkdr1DDIPy1zlDoyJWkfzfONh9mvnx3HhnyVLMrI=" />
@@ -429,12 +429,12 @@ Some of io operations you encounter have helpers media package like media.Copy ,
           <p>Everything is io.Reader and io.Writer</p>
 <p>Diago follows GO std lib and providing interface for Reader/Writer when it comes reading and writing media.
 This made easier usage of RTP framework and optimizations, by providing end user standard library io.Reader io.Writer to pass his media.</p>
-<p>In other words creating reader or writer <strong>pipelines</strong> allows to build interceptors, encoders, decoders without introducing overhead of contention and buffer reusage.</p>
+<p>In other words creating reader or writer <strong>pipelines</strong> allows to build interceptors, encoders, decoders without introducing overhead of contention and buffer reuse.</p>
 <p><code>media</code> and <code>audio</code> package also provide all this helpers for making audio pipelines straightforward.
 In <strong>realtime media</strong>  streaming, audio is sampled at constant rate.<br>
-Some of io operations you encounter have helpers <code>media</code> package like <code>media.Copy</code> , <code>media.ReadAll</code>, which are better suited intead std <code>io</code></p>
+Some of io operations you encounter have helpers <code>media</code> package like <code>media.Copy</code> , <code>media.ReadAll</code>, which are better suited instead std <code>io</code></p>
 <h3>Creating Echo<span class="hx-absolute -hx-mt-20" id="creating-echo"></span>
-    <a href="#creating-echo" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>Everything mostly begins by getting actuall <code>AudioReader</code> and <code>AudioWriter</code> from Dialog Session.</p>
+    <a href="#creating-echo" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>Everything mostly begins by getting actual <code>AudioReader</code> and <code>AudioWriter</code> from Dialog Session.</p>
 <div class="hextra-code-block hx-relative hx-mt-6 first:hx-mt-0 hx-group/code">
   
 
@@ -468,9 +468,9 @@ Some of io operations you encounter have helpers <code>media</code> package like
 
   
 </div>
-<p>For less memory alloc, better option is <code>media.CopyWithBuf</code> where controling buffer reusage can be made.</p>
+<p>For less memory alloc, better option is <code>media.CopyWithBuf</code> where controlling buffer reuse can be made.</p>
 <h3>More audio processing<span class="hx-absolute -hx-mt-20" id="more-audio-processing"></span>
-    <a href="#more-audio-processing" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>For more <strong>audio</strong> processing <code>audio</code> like ex <strong>transcoding</strong> package provides you with prebuilt helpers for pipelining
+    <a href="#more-audio-processing" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>For more <strong>audio</strong> processing <code>audio</code> (ex <strong>transcoding</strong>, <strong>wav streaming</strong>) package provides you with prebuilt helpers for pipelining
 More you can find here <a href="https://pkg.go.dev/github.com/emiago/diago/audio" target="_blank" rel="noopener">https://pkg.go.dev/github.com/emiago/diago/audio</a></p>
 
         </div>
