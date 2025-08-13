@@ -1,12 +1,12 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Diago – Guides</title>
-    <link>http://localhost:1313/diago/docs/guides/</link>
+    <link>https://emiago.github.io/diago/docs/guides/</link>
     <description>Recent content in Guides on Diago</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     
-	  <atom:link href="http://localhost:1313/diago/docs/guides/index.xml" rel="self" type="application/rss+xml" />
+	  <atom:link href="https://emiago.github.io/diago/docs/guides/index.xml" rel="self" type="application/rss+xml" />
     
     
       
@@ -16,10 +16,10 @@
     
     <item>
       <title>Understading SIP with Call Scenarios</title>
-      <link>http://localhost:1313/diago/docs/guides/understanding_sip/</link>
+      <link>https://emiago.github.io/diago/docs/guides/understanding_sip/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>http://localhost:1313/diago/docs/guides/understanding_sip/</guid>
+      <guid>https://emiago.github.io/diago/docs/guides/understanding_sip/</guid>
       <description>
         
         
@@ -83,10 +83,10 @@ That is why 200 OK is replied&lt;/p&gt;
     
     <item>
       <title>SIP and Media</title>
-      <link>http://localhost:1313/diago/docs/guides/sip_and_media/</link>
+      <link>https://emiago.github.io/diago/docs/guides/sip_and_media/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>http://localhost:1313/diago/docs/guides/sip_and_media/</guid>
+      <guid>https://emiago.github.io/diago/docs/guides/sip_and_media/</guid>
       <description>
         
         
@@ -139,10 +139,10 @@ Publishing local IP like above is problem for NAT and there different approaches
     
     <item>
       <title>Understanding RTP</title>
-      <link>http://localhost:1313/diago/docs/guides/understanding_rtp/</link>
+      <link>https://emiago.github.io/diago/docs/guides/understanding_rtp/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>http://localhost:1313/diago/docs/guides/understanding_rtp/</guid>
+      <guid>https://emiago.github.io/diago/docs/guides/understanding_rtp/</guid>
       <description>
         
         

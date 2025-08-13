@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en"><head><script src="/diago/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=diago/livereload" data-no-instant defer></script>
+<html lang="en"><head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="robots" content="noindex, nofollow" />
+  <meta name="robots" content="index, follow" />
   <link rel="icon shortcut" href="/diago/favicon.ico" sizes="32x32" />
 <link rel="icon" href="/diago/favicon.svg" type="image/svg+xml" />
 <link rel="icon" href="/diago/favicon-dark.svg" type="image/svg+xml" media="(prefers-color-scheme: dark)" />
@@ -18,7 +18,7 @@ Echo test app Copy audio file from library testdata/files/demo-echotest.wav or c
 ua, _ := sipgo.NewUA() dg := diago.NewDiago(ua) dg.Serve(ctx, func(inDialog *diago.DialogServerSession) { inDialog.Trying() // Trying inDialog.Answer(); // Answer // Make sure file below exists in work dir playfile, err := os.Open(&#34;demo-echotest.wav&#34;) if err != nil { fmt.Println(&#34;Failed to open file&#34;, err) return } defer playfile.Close() // Create playback and play file. pb, _ := inDialog.PlaybackCreate() if err := pb.Play(playfile, &#34;audio/wav&#34;); err != nil { fmt.Println(&#34;Playing failed&#34;, err) } } Dial in with softphone on 127.0.0.1:5060 and you should here audio playing." />
 
   
-    <link rel="canonical" href="http://localhost:1313/diago/docs/getting_started/" itemprop="url" />
+    <link rel="canonical" href="https://emiago.github.io/diago/docs/getting_started/" itemprop="url" />
   
 
   
@@ -66,7 +66,7 @@ dg.Serve(ctx, func(inDialog *diago.DialogServerSession) {
 
 Dial in with softphone on 127.0.0.1:5060 and you should here audio playing." />
 <meta property="og:type" content="article" />
-<meta property="og:url" content="http://localhost:1313/diago/docs/getting_started/" /><meta property="article:section" content="docs" />
+<meta property="og:url" content="https://emiago.github.io/diago/docs/getting_started/" /><meta property="article:section" content="docs" />
 
 
 
@@ -84,11 +84,12 @@ For testing you can use gophone CLI sofpthone built with same libraries or any o
 Echo test app Copy audio file from library testdata/files/demo-echotest.wav or change to whatever you want
 ua, _ := sipgo.NewUA() dg := diago.NewDiago(ua) dg.Serve(ctx, func(inDialog *diago.DialogServerSession) { inDialog.Trying() // Trying inDialog.Answer(); // Answer // Make sure file below exists in work dir playfile, err := os.Open(&#34;demo-echotest.wav&#34;) if err != nil { fmt.Println(&#34;Failed to open file&#34;, err) return } defer playfile.Close() // Create playback and play file. pb, _ := inDialog.PlaybackCreate() if err := pb.Play(playfile, &#34;audio/wav&#34;); err != nil { fmt.Println(&#34;Playing failed&#34;, err) } } Dial in with softphone on 127.0.0.1:5060 and you should here audio playing.">
 
-    <link href="/diago/css/compiled/main.css" rel="stylesheet" />
+    <link rel="preload" href="/diago/css/compiled/main.min.23a12191daf50c320fcb5ce50e8c895a47f37ce361f66be7c771e19f254b32b2.css" as="style" integrity="sha256-I6Ehkdr1DDIPy1zlDoyJWkfzfONh9mvnx3HhnyVLMrI=" />
+    <link href="/diago/css/compiled/main.min.23a12191daf50c320fcb5ce50e8c895a47f37ce361f66be7c771e19f254b32b2.css" rel="stylesheet" integrity="sha256-I6Ehkdr1DDIPy1zlDoyJWkfzfONh9mvnx3HhnyVLMrI=" />
 
 
 
-  <link href="/diago/css/custom.css" rel="stylesheet" />
+  <link href="/diago/css/custom.min.132a0932155b4587d924c7e38f9a7c7a40b38b35a51b97696db905288debbec4.css" rel="stylesheet" integrity="sha256-EyoJMhVbRYfZJMfjj5p8ekCzizWlG5dpbbkFKI3rvsQ=" />
 
 
 
@@ -310,6 +311,14 @@ ua, _ := sipgo.NewUA() dg := diago.NewDiago(ua) dg.Serve(ctx, func(inDialog *dia
             </li><li class="hx-flex hx-flex-col "><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
       hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/docs/audio_pipelines/"
+    
+  >Audio Pipelines
+    </a>
+              
+            </li><li class="hx-flex hx-flex-col "><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
     href="/diago/docs/media_codecs/"
     
   >Media Codecs
@@ -383,6 +392,13 @@ ua, _ := sipgo.NewUA() dg := diago.NewDiago(ua) dg.Serve(ctx, func(inDialog *dia
     href="/diago/docs/api_docs/"
     
   >API Docs
+    </a></li>
+          <li class=""><a
+    class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
+      hx-text-gray-500 hover:hx-bg-gray-100 hover:hx-text-gray-900 contrast-more:hx-border contrast-more:hx-border-transparent contrast-more:hx-text-gray-900 contrast-more:hover:hx-border-gray-900 dark:hx-text-neutral-400 dark:hover:hx-bg-primary-100/5 dark:hover:hx-text-gray-50 contrast-more:dark:hx-text-gray-50 contrast-more:dark:hover:hx-border-gray-50"
+    href="/diago/docs/audio_pipelines/"
+    
+  >Audio Pipelines
     </a></li>
           <li class=""><a
     class="hx-flex hx-items-center hx-justify-between hx-gap-2 hx-cursor-pointer hx-rounded hx-px-2 hx-py-1.5 hx-text-sm hx-transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
@@ -530,11 +546,11 @@ or change to whatever you want</p>
   </div>
 </footer>
     
-    <script defer src="/diago/js/main.js" integrity=""></script>
+    <script defer src="/diago/js/main.min.d0f0346255ba9418db8fcf7f9440ca4e532e06276d8df17497e19e1045ee360b.js" integrity="sha256-0PA0YlW6lBjbj89/lEDKTlMuBidtjfF0l&#43;GeEEXuNgs="></script>
 
 
 <script defer src="/diago/lib/flexsearch/flexsearch.bundle.min.0425860527cc9968f9f049421c7a56b39327d475e2e3a8f550416be3a9134327.js" integrity="sha256-BCWGBSfMmWj58ElCHHpWs5Mn1HXi46j1UEFr46kTQyc="></script>
-    <script defer src="/diago/en.search.js" integrity=""></script>
+    <script defer src="/diago/en.search.min.55c1ac71a07e92b8fc8acef766f9a9886dcc6fe29f04d88383cb1fa8ccfc0fc3.js" integrity="sha256-VcGscaB&#43;krj8is73ZvmpiG3Mb&#43;KfBNiDg8sfqMz8D8M="></script>
 
 
   </body>
