@@ -205,8 +205,6 @@ func (s *MediaSession) SetRemoteAddr(raddr *net.UDPAddr) {
 		Port: raddr.Port + 1,
 		Zone: raddr.Zone,
 	}
-	// *s.rtcpRaddr = *s.Raddr
-	// s.rtcpRaddr.Port++
 }
 
 func (s *MediaSession) LocalSDP() []byte {
@@ -216,11 +214,20 @@ func (s *MediaSession) LocalSDP() []byte {
 	if connIP == nil {
 		connIP = ip
 	}
-	// if s.ExternalIP != nil {
-	// 	ip = s.ExternalIP
-	// }
 
-	return generateSDPForAudio(ip, connIP, rtpPort, s.Mode, s.Codecs)
+	// https://datatracker.ietf.org/doc/html/rfc3264#section-6.1
+	// 	Although the answerer MAY list the formats in their desired order of
+	//    preference, it is RECOMMENDED that unless there is a specific reason,
+	//    the answerer list formats in the same relative order they were
+	//    present in the offer.  In other words, if a stream in the offer lists
+	//    audio codecs 8, 22 and 48, in that order, and the answerer only
+	//    supports codecs 8 and 48, it is RECOMMENDED that, if the answerer has
+	codecs := s.Codecs
+	if len(s.filterCodecs) > 0 {
+		codecs = s.filterCodecs
+	}
+
+	return generateSDPForAudio(ip, connIP, rtpPort, s.Mode, codecs)
 }
 
 func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
