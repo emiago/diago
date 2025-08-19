@@ -86,6 +86,8 @@ type MediaSession struct {
 	// Codecs are initial list of Codecs that would be used in SDP generation
 	Codecs []Codec
 
+	sdp []byte
+
 	// Mode is sdp mode. Check consts sdp.ModeRecvOnly etc...
 	Mode string
 	// Laddr our local address which has full IP and port after media session creation
@@ -163,6 +165,31 @@ func (s *MediaSession) InitWithListeners(lRTP net.PacketConn, lRTCP net.PacketCo
 	s.SetRemoteAddr(raddr)
 }
 
+// InitWithSDP allows creating media session with own SDP and bypassing other needs
+func (s *MediaSession) InitWithSDP(localSDP []byte) error {
+	s.sdp = localSDP
+	sd := sdp.SessionDescription{}
+	if err := sdp.Unmarshal(localSDP, &sd); err != nil {
+		return fmt.Errorf("fail to parse received SDP: %w", err)
+	}
+
+	ci, err := sd.ConnectionInformation()
+	if err != nil {
+		return err
+	}
+	md, err := sd.MediaDescription("audio")
+	if err != nil {
+		return err
+	}
+	s.Laddr = net.UDPAddr{IP: ci.IP, Port: md.Port}
+	s.Mode = sdp.ModeSendrecv
+	// TODO check sendrecv from attributes
+	codecs := make([]Codec, len(md.Formats))
+	n, _ := CodecsFromSDPRead(md.Formats, sd.Values("a"), codecs)
+	s.Codecs = codecs[:n]
+	return nil
+}
+
 func (s *MediaSession) StopRTP(rw int8, dur time.Duration) error {
 	t := time.Now().Add(dur)
 	if rw&1 > 0 {
@@ -196,6 +223,7 @@ func (s *MediaSession) Fork() *MediaSession {
 		rtcpConn: s.rtcpConn,
 		Codecs:   slices.Clone(s.Codecs),
 		Mode:     sdp.ModeSendrecv,
+		sdp:      slices.Clone(s.sdp),
 	}
 	return &cp
 }
@@ -226,6 +254,11 @@ func (s *MediaSession) SetRemoteAddr(raddr *net.UDPAddr) {
 // LocalSDP generates SDP based on local settings and remote SDP
 // It should never be called in parallel to RemoteSDP, as it is expected serial process
 func (s *MediaSession) LocalSDP() []byte {
+	if len(s.sdp) > 0 {
+		// If media session is static then just return sdp.
+		return s.sdp
+	}
+
 	ip := s.Laddr.IP
 	rtpPort := s.Laddr.Port
 	connIP := s.ExternalIP
