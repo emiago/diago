@@ -327,21 +327,16 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			if len(vals) < 3 {
 				return fmt.Errorf("sdp: bad crypto attribute attr=%q", v)
 			}
-			// Check do we support crypto alg
+			// Parse crypto tag
 			tagString := strings.TrimLeft(vals[0], "crypto:")
 			if s.srtpRemoteTag, err = strconv.Atoi(tagString); err != nil {
 				return fmt.Errorf("bad crypto tag in %q", v)
 			}
 
+			// Parse algorithm
 			alg := vals[1]
-
-			var profile srtp.ProtectionProfile
-			switch alg {
-			case "AES_CM_128_HMAC_SHA1_80":
-				profile = srtp.ProtectionProfileAes128CmHmacSha1_80
-			// case "NULL_HMAC_SHA1_80":
-			// 	profile = srtp.ProtectionProfileNullHmacSha1_80
-			default:
+			profile := srtpProfileParse(alg)
+			if profile == 0 {
 				continue
 			}
 
@@ -475,7 +470,6 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	}
 
 	if m.remoteCtxSRTP != nil {
-		// TODO reuse pkt.Payload
 		decrypted, err := m.remoteCtxSRTP.DecryptRTP(buf, buf[:n], &pkt.Header)
 		if err != nil {
 			return n, fmt.Errorf("srtp decrypt: %w", err)
@@ -591,19 +585,13 @@ func (m *MediaSession) ReadRTCPRawDeadline(buf []byte, t time.Time) (int, error)
 func (m *MediaSession) WriteRTP(p *rtp.Packet) error {
 	logRTPWrite(m, p)
 
-	writeBuf := func() []byte {
-		if m.writeRTPBuf == nil {
-			m.writeRTPBuf = make([]byte, RTPBufSize)
-		}
-		return m.writeRTPBuf
-	}()
+	writeBuf := m.getWriteBuf()
 
 	n, err := p.MarshalTo(writeBuf)
 	if err != nil {
 		return fmt.Errorf("failed to marshal to write RTP buf: %w", err)
 	}
 	data := writeBuf[:n]
-	// data, err := p.Marshal()
 
 	if m.localCtxSRTP != nil {
 		data, err = m.localCtxSRTP.EncryptRTP(writeBuf, data, &p.Header)
@@ -621,6 +609,13 @@ func (m *MediaSession) WriteRTP(p *rtp.Packet) error {
 		return io.ErrShortWrite
 	}
 	return nil
+}
+
+func (m *MediaSession) getWriteBuf() []byte {
+	if m.writeRTPBuf == nil {
+		m.writeRTPBuf = make([]byte, RTPBufSize)
+	}
+	return m.writeRTPBuf
 }
 
 func (m *MediaSession) WriteRTPRaw(data []byte) (n int, err error) {
@@ -642,8 +637,9 @@ func (m *MediaSession) WriteRTCP(p rtcp.Packet) error {
 		// sync pool may not be best option and needs benchmarks.
 		// but as RTCP is not realtime this can reduce allocations
 		// TODO: should be reusable with above marshaling
-		writeBuf := rtpBufPool.Get().([]byte)
-		defer rtpBufPool.Put(writeBuf)
+		wbuf := rtpBufPool.Get()
+		defer rtpBufPool.Put(wbuf)
+		writeBuf := wbuf.([]byte)
 
 		data, err = m.localCtxSRTP.EncryptRTCP(writeBuf, data, nil)
 		if err != nil {
