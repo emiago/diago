@@ -27,9 +27,13 @@ func loadRingTonePCM(codec media.Codec) ([]byte, error) {
 	if exists {
 		return ringval.([]byte), nil
 	}
+	pcmBytes := generateRingTonePCM(int(codec.SampleRate))
+	ringtones.Store(uuid, pcmBytes)
+	return pcmBytes, nil
+}
 
+func generateRingTonePCM(sampleRate int) []byte {
 	var (
-		sampleRate  = int(codec.SampleRate)
 		durationSec = 2
 		volume      = 0.3
 		freq1       = 350.0
@@ -49,9 +53,8 @@ func loadRingTonePCM(codec media.Codec) ([]byte, error) {
 	}
 
 	pcmBytes := buf.Bytes()
-	ringtones.Store(uuid, pcmBytes)
 
-	return pcmBytes, nil
+	return pcmBytes
 }
 
 // AudioRingtone is playback for ringtone
