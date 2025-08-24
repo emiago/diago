@@ -19,7 +19,6 @@ import (
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/pion/rtp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -140,19 +139,21 @@ func BenchmarkIntegrationClientServer(t *testing.B) {
 
 					mediapkts := 0
 					outoforder := 0
+					audioReader, _ := dialog.AudioReader()
 					wg.Add(1)
 					go func() {
 						defer wg.Done()
 
 						buf := make([]byte, media.RTPBufSize)
 						var prevSeq uint16
-						reader := dialog.mediaSession
+						reader := dialog.RTPPacketReader
 						for {
-							p := rtp.Packet{}
-							_, err := reader.ReadRTP(buf, &p)
+							_, err := audioReader.Read(buf)
+							// _, err := reader.ReadRTP(buf, &p)
 							if err != nil {
 								return
 							}
+							p := reader.PacketHeader
 							if prevSeq > 0 && p.SequenceNumber != prevSeq+1 {
 								outoforder++
 							}
@@ -161,18 +162,21 @@ func BenchmarkIntegrationClientServer(t *testing.B) {
 						}
 					}()
 
-					start := time.Now()
+					// start := time.Now()
+					clientHangup := false
 					select {
 					// Audio is 2 sec long
-					case <-time.After(2 * time.Second):
-						t.Log("NON SERVER hanguping")
+					case <-time.After(3 * time.Second):
+						// t.Log("NON SERVER hanguping")
 						dialog.Hangup(context.TODO())
+						clientHangup = true
 					case <-dialog.Context().Done():
 					}
-					callDuration := time.Since(start)
+					// callDuration := time.Since(start)
 					dialog.Close()
 					assert.Empty(t, outoforder, "Out of order media detected")
-					assert.Greater(t, mediapkts, int(callDuration/(20*time.Millisecond))-10, "Not enough received packets")
+					assert.True(t, clientHangup)
+					assert.Greater(t, mediapkts, int(2*time.Second/(20*time.Millisecond))-10, "Not enough received packets")
 				}
 			})
 
