@@ -8,6 +8,10 @@ import (
 	"io"
 )
 
+const (
+	WavAudioFormatPCM = 1
+)
+
 // WavWriteVoipPCM is normally 16 bit mono 8000 PCM
 func WavWriteVoipPCM(w io.Writer, audio []byte) (int, error) {
 	return WavWrite(w, audio, WavWriteOpts{
