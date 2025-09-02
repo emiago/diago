@@ -129,7 +129,7 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 	}
 	if rtpN == 0 {
 		// ZERO Payload?
-		r.log.Warn("ZERO Payload on RTP")
+		r.log.Debug("ZERO Payload on RTP", "header", pkt.Header)
 		return 0, nil
 	}
 
