@@ -97,7 +97,7 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 
 	go func() {
 		defer func(start time.Time) {
-			b.log.Info("Proxy media setup", "dur", time.Since(start).String())
+			b.log.Debug("Proxy media setup", "dur", time.Since(start).String())
 		}(time.Now())
 		if err := b.proxyMedia(); err != nil {
 			if errors.Is(err, io.EOF) {
@@ -119,11 +119,11 @@ func (b *Bridge) AddDialogSession(d DialogSession) error {
 // Experimental
 func (b *Bridge) ProxyMedia() error {
 	if len(b.dialogs) < 2 {
-		return fmt.Errorf("Number of dialogs must equal to 2")
+		return fmt.Errorf("number of dialogs must equal to 2")
 	}
 
 	if b.WaitDialogsNum < 3 {
-		return fmt.Errorf("You are already running proxy media. Increase WaitDialogsNum")
+		return fmt.Errorf("you are already running proxy media. Increase WaitDialogsNum")
 	}
 
 	for _, d := range b.dialogs {
@@ -245,8 +245,8 @@ func (b *Bridge) proxyMediaWithDTMF(m1 *DialogMedia, m2 *DialogMedia) error {
 	buf := rtpBufPool.Get()
 	defer rtpBufPool.Put(buf)
 
-	log := b.log
-	log.Debug("Starting proxy media routine", "from", p1.Raddr+" > "+p1.Laddr, "to", p2.Laddr+" > "+p2.Raddr)
+	log := b.log.With("from", p1.Raddr+" > "+p1.Laddr, "to", p2.Laddr+" > "+p2.Raddr)
+	log.Debug("Starting proxy media routine")
 	written, err := copyWithBuf(r, w, buf.([]byte))
 	log.Debug("Bridge proxy stream finished", "bytes", written)
 	return err
