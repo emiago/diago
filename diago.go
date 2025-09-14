@@ -367,7 +367,11 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	// TODO deal with OPTIONS more correctly
 	// For now leave it for keep alive
 	dg.server.OnOptions(errHandler(func(req *sip.Request, tx sip.ServerTransaction) error {
+		methods := dg.server.RegisteredMethods()
 		res := sip.NewResponseFromRequest(req, sip.StatusOK, "OK", nil)
+		res.AppendHeader(sip.NewHeader("Allow", strings.Join(methods, ", ")))
+		res.AppendHeader(sip.NewHeader("Accept", "application/sdp"))
+		// res.AppendHeader(sip.NewHeader("Supported", "replaces, 100rel"))
 		return tx.Respond(res)
 	}))
 
