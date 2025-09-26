@@ -22,6 +22,7 @@ type Bridge struct {
 	// Originator is dialog session that created bridge
 	Originator DialogSession
 	// DTMFpass is also dtmf pipeline and proxy. By default only audio media is proxied
+	// NOTE: this may not work if you are already processing DTMF with AudioReaderDTMF
 	DTMFpass bool
 
 	log *slog.Logger

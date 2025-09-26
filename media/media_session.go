@@ -34,6 +34,11 @@ var (
 
 	RTPDebug  = false
 	RTCPDebug = false
+
+	// RTPProfileSAVPDisable disables offering RTP/SAVP and keeps standard RTP/AVP for backward compatibilit needs
+	//
+	// Experimental
+	RTPProfileSAVPDisable = false
 )
 
 func logRTPRead(m *MediaSession, raddr net.Addr, p *rtp.Packet) {
@@ -279,6 +284,7 @@ func (s *MediaSession) LocalSDP() []byte {
 	}
 
 	var localSDES sdesInline
+	rtpProfile := "RTP/AVP"
 	if s.SecureRTP == 1 {
 		err := func() error {
 			// TODO detect algorithm
@@ -307,6 +313,11 @@ func (s *MediaSession) LocalSDP() []byte {
 				// Match remote tag if exists
 				localSDES.tag = s.srtpRemoteTag
 			}
+
+			// NOTE: For some compatibility reasons (like asterisk) it would be required that this stays on RTP/AVP
+			if !RTPProfileSAVPDisable {
+				rtpProfile = "RTP/SAVP"
+			}
 			return nil
 		}()
 		if err != nil {
@@ -314,7 +325,7 @@ func (s *MediaSession) LocalSDP() []byte {
 		}
 	}
 
-	return generateSDPForAudio(ip, connIP, rtpPort, s.Mode, codecs, localSDES)
+	return generateSDPForAudio(rtpProfile, ip, connIP, rtpPort, s.Mode, codecs, localSDES)
 }
 
 func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
@@ -326,6 +337,16 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	md, err := sd.MediaDescription("audio")
 	if err != nil {
 		return err
+	}
+
+	// Confirm it is supported profile
+	secureRequest := false
+	switch md.Proto {
+	case "RTP/AVP":
+	case "RTP/SAVP":
+		secureRequest = true
+	default:
+		return fmt.Errorf("unsupported media description protocol proto=%s", md.Proto)
 	}
 
 	codecs := make([]Codec, len(md.Formats))
@@ -352,7 +373,6 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	if err != nil {
 		return err
 	}
-
 	// Check for SDES
 	for _, v := range attrs {
 		if strings.HasPrefix(v, "crypto:") {
@@ -399,6 +419,10 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 
 			break
 		}
+	}
+
+	if secureRequest && s.remoteCtxSRTP == nil {
+		return fmt.Errorf("remote requested secure RTP, but no context is created proto=%s", md.Proto)
 	}
 
 	s.SetRemoteAddr(&net.UDPAddr{IP: ci.IP, Port: md.Port})
@@ -760,7 +784,7 @@ type sdesInline struct {
 	tag    int
 }
 
-func generateSDPForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode string, codecs []Codec, sdes sdesInline) []byte {
+func generateSDPForAudio(rtpProfile string, originIP net.IP, connectionIP net.IP, rtpPort int, mode string, codecs []Codec, sdes sdesInline) []byte {
 	ntpTime := GetCurrentNTPTimestamp()
 
 	fmts := make([]string, len(codecs))
@@ -796,7 +820,7 @@ func generateSDPForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode
 		// "b=AS:84",
 		fmt.Sprintf("c=IN IP4 %s", connectionIP),
 		"t=0 0",
-		fmt.Sprintf("m=audio %d RTP/AVP %s", rtpPort, strings.Join(fmts, " ")),
+		fmt.Sprintf("m=audio %d %s %s", rtpPort, rtpProfile, strings.Join(fmts, " ")),
 	}
 
 	s = append(s, formatsMap...)

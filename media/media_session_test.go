@@ -207,6 +207,96 @@ a=sendrecv`
 	}
 }
 
+func TestMediaNegotiaton(t *testing.T) {
+	t.Run("UnsupportedRTPProfile", func(t *testing.T) {
+		sd := `v=0
+o=- 3948988145 3948988145 IN IP4 192.168.178.54
+s=Sip Go Media
+c=IN IP4 192.168.178.54
+t=0 0
+m=audio 34391 RTP/UNKNOWN 0 8
+a=sendrecv`
+
+		m := MediaSession{
+			Codecs: []Codec{
+				CodecAudioAlaw, CodecAudioUlaw, CodecAudioOpus, CodecTelephoneEvent8000,
+			},
+			Laddr: net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234},
+			Mode:  "sendrecv",
+		}
+		err := m.RemoteSDP([]byte(sd))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unsupported media description protocol")
+	})
+
+	t.Run("ValidRTPSDP", func(t *testing.T) {
+		sd := `v=0
+o=- 3948988145 3948988145 IN IP4 192.168.178.54
+s=Sip Go Media
+c=IN IP4 192.168.178.54
+t=0 0
+m=audio 34391 RTP/AVP 0 8
+a=sendrecv`
+
+		m := MediaSession{
+			Codecs: []Codec{
+				CodecAudioAlaw, CodecAudioUlaw, CodecAudioOpus, CodecTelephoneEvent8000,
+			},
+			Laddr: net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234},
+			Mode:  "sendrecv",
+		}
+		err := m.RemoteSDP([]byte(sd))
+		require.NoError(t, err)
+	})
+
+	t.Run("SecuredWithoutCrypto", func(t *testing.T) {
+		sd := `v=0
+o=- 3948988145 3948988145 IN IP4 192.168.178.54
+s=Sip Go Media
+c=IN IP4 192.168.178.54
+t=0 0
+m=audio 34391 RTP/SAVP 0 8
+a=sendrecv`
+
+		m := MediaSession{
+			Codecs: []Codec{
+				CodecAudioAlaw, CodecAudioUlaw, CodecAudioOpus, CodecTelephoneEvent8000,
+			},
+			Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234},
+			Mode:      "sendrecv",
+			SecureRTP: 1,
+			SRTPAlg:   SRTPAes128CmHmacSha1_80,
+		}
+		err := m.RemoteSDP([]byte(sd))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "remote requested secure RTP, but no context is created")
+	})
+
+	t.Run("Secured", func(t *testing.T) {
+		sd := `v=0
+o=- 3948988145 3948988145 IN IP4 192.168.178.54
+s=Sip Go Media
+c=IN IP4 192.168.178.54
+t=0 0
+m=audio 34391 RTP/SAVP 0 8
+a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:8Dlz/SyzlAKCZwH49w5DX8S4pDa7Lw0n3LTI4t6Z
+a=sendrecv`
+
+		m := MediaSession{
+			Codecs: []Codec{
+				CodecAudioAlaw, CodecAudioUlaw, CodecAudioOpus, CodecTelephoneEvent8000,
+			},
+			Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234},
+			Mode:      "sendrecv",
+			SecureRTP: 1,
+			SRTPAlg:   SRTPAes128CmHmacSha1_80,
+		}
+		err := m.RemoteSDP([]byte(sd))
+		require.NoError(t, err)
+	})
+
+}
+
 func TestMediaSRTP(t *testing.T) {
 	m1 := MediaSession{
 		Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},

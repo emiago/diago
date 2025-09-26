@@ -125,12 +125,12 @@ func (sd SessionDescription) ConnectionInformation() (ci ConnectionInformation, 
 	case "IP4":
 		ci.IP = ci.IP.To4()
 		if ci.IP == nil {
-			return ci, fmt.Errorf("failed to convert to IP4")
+			return ci, fmt.Errorf("sdp - failed to convert to IP4 c=%s", v)
 		}
 	case "IP6":
 		ci.IP = ci.IP.To16()
 		if ci.IP == nil {
-			return ci, fmt.Errorf("failed to convert to IP4")
+			return ci, fmt.Errorf("sdp - failed to convert to IP6 c=%s", v)
 		}
 	}
 
