@@ -39,6 +39,8 @@ var (
 	//
 	// Experimental
 	RTPProfileSAVPDisable = false
+	// RTPSymetricMinPackets is number of packets that needs to be repeated before accepted
+	RTPSymetricMinPackets = 3
 )
 
 func logRTPRead(m *MediaSession, raddr net.Addr, p *rtp.Packet) {
@@ -118,8 +120,13 @@ type MediaSession struct {
 	remoteCtxSRTP *srtp.Context
 	srtpRemoteTag int
 
-	// TODO: Support RTP Symetric
-	rtpSymetric bool
+	// RTP Symetric
+	RTPSymetric    bool
+	learnedRTPFrom atomic.Pointer[net.UDPAddr]
+
+	// LastReadRTPFrom is set after Read operation. NOT THREAD SAFE
+	LastReadRTPFrom         net.Addr
+	lastReadRTPFromRepeated int
 }
 
 func NewMediaSession(ip net.IP, port int) (s *MediaSession, e error) {
@@ -557,6 +564,36 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	// if err := pkt.Unmarshal(buf[:n]); err != nil {
 	// 	return err
 	// }
+	if m.RTPSymetric && from.String() != m.Raddr.String() {
+		func() {
+			fromAddr, ok := from.(*net.UDPAddr)
+			if !ok {
+				return
+			}
+			a := m.learnedRTPFrom.Load()
+
+			// Allow only first change
+			if a != nil && fromAddr.String() != a.String() {
+				m.lastReadRTPFromRepeated = 0
+				return
+			}
+
+			if m.LastReadRTPFrom != nil && fromAddr.String() == m.LastReadRTPFrom.String() {
+				m.lastReadRTPFromRepeated++
+			}
+
+			// Change source on nth packet
+			if m.lastReadRTPFromRepeated+1 > RTPSymetricMinPackets {
+				if a == nil {
+					// Allow only first swap, rest is ignored due to RTP bleed
+					m.learnedRTPFrom.Store(fromAddr)
+				} else {
+					DefaultLogger().Debug("RTP Source changes second time. Skipping packet", "set", a.String(), "second", from.String())
+				}
+			}
+		}()
+	}
+	m.LastReadRTPFrom = from
 
 	logRTPRead(m, from, pkt)
 	return n, err
@@ -589,7 +626,12 @@ func (m *MediaSession) readRTPParsed() (rtp.Packet, error) {
 // }
 
 func (m *MediaSession) ReadRTPRaw(buf []byte) (int, error) {
-	n, _, err := m.rtpConn.ReadFrom(buf)
+	n, from, err := m.rtpConn.ReadFrom(buf)
+
+	if m.RTPSymetric {
+		addr, _ := from.(*net.UDPAddr)
+		m.learnedRTPFrom.Store(addr)
+	}
 	return n, err
 }
 
@@ -680,7 +722,14 @@ func (m *MediaSession) getWriteBuf() []byte {
 }
 
 func (m *MediaSession) WriteRTPRaw(data []byte) (n int, err error) {
-	n, err = m.rtpConn.WriteTo(data, &m.Raddr)
+	addr := &m.Raddr
+	if m.RTPSymetric {
+		if a := m.learnedRTPFrom.Load(); a != nil {
+			addr = a
+		}
+	}
+
+	n, err = m.rtpConn.WriteTo(data, addr)
 	return
 }
 

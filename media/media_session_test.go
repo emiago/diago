@@ -358,3 +358,43 @@ func TestMediaSRTP(t *testing.T) {
 		assert.Equal(t, pkt.Payload, rPkt.Payload)
 	}
 }
+
+func TestMediaSessionRTPSymetric(t *testing.T) {
+	session := &MediaSession{
+		Raddr:       net.UDPAddr{IP: net.IPv4(127, 1, 1, 1), Port: 1234},
+		RTPSymetric: true,
+	}
+	reader, writer := io.Pipe()
+	session.rtpConn = &fakes.UDPConn{
+		RAddr:  net.UDPAddr{IP: net.IPv4(127, 2, 2, 2), Port: 4321},
+		Reader: reader,
+	}
+
+	go func() {
+		pkt := rtp.Packet{}
+		data, err := pkt.Marshal()
+		if err != nil {
+			return
+		}
+		writer.Write(data)
+		writer.Write(data)
+		writer.Write(data)
+		writer.Write(data)
+	}()
+
+	pkt := rtp.Packet{}
+	_, err := session.ReadRTP(make([]byte, 1600), &pkt)
+	require.NoError(t, err)
+
+	_, err = session.ReadRTP(make([]byte, 1600), &pkt)
+	assert.Equal(t, 1, session.lastReadRTPFromRepeated)
+	require.NoError(t, err)
+	_, err = session.ReadRTP(make([]byte, 1600), &pkt)
+	require.NoError(t, err)
+	_, err = session.ReadRTP(make([]byte, 1600), &pkt)
+	require.NoError(t, err)
+
+	assert.Equal(t, 3, session.lastReadRTPFromRepeated)
+
+	assert.Equal(t, &net.UDPAddr{IP: net.IPv4(127, 2, 2, 2), Port: 4321}, session.learnedRTPFrom.Load())
+}
