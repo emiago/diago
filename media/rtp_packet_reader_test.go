@@ -65,7 +65,7 @@ func TestRTPReader(t *testing.T) {
 	}
 }
 
-func BenchmarkRTPReader(b *testing.B) {
+func BenchmarkRTPPacketReader(b *testing.B) {
 	rtpConn := bytes.NewBuffer([]byte{})
 	sess := fakeMediaSessionReader(0, rtpConn)
 	rtpSess := NewRTPSession(sess)
@@ -92,4 +92,5 @@ func BenchmarkRTPReader(b *testing.B) {
 		_, err := rtpReader.Read(buf)
 		require.NoError(b, err)
 	}
+	b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "reads/s")
 }
