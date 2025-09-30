@@ -131,7 +131,7 @@ func TestIntegrationDialogClientReinvite(t *testing.T) {
 	dialog.Hangup(ctx)
 }
 
-func TestDialogClientInvite(t *testing.T) {
+func TestDialogClientInviteFailed(t *testing.T) {
 	reqCh := make(chan *sip.Request)
 	dg := testDiagoClient(t, func(req *sip.Request) *sip.Response {
 		reqCh <- req
@@ -161,4 +161,70 @@ func TestDialogClientInvite(t *testing.T) {
 		assert.Equal(t, "anonymous", req.From().Address.User)
 		assert.NotEmpty(t, req.From().Params["tag"])
 	})
+}
+
+func TestIntegrationDialogClientBadMediaNegotiation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	requests := []sip.Message{}
+	responses := []sip.Message{}
+
+	{
+		ua, _ := sipgo.NewUA(sipgo.WithUserAgent("server"))
+		defer ua.Close()
+		ua.TransportLayer().OnMessage(func(msg sip.Message) {
+			requests = append(requests, msg)
+		})
+
+		dg := NewDiago(ua, WithTransport(
+			Transport{
+				Transport: "udp",
+				BindHost:  "127.0.0.1",
+				BindPort:  15060,
+			},
+		),
+		)
+
+		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+			t.Log("Call received")
+			if err := d.Answer(); err != nil {
+				t.Log("Error on answer", err)
+				return
+			}
+			<-d.Context().Done()
+		})
+		require.NoError(t, err)
+	}
+
+	ua, _ := sipgo.NewUA()
+	defer ua.Close()
+
+	ua.TransportLayer().OnMessage(func(msg sip.Message) {
+		responses = append(responses, msg)
+	})
+
+	dg := newDialer(ua)
+	err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
+	require.NoError(t, err)
+
+	// Media negotiaton should fail and call should be terminated
+	_, err = dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15060}, InviteOptions{
+		OnResponse: func(res *sip.Response) error {
+			// Fake Bad SDP
+			res.SetBody([]byte("Bad SDP"))
+			return nil
+		},
+	})
+	t.Log(err)
+	require.Error(t, err)
+	require.Len(t, requests, 3)
+	require.Len(t, responses, 2)
+
+	// Termination of dialog should be this correct
+	assert.EqualValues(t, "INVITE", requests[0].(*sip.Request).Method)
+	assert.EqualValues(t, 200, responses[0].(*sip.Response).StatusCode)
+	assert.EqualValues(t, "ACK", requests[1].(*sip.Request).Method)
+	assert.EqualValues(t, "BYE", requests[2].(*sip.Request).Method)
+	assert.EqualValues(t, 200, responses[1].(*sip.Response).StatusCode)
 }

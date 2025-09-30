@@ -240,7 +240,6 @@ func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptio
 		// sess.Close()
 		return err
 	}
-
 	ansOpts := sipgo.AnswerOptions{
 		Username:   opts.Username,
 		Password:   opts.Password,
@@ -313,11 +312,22 @@ func (d *DialogClientSession) waitAnswerEarly(ctx context.Context, opts sipgo.An
 }
 
 func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerOptions) error {
-	sess := d.mediaSession
 	if err := d.DialogClientSession.WaitAnswer(ctx, opts); err != nil {
 		return err
 	}
 
+	if err := d.applyRemoteSDP(); err != nil {
+		// Terminate call. Call must be ACK before doing BYE
+		if err := d.Ack(ctx); err != nil {
+			return errors.Join(err, d.Ack(ctx))
+		}
+		return errors.Join(err, d.Bye(ctx))
+	}
+	return nil
+}
+
+func (d *DialogClientSession) applyRemoteSDP() error {
+	sess := d.mediaSession
 	remoteSDP := d.InviteResponse.Body()
 	if remoteSDP == nil {
 		return fmt.Errorf("no SDP in response")
@@ -342,10 +352,7 @@ func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerO
 	d.mu.Unlock()
 
 	// Must be called after reader and writer setup due to race
-	if err := rtpSess.MonitorBackground(); err != nil {
-		return err
-	}
-	return nil
+	return rtpSess.MonitorBackground()
 }
 
 // Ack acknowledgeds media

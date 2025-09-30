@@ -549,13 +549,13 @@ func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts InviteOptio
 		Username:   opts.Username,
 		Password:   opts.Password,
 	}); err != nil {
-		d.Close()
-		return nil, err
+		closeErr := d.Close()
+		return nil, errors.Join(err, closeErr)
 	}
 
 	if err := d.Ack(ctx); err != nil {
-		d.Close()
-		return nil, err
+		closeErr := d.Close()
+		return nil, errors.Join(err, closeErr)
 	}
 	return d, nil
 }
@@ -582,8 +582,7 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		Username:   opts.Username,
 		Password:   opts.Password,
 	}); err != nil {
-		d.Close()
-		return nil, err
+		return nil, errors.Join(err, d.Hangup(d.Context()), d.Close())
 	}
 
 	// Do bridging now
@@ -609,6 +608,7 @@ type NewDialogOptions struct {
 }
 
 // NewDialog creates a new client dialog session after you can perform dialog Invite
+// - You call Invite(...) after this call followed with ACK
 func (dg *Diago) NewDialog(recipient sip.Uri, opts NewDialogOptions) (d *DialogClientSession, err error) {
 	transport := opts.Transport
 	if transport == "" && recipient.UriParams != nil {

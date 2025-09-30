@@ -364,8 +364,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 		return fmt.Errorf("no codecs found in SDP")
 	}
 
-	s.updateRemoteCodecs(codecs[:n])
-	if len(s.Codecs) == 0 {
+	if s.updateRemoteCodecs(codecs[:n]) == 0 {
 		return fmt.Errorf("no supported codecs found")
 	}
 
@@ -429,10 +428,10 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	return nil
 }
 
-func (s *MediaSession) updateRemoteCodecs(codecs []Codec) {
+func (s *MediaSession) updateRemoteCodecs(codecs []Codec) int {
 	if len(s.Codecs) == 0 {
 		s.Codecs = codecs
-		return
+		return len(codecs)
 	}
 
 	filter := codecs[:0] // reuse buffer
@@ -445,6 +444,7 @@ func (s *MediaSession) updateRemoteCodecs(codecs []Codec) {
 		}
 	}
 	s.filterCodecs = filter
+	return len(s.filterCodecs)
 }
 
 // CommonCodecs returns common codecs if negotiation is finished, that is Local and Remote SDP are exchanged
