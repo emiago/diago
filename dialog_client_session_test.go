@@ -6,6 +6,7 @@ package diago
 import (
 	"bytes"
 	"context"
+	"math/rand/v2"
 	"testing"
 
 	"github.com/emiago/diago/media"
@@ -14,6 +15,194 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func newDialer(ua *sipgo.UserAgent) *Diago {
+	return NewDiago(ua, WithTransport(Transport{Transport: "udp", BindHost: "127.0.0.1", BindPort: 0}))
+}
+
+func newDiagoClientTest(ua *sipgo.UserAgent, onRequest func(req *sip.Request) *sip.Response) *Diago {
+	// Create client transaction request
+	cTxReq := &clientTxRequester{
+		onRequest: onRequest,
+	}
+
+	client, _ := sipgo.NewClient(ua)
+	client.TxRequester = cTxReq
+	return NewDiago(ua, WithClient(client))
+}
+
+func dialogEcho(sess DialogSession) error {
+	audioR, err := sess.Media().AudioReader()
+	if err != nil {
+		return err
+	}
+
+	audioW, err := sess.Media().AudioWriter()
+	if err != nil {
+		return err
+	}
+
+	_, err = media.Copy(audioR, audioW)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func TestIntegrationDialogClient(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Create transaction users, as many as needed.
+	ua, _ := sipgo.NewUA(
+		sipgo.WithUserAgent("inbound"),
+	)
+	defer ua.Close()
+
+	dg := NewDiago(ua)
+
+	err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+		// t.Log("Call received", d.InviteRequest)
+		// Add some routing
+		if d.ToUser() == "alice" {
+			d.Trying()
+			d.Ringing()
+			d.Answer()
+
+			dialogEcho(d)
+			<-d.Context().Done()
+			return
+		}
+
+		if d.ToUser() == "hanguper" {
+			d.Trying()
+			d.Answer()
+			d.Hangup(d.Context())
+			return
+		}
+
+		d.Respond(sip.StatusForbidden, "Forbidden", nil)
+
+		<-d.Context().Done()
+	})
+	require.NoError(t, err)
+
+	t.Run("HanguperClientNoServe", func(t *testing.T) {
+		// We want to confirm that diago can receive BYE without Binding to IP, which will reflect Contact Header
+		ua, _ := sipgo.NewUA()
+		defer ua.Close()
+
+		// Has no listener just UAC. Contact will hold empheral port
+		phone := newDialer(ua)
+		// Hanguped
+		dialog, err := phone.Invite(context.TODO(), sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
+		require.NoError(t, err)
+		<-dialog.Context().Done()
+	})
+
+	t.Run("HanguperClientWithServe", func(t *testing.T) {
+		// We want to confirm that diago can receive BYE on Binded IP
+		ua, _ := sipgo.NewUA()
+		defer ua.Close()
+
+		// Has no listener just UAC. Contact will hold empheral port
+		phone := newDialer(ua)
+		err := phone.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
+		require.NoError(t, err)
+
+		ports := phone.server.TransportLayer().ListenPorts("udp")
+		require.Len(t, ports, 1)
+		// Hanguped
+		dialog, err := phone.Invite(context.TODO(), sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
+		require.NoError(t, err)
+		<-dialog.Context().Done()
+		assert.NotEqual(t, dialog.InviteRequest.Via().Port, dialog.InviteRequest.Contact().Address.Port)
+	})
+
+	t.Run("Dialer", func(t *testing.T) {
+		ua, _ := sipgo.NewUA()
+		defer ua.Close()
+
+		phone := newDialer(ua)
+		// Start listener in order to reuse UDP listener
+		err := phone.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
+		require.NoError(t, err)
+
+		phone.server.TransportLayer().ListenPorts("udp")
+
+		// Forbiddden
+		_, err = phone.Invite(context.TODO(), sip.Uri{User: "noroute", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
+		require.Error(t, err)
+
+		// Hanguped
+		dialog, err := phone.Invite(context.TODO(), sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
+		require.NoError(t, err)
+		<-dialog.Context().Done()
+
+		// Answered call
+		dialog, err = phone.Invite(context.TODO(), sip.Uri{User: "alice", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
+		require.NoError(t, err)
+		defer dialog.Close()
+
+		// Confirm media traveling
+		audioR, err := dialog.AudioReader()
+		require.NoError(t, err)
+
+		audioW, err := dialog.AudioWriter()
+		require.NoError(t, err)
+
+		writeN, _ := audioW.Write([]byte("my audio"))
+		readN, _ := audioR.Read(make([]byte, 100))
+		assert.Equal(t, writeN, readN, "media echo failed")
+		dialog.Hangup(ctx)
+	})
+}
+
+func TestIntegrationDialogClientCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ua, _ := sipgo.NewUA()
+	defer ua.Close()
+	port := 15000 + rand.IntN(999)
+	dg := NewDiago(ua, WithTransport(
+		Transport{
+			Transport: "udp",
+			BindHost:  "127.0.0.1",
+			BindPort:  port,
+		},
+	))
+
+	dg.ServeBackground(ctx, func(d *DialogServerSession) {
+		ctx := d.Context()
+		d.Trying()
+		d.Ringing()
+
+		<-ctx.Done()
+	})
+
+	{
+		ua, _ := sipgo.NewUA()
+		defer ua.Close()
+
+		dg := newDialer(ua)
+		dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		_, err := dg.Invite(ctx, sip.Uri{User: "test", Host: "127.0.0.1", Port: port}, InviteOptions{
+			OnResponse: func(res *sip.Response) error {
+				if res.StatusCode == sip.StatusRinging {
+					cancel()
+					// return context.Canceled
+				}
+				return nil
+			},
+		})
+		require.ErrorIs(t, err, context.Canceled)
+	}
+
+}
 
 func TestIntegrationDialogClientEarlyMedia(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

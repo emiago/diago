@@ -55,7 +55,9 @@ type Transport struct {
 	Transport string
 	network   string // network will keep original transport value
 
+	// BindHost sets IP to bind. If specified (not 0.0.0.0) it will be used same for media IP unless MediaExternalIP is set.
 	BindHost string
+	// BindPort sets port to bind. Leaving at 0 will use empheral port and apply on Contact addr
 	BindPort int
 	bindIP   net.IP
 
@@ -64,8 +66,8 @@ type Transport struct {
 
 	// MediaExternalIP changes SDP IP, by default it tries to use external host if it is IP defined
 	MediaExternalIP net.IP
-	// MediaSRTP offers SRTP
-	MediaSRTP   int // 0-none, 1-sdes
+	// MediaSRTP offers SRTP. Values: 0-none, 1-sdes
+	MediaSRTP   int
 	mediaBindIP net.IP
 
 	// In case TLS protocol
@@ -449,6 +451,8 @@ func (dg *Diago) handleReInvite(req *sip.Request, tx sip.ServerTransaction, id s
 	return s.handleReInvite(req, tx)
 }
 
+// Serve starts 'Server' handle for SIP.
+// Should be called for UAS but can be skipped for UAC behavior
 func (dg *Diago) Serve(ctx context.Context, f ServeDialogFunc) error {
 	return dg.serve(ctx, f, func() {})
 }
@@ -488,14 +492,10 @@ func (dg *Diago) serve(ctx context.Context, f ServeDialogFunc, readyCh func()) e
 
 	// Returns first error
 	return <-errCh
-	// }
-
-	// tran := dg.transports[0]
-	// hostport := net.JoinHostPort(tran.BindHost, strconv.Itoa(tran.BindPort))
-	// return server.ListenAndServe(ctx, tran.Transport, hostport)
 }
 
-// Serve starts serving in background but waits server listener started before returning
+// ServeBackground starts serving in background, but waits server listener to be started before returning
+// Checkout more info on Serve()
 func (dg *Diago) ServeBackground(ctx context.Context, f ServeDialogFunc) error {
 	readyCh := make(chan struct{}, len(dg.transports))
 	ready := func() {
