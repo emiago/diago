@@ -697,6 +697,8 @@ func (dg *Diago) contactHDRFromTransport(tran Transport, contact *sip.ContactHea
 		UriParams: sip.NewParams(),
 		Headers:   sip.NewParams(),
 	}
+	// Transport should be reflected in contact
+	contact.Address.UriParams.Add("transport", tran.Transport)
 }
 
 func (dg *Diago) getClient(tran *Transport) *sipgo.Client {
