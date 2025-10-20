@@ -146,7 +146,7 @@ func (t *RegisterTransaction) Register(ctx context.Context) error {
 	if h := res.GetHeader("Expires"); h != nil {
 		val, err := strconv.Atoi(h.Value())
 		if err != nil {
-			return fmt.Errorf("Failed to parse server Expires value: %w", err)
+			return fmt.Errorf("failed to parse server Expires value: %w", err)
 		}
 		t.expiry = time.Duration(val) * time.Second
 	}

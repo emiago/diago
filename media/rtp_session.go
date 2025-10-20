@@ -281,7 +281,18 @@ func (s *RTPSession) WriteRTP(pkt *rtp.Packet) error {
 	writeStats := &s.writeStats
 	// For now we only track latest SSRC
 	if writeStats.SSRC != pkt.SSRC {
-		codec := CodecFromPayloadType(pkt.PayloadType)
+		codec, err := func() (Codec, error) {
+			// Find codec from promoted list of codecs
+			for _, c := range s.Sess.Codecs {
+				if c.PayloadType == pkt.PayloadType {
+					return c, nil
+				}
+			}
+			return Codec{}, fmt.Errorf("unknown media codec used for payload type=%d", pkt.PayloadType)
+		}()
+		if err != nil {
+			return err
+		}
 
 		*writeStats = RTPWriteStats{
 			SSRC:       pkt.SSRC,

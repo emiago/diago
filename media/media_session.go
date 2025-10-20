@@ -328,6 +328,9 @@ func (s *MediaSession) LocalSDP() []byte {
 	return generateSDPForAudio(rtpProfile, ip, connIP, rtpPort, s.Mode, codecs, localSDES)
 }
 
+// RemoteSDP applies remote SDP.
+// NOTE: It must called ONCE or single thread while negotiation happening.
+// For multi negotiation Fork Must be called before
 func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	sd := sdp.SessionDescription{}
 	if err := sdp.Unmarshal(sdpReceived, &sd); err != nil {
@@ -434,6 +437,7 @@ func (s *MediaSession) updateRemoteCodecs(codecs []Codec) int {
 		return len(codecs)
 	}
 
+	DefaultLogger().Debug("Remote Codecs Update", "local", s.Codecs, "remote", codecs)
 	filter := codecs[:0] // reuse buffer
 	for _, rc := range codecs {
 		for _, c := range s.Codecs {
@@ -448,7 +452,7 @@ func (s *MediaSession) updateRemoteCodecs(codecs []Codec) int {
 }
 
 // CommonCodecs returns common codecs if negotiation is finished, that is Local and Remote SDP are exchanged
-// NOTE: Not thread safe, should be called after negotiation or session must be Forked
+// NOTE: Not thread safe, should be called after negotiation Only!
 func (s *MediaSession) CommonCodecs() []Codec {
 	return s.filterCodecs
 }

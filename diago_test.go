@@ -11,6 +11,7 @@ import (
 	"net"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/emiago/diago/audio"
 	"github.com/emiago/diago/examples"
@@ -235,6 +236,81 @@ func TestIntegrationDiagoTransportEmpheralPort(t *testing.T) {
 	newTran, _ := dg.getTransport("udp")
 	t.Log("port assigned", newTran.BindPort)
 	assert.NotEmpty(t, newTran.BindPort)
+}
+
+func TestIntegrationDiagoCallWithCustomCodecs(t *testing.T) {
+	// TODO: USE TLS as transport for more correct test
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	l16Codec := media.Codec{
+		Name:        "L16",
+		PayloadType: 98,
+		SampleRate:  8000,
+		SampleDur:   20 * time.Millisecond,
+		NumChannels: 1,
+	}
+
+	{
+		ua, _ := sipgo.NewUA()
+		defer ua.Close()
+
+		dg := NewDiago(ua,
+			WithTransport(
+				Transport{
+					ID:        "tcp",
+					Transport: "tcp",
+					BindHost:  "127.0.0.1",
+					BindPort:  15066,
+				},
+			),
+			WithMediaConfig(
+				MediaConfig{
+					Codecs: []media.Codec{l16Codec, media.CodecAudioAlaw},
+				},
+			))
+
+		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+			d.Trying()
+			if err := d.Answer(); err != nil {
+				panic(err)
+			}
+
+			err := d.Echo()
+			slog.Info("Echo finished with", "error", err)
+
+		})
+		require.NoError(t, err)
+	}
+
+	ua, _ := sipgo.NewUA()
+	dg := NewDiago(ua,
+		WithTransport(
+			Transport{
+				ID:        "tcp",
+				Transport: "tcp",
+				BindHost:  "127.0.0.1",
+			},
+		),
+		WithMediaConfig(
+			MediaConfig{
+				Codecs: []media.Codec{l16Codec, media.CodecAudioAlaw},
+			},
+		))
+
+	d, err := dg.Invite(ctx, sip.Uri{User: "11", Host: "127.0.0.1", Port: 15066}, InviteOptions{Transport: "tcp"})
+	require.NoError(t, err)
+
+	l16Audio := bytes.Repeat([]byte{0, 16, 96, 0}, l16Codec.Samples16()/4)
+	reader := bytes.NewBuffer(l16Audio)
+	r, _ := d.AudioReader()
+	w, _ := d.AudioWriter()
+	_, err = media.Copy(reader, w)
+	require.ErrorIs(t, err, io.EOF)
+
+	recv := make([]byte, len(l16Audio))
+	r.Read(recv)
+	assert.Equal(t, l16Audio, recv)
 }
 
 func TestIntegrationDiagoSRTPCall(t *testing.T) {
