@@ -172,6 +172,49 @@ func (p *RTPPacketWriter) WriteSamples(payload []byte, sampleRateTimestamp uint3
 	return len(pkt.Payload), err
 }
 
+func (p *RTPPacketWriter) WriteWithExt(payload []byte, id uint8, pt []byte, extProfile uint16) (int, error) {
+	sampleRateTimestamp := p.sampleRateTimestamp
+	marker := p.nextTimestamp == p.initTimestamp
+	if len(payload) == 0 {
+		sampleRateTimestamp = 0
+		marker = false
+	}
+	p.mu.RLock()
+	n, err := p.writeExt(payload, sampleRateTimestamp, marker, id, pt, extProfile)
+	p.mu.RUnlock()
+	p.lastSampleTime = <-p.clockTicker.C
+	return n, err
+}
+
+func (p *RTPPacketWriter) writeExt(payload []byte, sampleRateTimestamp uint32, marker bool, id uint8, pt []byte, extProfile uint16) (int, error) {
+	writer := p.writer
+	pkt := &p.packet
+	pkt.Header = rtp.Header{
+		Version:        2,
+		Padding:        false,
+		Extension:      true,
+		Marker:         marker,
+		PayloadType:    p.payloadType,
+		Timestamp:      p.nextTimestamp,
+		SequenceNumber: p.seqWriter.NextSeqNumber(),
+		SSRC:           p.SSRC,
+		// CSRC:           []uint32{},
+	}
+	pkt.Payload = payload
+	p.nextTimestamp += sampleRateTimestamp
+
+	pkt.Extension = true
+	pkt.ExtensionProfile = extProfile
+	if err := pkt.SetExtension(id, pt); err != nil {
+		return 0, err
+	}
+
+	err := writer.WriteRTP(pkt)
+	// store header for reading. NOTE: in case pointers in header, do nil first
+	p.PacketHeader = pkt.Header
+	return len(pkt.Payload), err
+}
+
 func (w *RTPPacketWriter) Writer() RTPWriter {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
