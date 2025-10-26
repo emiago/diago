@@ -762,7 +762,38 @@ func (dg *Diago) Register(ctx context.Context, recipient sip.Uri, opts RegisterO
 		dg.log.Debug("Unregister successfull")
 	}()
 
-	return t.QualifyLoop(ctx)
+	for i := 0; ; i++ {
+		dg.log.Debug("Qualify sent", "n", i)
+		err := t.QualifyLoop(ctx)
+
+		var retryAfter = 5 * time.Second
+		var rr *RegisterResponseError
+		if errors.As(err, &rr) {
+			resCode := rr.RegisterRes.StatusCode
+			switch {
+			case resCode == 401 || resCode == 407:
+				return err
+			case resCode > 500 && resCode < 600:
+				return err
+			case resCode < 200 || resCode > 699:
+				// strange
+				return err
+			}
+
+			if h := rr.RegisterRes.GetHeader("Retry-After"); h != nil {
+				ra, _ := strconv.Atoi(h.Value())
+				if ra > 0 {
+					retryAfter = time.Duration(ra) * time.Second
+				}
+			}
+		}
+
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+
+		t.expiry = retryAfter
+	}
 }
 
 // Register transaction creates register transaction object that can be used for Register Unregister requests

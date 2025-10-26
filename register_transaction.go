@@ -157,34 +157,22 @@ func (t *RegisterTransaction) Register(ctx context.Context) error {
 func (t *RegisterTransaction) QualifyLoop(ctx context.Context) error {
 	// TODO: based on server response Expires header this must be adjusted
 	// Allows caller to adjust
-
-	calcRetry := func(expiry time.Duration) time.Duration {
-		// Allow caller to use own interval
-		if t.opts.RetryInterval != 0 {
-			return t.opts.RetryInterval
-		}
-
-		calc := expiry.Seconds() * 0.75
-		retry := time.Duration(calc) * time.Second
-
-		// Set to 30 in case retry is not set
-		if retry == 0 {
-			retry = 30 * time.Second
-		}
-
-		return retry
-	}
-
 	expiry := t.expiry
-	retry := calcRetry(expiry)
+	retry := t.calcRetry(expiry)
+	return t.reregisterLoop(ctx, retry)
+}
 
+func (t *RegisterTransaction) reregisterLoop(ctx context.Context, retry time.Duration) error {
 	ticker := time.NewTicker(retry)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C: // TODO make configurable
 		}
+		expiry := t.expiry
 		err := t.Qualify(ctx)
 		if err != nil {
 			return err
@@ -193,13 +181,29 @@ func (t *RegisterTransaction) QualifyLoop(ctx context.Context) error {
 		if t.expiry != expiry {
 			// expiry got updated
 			expiry = t.expiry
-			retry = calcRetry(expiry)
+			retry = t.calcRetry(expiry)
 
 			t.log.Info("Register expiry changed", "expiry_old", expiry, "expiry_new", t.expiry, "retry", retry)
 			ticker.Reset(retry)
 		}
-
 	}
+}
+
+func (t *RegisterTransaction) calcRetry(expiry time.Duration) time.Duration {
+	// Allow caller to use own interval
+	if t.opts.RetryInterval != 0 {
+		return t.opts.RetryInterval
+	}
+
+	calc := expiry.Seconds() * 0.75
+	retry := time.Duration(calc) * time.Second
+
+	// Set to 30 in case retry is not set
+	if retry == 0 {
+		retry = 30 * time.Second
+	}
+
+	return retry
 }
 
 func (t *RegisterTransaction) Unregister(ctx context.Context) error {
