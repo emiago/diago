@@ -479,7 +479,7 @@ func (d *DialogMedia) PlaybackRingtoneCreate() (AudioRingtone, error) {
 		return AudioRingtone{}, fmt.Errorf("no media setup")
 	}
 
-	ringtone, err := loadRingTonePCM(mprops.Codec)
+	ringtone, err := audio.RingtoneLoadPCM(mprops.Codec)
 	if err != nil {
 		return AudioRingtone{}, err
 	}

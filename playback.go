@@ -50,6 +50,10 @@ func NewAudioPlayback(writer io.Writer, codec media.Codec) AudioPlayback {
 	}
 }
 
+func (p *AudioPlayback) Codec() media.Codec {
+	return p.codec
+}
+
 // Play is generic approach to play supported audio contents
 // Empty mimeType will stream reader as buffer. Make sure that bitdepth and numchannels is set correctly
 func (p *AudioPlayback) Play(reader io.Reader, mimeType string) (int64, error) {
@@ -66,6 +70,8 @@ func (p *AudioPlayback) Play(reader io.Reader, mimeType string) (int64, error) {
 		written, err = p.stream(reader, p.writer)
 	case "audio/wav", "audio/x-wav", "audio/wav-x", "audio/vnd.wave":
 		written, err = p.streamWav(reader, p.writer)
+	case "audio/pcm":
+		written, err = p.streamPCM(reader, p.writer)
 	default:
 		return 0, fmt.Errorf("unsuported content type %q", mimeType)
 	}
@@ -99,7 +105,23 @@ func (p *AudioPlayback) stream(body io.Reader, playWriter io.Writer) (int64, err
 	defer playBufPool.Put(buf)
 	payloadBuf := buf.([]byte)[:payloadSize] // 20 ms
 
-	written, err := copyWithBuf(body, playWriter, payloadBuf)
+	written, err := media.CopyWithBuf(body, playWriter, payloadBuf)
+	return written, err
+}
+
+func (p *AudioPlayback) streamPCM(body io.Reader, playWriter io.Writer) (int64, error) {
+	codec := p.codec
+	payloadSize := p.calcPlayoutSize()
+	buf := playBufPool.Get()
+	defer playBufPool.Put(buf)
+	payloadBuf := buf.([]byte)[:payloadSize] // 20 ms
+
+	enc := &audio.PCMEncoderWriter{}
+	if err := enc.Init(codec, playWriter); err != nil {
+		return 0, fmt.Errorf("failed to create PCM encoder: %w", err)
+	}
+
+	written, err := media.CopyWithBuf(body, enc, payloadBuf)
 	return written, err
 }
 
