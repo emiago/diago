@@ -4,6 +4,7 @@
 package media
 
 import (
+	"bytes"
 	"io"
 	"net"
 	"testing"
@@ -368,6 +369,9 @@ func TestMediaSessionRTPSymetric(t *testing.T) {
 	session.rtpConn = &fakes.UDPConn{
 		RAddr:  net.UDPAddr{IP: net.IPv4(127, 2, 2, 2), Port: 4321},
 		Reader: reader,
+		Writers: map[string]io.Writer{
+			"127.2.2.2:4321": bytes.NewBuffer([]byte{}),
+		},
 	}
 
 	go func() {
@@ -386,6 +390,10 @@ func TestMediaSessionRTPSymetric(t *testing.T) {
 	_, err := session.ReadRTP(make([]byte, 1600), &pkt)
 	require.NoError(t, err)
 
+	// Writing should fail
+	err = session.WriteRTP(&rtp.Packet{Header: rtp.Header{}, Payload: []byte{}})
+	require.Error(t, err) // No writer
+
 	_, err = session.ReadRTP(make([]byte, 1600), &pkt)
 	assert.Equal(t, 1, session.lastReadRTPFromRepeated)
 	require.NoError(t, err)
@@ -395,6 +403,11 @@ func TestMediaSessionRTPSymetric(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 3, session.lastReadRTPFromRepeated)
-
 	assert.Equal(t, &net.UDPAddr{IP: net.IPv4(127, 2, 2, 2), Port: 4321}, session.learnedRTPFrom.Load())
+
+	// Writing should be successfull
+	err = session.WriteRTP(&rtp.Packet{Header: rtp.Header{}, Payload: []byte{}})
+	require.NoError(t, err)
+	rtpLen := session.rtpConn.(*fakes.UDPConn).Writers["127.2.2.2:4321"].(*bytes.Buffer).Len()
+	assert.Greater(t, rtpLen, 0)
 }

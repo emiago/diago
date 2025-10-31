@@ -142,9 +142,10 @@ type MediaConfig struct {
 	// Experimental
 	SecureRTPAlg uint16
 	// Used internally
-	secureRTP  int // 0 - none, 1 - sdes
-	bindIP     net.IP
-	externalIP net.IP
+	secureRTP   int // 0 - none, 1 - sdes
+	bindIP      net.IP
+	externalIP  net.IP
+	rtpSymetric bool
 
 	// TODO, For now it is global on media package
 	// RTPPortStart int
@@ -610,8 +611,6 @@ type NewDialogOptions struct {
 	Transport string
 	// TransportID matches diago transport by ID instead protocol
 	TransportID string
-
-	// Codecs []media.Codec
 }
 
 // NewDialog creates a new client dialog session after you can perform dialog Invite

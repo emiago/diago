@@ -159,12 +159,13 @@ func (d *DialogMedia) initMediaSessionFromConf(conf MediaConfig) error {
 	}
 
 	sess := &media.MediaSession{
-		Codecs:     slices.Clone(conf.Codecs),
-		Laddr:      net.UDPAddr{IP: bindIP, Port: 0},
-		ExternalIP: conf.externalIP,
-		Mode:       sdp.ModeSendrecv,
-		SecureRTP:  conf.secureRTP,
-		SRTPAlg:    conf.SecureRTPAlg,
+		Codecs:      slices.Clone(conf.Codecs),
+		Laddr:       net.UDPAddr{IP: bindIP, Port: 0},
+		ExternalIP:  conf.externalIP,
+		Mode:        sdp.ModeSendrecv,
+		SecureRTP:   conf.secureRTP,
+		SRTPAlg:     conf.SecureRTPAlg,
+		RTPSymetric: conf.rtpSymetric,
 	}
 
 	if err := sess.Init(); err != nil {

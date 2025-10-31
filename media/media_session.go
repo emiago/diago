@@ -121,8 +121,9 @@ type MediaSession struct {
 	srtpRemoteTag int
 
 	// RTP Symetric
-	RTPSymetric    bool
-	learnedRTPFrom atomic.Pointer[net.UDPAddr]
+	RTPSymetric     bool
+	learnedRTPFrom  atomic.Pointer[net.UDPAddr]
+	learnedRTCPFrom atomic.Pointer[net.UDPAddr]
 
 	// LastReadRTPFrom is set after Read operation. NOT THREAD SAFE
 	LastReadRTPFrom         net.Addr
@@ -573,7 +574,11 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 			a := m.learnedRTPFrom.Load()
 
 			// Allow only first change
-			if a != nil && fromAddr.String() != a.String() {
+			if a != nil {
+				if a.IP.Equal(fromAddr.IP) && a.Port == fromAddr.Port {
+					// learned
+					return
+				}
 				m.lastReadRTPFromRepeated = 0
 				return
 			}
@@ -586,6 +591,7 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 			if m.lastReadRTPFromRepeated+1 > RTPSymetricMinPackets {
 				if a == nil {
 					// Allow only first swap, rest is ignored due to RTP bleed
+					DefaultLogger().Debug("RTP New Source Learned", "addr", from.String())
 					m.learnedRTPFrom.Store(fromAddr)
 				} else {
 					DefaultLogger().Debug("RTP Source changes second time. Skipping packet", "set", a.String(), "second", from.String())
@@ -643,7 +649,7 @@ func (m *MediaSession) ReadRTPRawDeadline(buf []byte, t time.Time) (int, error) 
 // ReadRTCP is optimized reads and unmarshals RTCP packets. Buffers is only used for unmarshaling.
 // Caller needs to be aware of size this buffer and allign with MTU
 func (m *MediaSession) ReadRTCP(buf []byte, pkts []rtcp.Packet) (n int, err error) {
-	nn, err := m.ReadRTCPRaw(buf)
+	nn, from, err := m.ReadRTCPRaw(buf)
 	if err != nil {
 		return n, err
 	}
@@ -661,18 +667,38 @@ func (m *MediaSession) ReadRTCP(buf []byte, pkts []rtcp.Packet) (n int, err erro
 		return 0, err
 	}
 
+	if m.RTPSymetric && from.String() != m.rtcpRaddr.String() {
+		func() {
+			fromAddr, ok := from.(*net.UDPAddr)
+			if !ok {
+				return
+			}
+			rtcpA := m.learnedRTCPFrom.Load()
+			if rtcpA != nil {
+				// learned
+				return
+			}
+			rtpA := m.learnedRTPFrom.Load()
+
+			// Switch RTCP if RTP switched?
+			if rtpA != nil {
+				DefaultLogger().Debug("RTCP New Source Learned", "addr", from.String())
+				m.learnedRTCPFrom.Store(fromAddr)
+			}
+		}()
+	}
+
 	logRTCPRead(m, pkts[:n])
 	return n, err
 }
 
-func (m *MediaSession) ReadRTCPRaw(buf []byte) (int, error) {
+func (m *MediaSession) ReadRTCPRaw(buf []byte) (int, net.Addr, error) {
 	if m.rtcpConn == nil {
 		// just block
 		select {}
 	}
-	n, _, err := m.rtcpConn.ReadFrom(buf)
-
-	return n, err
+	n, a, err := m.rtcpConn.ReadFrom(buf)
+	return n, a, err
 }
 
 func (m *MediaSession) ReadRTCPRawDeadline(buf []byte, t time.Time) (int, error) {
@@ -792,7 +818,14 @@ func (m *MediaSession) WriteRTCPs(pkts []rtcp.Packet) error {
 }
 
 func (m *MediaSession) WriteRTCPRaw(data []byte) (int, error) {
-	n, err := m.rtcpConn.WriteTo(data, &m.rtcpRaddr)
+	addr := &m.rtcpRaddr
+	if m.RTPSymetric {
+		if a := m.learnedRTCPFrom.Load(); a != nil {
+			addr = a
+		}
+	}
+
+	n, err := m.rtcpConn.WriteTo(data, addr)
 	return n, err
 }
 

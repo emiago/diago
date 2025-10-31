@@ -68,6 +68,17 @@ func (d *DialogServerSession) Progress() error {
 //
 // Experimental: Naming of API might change
 func (d *DialogServerSession) ProgressMedia() error {
+	return d.ProgressMediaOptions(ProgressMediaOptions{})
+}
+
+type ProgressMediaOptions struct {
+	// Codecs that will be used
+	Codecs      []media.Codec
+	RTPSymetric bool
+}
+
+func (d *DialogServerSession) ProgressMediaOptions(opt ProgressMediaOptions) error {
+	d.updateMediaConf(opt.Codecs, opt.RTPSymetric)
 	if err := d.initMediaSessionFromConf(d.mediaConf); err != nil {
 		return err
 	}
@@ -133,7 +144,8 @@ type AnswerOptions struct {
 	OnMediaUpdate func(d *DialogMedia)
 	OnRefer       func(referDialog *DialogClientSession)
 	// Codecs that will be used
-	Codecs []media.Codec
+	Codecs      []media.Codec
+	RTPSymetric bool
 }
 
 // AnswerOptions allows to answer dialog with options
@@ -155,17 +167,21 @@ func (d *DialogServerSession) AnswerOptions(opt AnswerOptions) error {
 		return nil
 	}
 
-	// Let override of formats
-	conf := d.mediaConf
-	if opt.Codecs != nil {
-		conf.Codecs = opt.Codecs
-	}
-
-	if err := d.initMediaSessionFromConf(conf); err != nil {
+	d.updateMediaConf(opt.Codecs, opt.RTPSymetric)
+	if err := d.initMediaSessionFromConf(d.mediaConf); err != nil {
 		return err
 	}
 	rtpSess := media.NewRTPSession(d.mediaSession)
 	return d.answerSession(rtpSess)
+}
+
+func (d *DialogServerSession) updateMediaConf(codecs []media.Codec, rtpSymetric bool) {
+	// Let override of formats
+	conf := &d.mediaConf
+	if codecs != nil {
+		conf.Codecs = codecs
+	}
+	conf.rtpSymetric = rtpSymetric
 }
 
 // answerSession. It allows answering with custom RTP Session.
