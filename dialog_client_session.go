@@ -299,7 +299,13 @@ func (d *DialogClientSession) waitAnswerEarly(ctx context.Context, opts sipgo.An
 		d.onCloseUnsafe(func() error {
 			return rtpSess.Close()
 		})
+		onMediaUpdate := d.onMediaUpdate
 		d.mu.Unlock()
+
+		// Call onMediaUpdate callback if set (e.g., for RTCP hook registration)
+		if onMediaUpdate != nil {
+			onMediaUpdate(&d.DialogMedia)
+		}
 
 		// Must be called after reader and writer setup due to race
 		if err := rtpSess.MonitorBackground(); err != nil {
@@ -349,7 +355,13 @@ func (d *DialogClientSession) applyRemoteSDP() error {
 	d.onCloseUnsafe(func() error {
 		return rtpSess.Close()
 	})
+	onMediaUpdate := d.onMediaUpdate
 	d.mu.Unlock()
+
+	// Call onMediaUpdate callback if set (e.g., for RTCP hook registration)
+	if onMediaUpdate != nil {
+		onMediaUpdate(&d.DialogMedia)
+	}
 
 	// Must be called after reader and writer setup due to race
 	return rtpSess.MonitorBackground()

@@ -92,12 +92,19 @@ func (d *DialogMedia) Close() error {
 	onClose := d.onClose
 	d.onClose = nil
 	m := d.mediaSession
+	rtpSess := d.rtpSession
 
 	d.mu.Unlock()
 
 	var e1, e2 error
 	if onClose != nil {
 		e1 = onClose()
+	}
+
+	if rtpSess != nil {
+		if err := rtpSess.Close(); err != nil {
+			// Log error if needed
+		}
 	}
 
 	if m != nil {
@@ -156,6 +163,9 @@ func (d *DialogMedia) OnRTCP(f func(pkt rtcp.Packet)) {
 		d.onMediaUpdate = func(dm *DialogMedia) {
 			if prev != nil {
 				prev(dm)
+			}
+			if dm.rtpSession == nil {
+				return
 			}
 			// Повторная регистрация безопасна, так как перезапишет обработчик в новой RTPSession
 			dm.rtpSession.OnReadRTCP(func(pkt rtcp.Packet, _ media.RTPReadStats) {

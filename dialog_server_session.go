@@ -188,7 +188,13 @@ func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
 	d.onCloseUnsafe(func() error {
 		return rtpSess.Close()
 	})
+	onMediaUpdate := d.onMediaUpdate
 	d.mu.Unlock()
+
+	// Call onMediaUpdate callback if set (e.g., for RTCP hook registration)
+	if onMediaUpdate != nil {
+		onMediaUpdate(&d.DialogMedia)
+	}
 
 	// This will now block until ACK received with 64*T1 as max.
 	// How to let caller to cancel this?
@@ -216,7 +222,14 @@ func (d *DialogServerSession) setupRTPSession(rtpSess *media.RTPSession) error {
 	d.onCloseUnsafe(func() error {
 		return rtpSess.Close()
 	})
+	onMediaUpdate := d.onMediaUpdate
 	d.mu.Unlock()
+
+	// Call onMediaUpdate callback if set (e.g., for RTCP hook registration)
+	if onMediaUpdate != nil {
+		onMediaUpdate(&d.DialogMedia)
+	}
+
 	return nil
 }
 
@@ -235,7 +248,13 @@ func (d *DialogServerSession) AnswerLate() error {
 	d.onCloseUnsafe(func() error {
 		return rtpSess.Close()
 	})
+	onMediaUpdate := d.onMediaUpdate
 	d.mu.Unlock()
+
+	// Call onMediaUpdate callback if set (e.g., for RTCP hook registration)
+	if onMediaUpdate != nil {
+		onMediaUpdate(&d.DialogMedia)
+	}
 
 	// This will now block until ACK received with 64*T1 as max.
 	// How to let caller to cancel this?
