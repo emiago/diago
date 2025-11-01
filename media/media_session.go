@@ -120,14 +120,15 @@ type MediaSession struct {
 	remoteCtxSRTP *srtp.Context
 	srtpRemoteTag int
 
-	// RTP Symetric
+	// RTP NAT
 	RTPSymetric     bool
 	learnedRTPFrom  atomic.Pointer[net.UDPAddr]
 	learnedRTCPFrom atomic.Pointer[net.UDPAddr]
+	lastSeq         uint16
+	learnedPkts     int
 
 	// LastReadRTPFrom is set after Read operation. NOT THREAD SAFE
-	LastReadRTPFrom         net.Addr
-	lastReadRTPFromRepeated int
+	LastReadRTPFrom net.Addr
 }
 
 func NewMediaSession(ip net.IP, port int) (s *MediaSession, e error) {
@@ -566,36 +567,33 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	// 	return err
 	// }
 	if m.RTPSymetric && from.String() != m.Raddr.String() {
+		// Moving this to RTP session could have simplify validation (sequence tracking), but for now here is more easier to maintain
 		func() {
 			fromAddr, ok := from.(*net.UDPAddr)
 			if !ok {
 				return
 			}
-			a := m.learnedRTPFrom.Load()
 
-			// Allow only first change
-			if a != nil {
-				if a.IP.Equal(fromAddr.IP) && a.Port == fromAddr.Port {
-					// learned
+			if m.lastSeq+1 != pkt.SequenceNumber {
+				if m.lastSeq != 0 {
+					// if not first packet then reset
+					m.learnedPkts = 0
 					return
 				}
-				m.lastReadRTPFromRepeated = 0
+			}
+
+			m.learnedPkts++
+			m.lastSeq = pkt.SequenceNumber
+
+			if m.learnedPkts < RTPSymetricMinPackets {
+				// Not enough packets
 				return
 			}
 
-			if m.LastReadRTPFrom != nil && fromAddr.String() == m.LastReadRTPFrom.String() {
-				m.lastReadRTPFromRepeated++
-			}
-
-			// Change source on nth packet
-			if m.lastReadRTPFromRepeated+1 > RTPSymetricMinPackets {
-				if a == nil {
-					// Allow only first swap, rest is ignored due to RTP bleed
-					DefaultLogger().Debug("RTP New Source Learned", "addr", from.String())
-					m.learnedRTPFrom.Store(fromAddr)
-				} else {
-					DefaultLogger().Debug("RTP Source changes second time. Skipping packet", "set", a.String(), "second", from.String())
-				}
+			// Allow only first change
+			if m.learnedRTPFrom.CompareAndSwap(nil, fromAddr) {
+				// Allow only first swap, rest is ignored
+				DefaultLogger().Debug("RTP New Source Learned", "addr", from.String())
 			}
 		}()
 	}

@@ -375,34 +375,38 @@ func TestMediaSessionRTPSymetric(t *testing.T) {
 	}
 
 	go func() {
-		pkt := rtp.Packet{}
-		data, err := pkt.Marshal()
-		if err != nil {
-			return
+		var seq uint16 = 0
+		for ; seq < 4; seq++ {
+			pkt := rtp.Packet{
+				Header: rtp.Header{
+					SequenceNumber: seq,
+				},
+			}
+			data, err := pkt.Marshal()
+			if err != nil {
+				return
+			}
+			writer.Write(data)
 		}
-		writer.Write(data)
-		writer.Write(data)
-		writer.Write(data)
-		writer.Write(data)
 	}()
 
 	pkt := rtp.Packet{}
 	_, err := session.ReadRTP(make([]byte, 1600), &pkt)
 	require.NoError(t, err)
+	assert.Equal(t, 1, session.learnedPkts)
 
-	// Writing should fail
+	// Writing should fail as new IP is not learned yet
 	err = session.WriteRTP(&rtp.Packet{Header: rtp.Header{}, Payload: []byte{}})
 	require.Error(t, err) // No writer
 
 	_, err = session.ReadRTP(make([]byte, 1600), &pkt)
-	assert.Equal(t, 1, session.lastReadRTPFromRepeated)
 	require.NoError(t, err)
 	_, err = session.ReadRTP(make([]byte, 1600), &pkt)
 	require.NoError(t, err)
 	_, err = session.ReadRTP(make([]byte, 1600), &pkt)
 	require.NoError(t, err)
 
-	assert.Equal(t, 3, session.lastReadRTPFromRepeated)
+	assert.Equal(t, 4, session.learnedPkts)
 	assert.Equal(t, &net.UDPAddr{IP: net.IPv4(127, 2, 2, 2), Port: 4321}, session.learnedRTPFrom.Load())
 
 	// Writing should be successfull
