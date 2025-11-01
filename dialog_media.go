@@ -149,16 +149,16 @@ func (d *DialogMedia) initRTPSessionUnsafe(m *media.MediaSession, rtpSess *media
 	d.RTPPacketWriter = media.NewRTPPacketWriterSession(rtpSess)
 }
 
-// OnRTCP регистрирует необязательный колбэк для получения сырых RTCP пакетов (RR/SR).
-// Вызов неблокирующий: обработчик запускается в отдельной goroutine.
-// Должен вызываться после установления медиасессии (после Answer/ACK),
-// но до начала активного чтения RTCP, если важно не потерять первые пакеты.
+// OnRTCP registers an optional callback for receiving raw RTCP packets (RR/SR).
+// The call is non-blocking: the handler is launched in a separate goroutine.
+// Should be called after the media session is established (after the Answer/ACK),
+// but before the active RTCP reading begins, if it is important not to lose the first packets.
 func (d *DialogMedia) OnRTCP(f func(pkt rtcp.Packet)) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	if d.rtpSession == nil {
-		// Разрешаем установку хука позже: сохраним отложенно через onMediaUpdate
+		// We allow the installation of the hook later: save it deferred via onMediaUpdate
 		prev := d.onMediaUpdate
 		d.onMediaUpdate = func(dm *DialogMedia) {
 			if prev != nil {
@@ -167,7 +167,7 @@ func (d *DialogMedia) OnRTCP(f func(pkt rtcp.Packet)) {
 			if dm.rtpSession == nil {
 				return
 			}
-			// Повторная регистрация безопасна, так как перезапишет обработчик в новой RTPSession
+			// Re-registration is safe, as it will overwrite the handler in a new RTPSession.
 			dm.rtpSession.OnReadRTCP(func(pkt rtcp.Packet, _ media.RTPReadStats) {
 				go f(pkt)
 			})
