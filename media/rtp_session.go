@@ -309,12 +309,6 @@ func (s *RTPSession) WriteRTP(pkt *rtp.Packet) error {
 	return nil
 }
 
-func (s *RTPSession) WriteRTPRaw(buf []byte) (int, error) {
-	// In this case just proxy RTP. RTP Session can not work without full RTP decoded
-	// It is expected that RTCP is also proxied
-	return s.Sess.WriteRTCPRaw(buf)
-}
-
 func (s *RTPSession) ReadStats() RTPReadStats {
 	s.rtcpMU.Lock()
 	defer s.rtcpMU.Unlock()
