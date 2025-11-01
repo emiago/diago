@@ -86,3 +86,29 @@ sip.SIPDebug = true // Enables SIP tracing
 media.RTCPDebug = true // Enables RTCP tracing
 media.RTPDebug = true // Enables RTP tracing. NOTE: It will dump every RTP Packet
 ```
+
+### RTCP hook (Receiver/ Sender Reports)
+
+You can subscribe to raw RTCP packets (RR/SR) via `DialogMedia.OnRTCP` to feed your monitoring/metrics.
+
+Key points:
+- Optional: if not set, behavior is unchanged.
+- Non-blocking: callback runs in its own goroutine.
+- Backward compatible.
+
+Example:
+```go
+// After Answer/ACK when media is established
+dlg.Media().OnRTCP(func(pkt rtcp.Packet) {
+    switch p := pkt.(type) {
+    case *rtcp.ReceiverReport:
+        // read p.Reports, FractionLost, Jitter, etc.
+    case *rtcp.SenderReport:
+        // p.NTPTime, p.Reports ...
+    }
+})
+```
+
+Notes:
+- Avoid heavy work in the callback; offload if needed.
+- If you register before RTPSession creation, the hook will be attached once media updates.

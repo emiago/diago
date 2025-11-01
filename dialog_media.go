@@ -19,6 +19,7 @@ import (
 	"github.com/emiago/diago/media"
 	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/sip"
+	"github.com/pion/rtcp"
 )
 
 var (
@@ -91,12 +92,19 @@ func (d *DialogMedia) Close() error {
 	onClose := d.onClose
 	d.onClose = nil
 	m := d.mediaSession
+	rtpSess := d.rtpSession
 
 	d.mu.Unlock()
 
 	var e1, e2 error
 	if onClose != nil {
 		e1 = onClose()
+	}
+
+	if rtpSess != nil {
+		if err := rtpSess.Close(); err != nil {
+			// Log error if needed
+		}
 	}
 
 	if m != nil {
@@ -139,6 +147,37 @@ func (d *DialogMedia) initRTPSessionUnsafe(m *media.MediaSession, rtpSess *media
 	d.rtpSession = rtpSess
 	d.RTPPacketReader = media.NewRTPPacketReaderSession(rtpSess)
 	d.RTPPacketWriter = media.NewRTPPacketWriterSession(rtpSess)
+}
+
+// OnRTCP registers an optional callback for receiving raw RTCP packets (RR/SR).
+// The call is non-blocking: the handler is launched in a separate goroutine.
+// Should be called after the media session is established (after the Answer/ACK),
+// but before the active RTCP reading begins, if it is important not to lose the first packets.
+func (d *DialogMedia) OnRTCP(f func(pkt rtcp.Packet)) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.rtpSession == nil {
+		// We allow the installation of the hook later: save it deferred via onMediaUpdate
+		prev := d.onMediaUpdate
+		d.onMediaUpdate = func(dm *DialogMedia) {
+			if prev != nil {
+				prev(dm)
+			}
+			if dm.rtpSession == nil {
+				return
+			}
+			// Re-registration is safe, as it will overwrite the handler in a new RTPSession.
+			dm.rtpSession.OnReadRTCP(func(pkt rtcp.Packet, _ media.RTPReadStats) {
+				go f(pkt)
+			})
+		}
+		return
+	}
+
+	d.rtpSession.OnReadRTCP(func(pkt rtcp.Packet, _ media.RTPReadStats) {
+		go f(pkt)
+	})
 }
 
 func (d *DialogMedia) initMediaSessionFromConf(conf MediaConfig) error {
