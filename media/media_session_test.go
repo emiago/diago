@@ -379,6 +379,7 @@ func TestMediaSessionRTPSymetric(t *testing.T) {
 		for ; seq < 4; seq++ {
 			pkt := rtp.Packet{
 				Header: rtp.Header{
+					Version:        2,
 					SequenceNumber: seq,
 				},
 			}

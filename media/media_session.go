@@ -569,6 +569,11 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	if m.RTPSymetric && from.String() != m.Raddr.String() {
 		// Moving this to RTP session could have simplify validation (sequence tracking), but for now here is more easier to maintain
 		func() {
+			// Make sure it is valid pkt
+			if pkt.Version != 2 {
+				return
+			}
+
 			fromAddr, ok := from.(*net.UDPAddr)
 			if !ok {
 				return
