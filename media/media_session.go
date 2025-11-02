@@ -39,8 +39,6 @@ var (
 	//
 	// Experimental
 	RTPProfileSAVPDisable = false
-	// RTPSymetricMinPackets is number of packets that needs to be repeated before accepted
-	RTPSymetricMinPackets = 3
 )
 
 func logRTPRead(m *MediaSession, raddr net.Addr, p *rtp.Packet) {
@@ -120,14 +118,12 @@ type MediaSession struct {
 	remoteCtxSRTP *srtp.Context
 	srtpRemoteTag int
 
-	// RTP NAT
-	RTPSymetric     bool
+	// RTP NAT enables handling RTP behind NAT
+	RTPNAT          int // 0 - disabled, 1 - Learn source change (RTP Symetric)
 	learnedRTPFrom  atomic.Pointer[net.UDPAddr]
 	learnedRTCPFrom atomic.Pointer[net.UDPAddr]
-	lastSeq         uint16
-	learnedPkts     int
-
 	// LastReadRTPFrom is set after Read operation. NOT THREAD SAFE
+	// It can be used to validate source of RTP packet
 	LastReadRTPFrom net.Addr
 }
 
@@ -237,6 +233,7 @@ func (s *MediaSession) Fork() *MediaSession {
 		rtcpConn: s.rtcpConn,
 		Codecs:   slices.Clone(s.Codecs),
 		Mode:     sdp.ModeSendrecv,
+		RTPNAT:   s.RTPNAT,
 		sdp:      slices.Clone(s.sdp),
 	}
 	return &cp
@@ -562,11 +559,11 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 		}
 	}
 
-	// Problem is that this buffer is refferenced in rtp PACKET
-	// if err := pkt.Unmarshal(buf[:n]); err != nil {
-	// 	return err
-	// }
-	if m.RTPSymetric && from.String() != m.Raddr.String() {
+	logRTPRead(m, from, pkt)
+	m.LastReadRTPFrom = from
+
+	// Handle NAT
+	if m.RTPNAT == 1 && from.String() != m.Raddr.String() {
 		// Moving this to RTP session could have simplify validation (sequence tracking), but for now here is more easier to maintain
 		func() {
 			// Make sure it is valid pkt
@@ -579,32 +576,12 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 				return
 			}
 
-			if m.lastSeq+1 != pkt.SequenceNumber {
-				if m.lastSeq != 0 {
-					// if not first packet then reset
-					m.learnedPkts = 0
-					return
-				}
-			}
-
-			m.learnedPkts++
-			m.lastSeq = pkt.SequenceNumber
-
-			if m.learnedPkts < RTPSymetricMinPackets {
-				// Not enough packets
-				return
-			}
-
-			// Allow only first change
 			if m.learnedRTPFrom.CompareAndSwap(nil, fromAddr) {
 				// Allow only first swap, rest is ignored
-				DefaultLogger().Debug("RTP New Source Learned", "addr", from.String())
+				DefaultLogger().Debug("RTP NAT switch to new source", "addr", from.String())
 			}
 		}()
 	}
-	m.LastReadRTPFrom = from
-
-	logRTPRead(m, from, pkt)
 	return n, err
 }
 
@@ -637,7 +614,7 @@ func (m *MediaSession) readRTPParsed() (rtp.Packet, error) {
 func (m *MediaSession) ReadRTPRaw(buf []byte) (int, error) {
 	n, from, err := m.rtpConn.ReadFrom(buf)
 
-	if m.RTPSymetric {
+	if m.RTPNAT == 1 {
 		addr, _ := from.(*net.UDPAddr)
 		m.learnedRTPFrom.Store(addr)
 	}
@@ -670,7 +647,7 @@ func (m *MediaSession) ReadRTCP(buf []byte, pkts []rtcp.Packet) (n int, err erro
 		return 0, err
 	}
 
-	if m.RTPSymetric && from.String() != m.rtcpRaddr.String() {
+	if m.RTPNAT == 1 && from.String() != m.rtcpRaddr.String() {
 		func() {
 			fromAddr, ok := from.(*net.UDPAddr)
 			if !ok {
@@ -752,7 +729,7 @@ func (m *MediaSession) getWriteBuf() []byte {
 
 func (m *MediaSession) WriteRTPRaw(data []byte) (n int, err error) {
 	addr := &m.Raddr
-	if m.RTPSymetric {
+	if m.RTPNAT == 1 {
 		if a := m.learnedRTPFrom.Load(); a != nil {
 			addr = a
 		}
@@ -822,7 +799,7 @@ func (m *MediaSession) WriteRTCPs(pkts []rtcp.Packet) error {
 
 func (m *MediaSession) WriteRTCPRaw(data []byte) (int, error) {
 	addr := &m.rtcpRaddr
-	if m.RTPSymetric {
+	if m.RTPNAT == 1 {
 		if a := m.learnedRTCPFrom.Load(); a != nil {
 			addr = a
 		}

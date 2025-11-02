@@ -12,6 +12,7 @@ import (
 
 	"github.com/emiago/sipgo/fakes"
 	"github.com/pion/rtcp"
+	"github.com/pion/rtp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -283,4 +284,32 @@ func TestJitterCalc(t *testing.T) {
 	// Simulate a gap
 	// stats.calcJitterRFC(now.Add(5*time.Second), 640)
 	// assert.EqualValues(t, 0, int(stats.jitter))
+}
+
+func TestRTPSessionSourceLockProtection(t *testing.T) {
+	// slog.SetLogLoggerLevel(slog.LevelDebug)
+	// RTPDebug = true
+
+	rtpSessRead, rtpSessWrite := pipeRTP(9876, 1234)
+	rtpSessRead.sourceLock = true // Enable source locking
+
+	go func() {
+		var seq uint16 = 1
+		for ; seq < 5; seq++ {
+			pkt := rtp.Packet{
+				Header: rtp.Header{
+					Version:        2,
+					SequenceNumber: seq,
+				},
+				Payload: []byte{1, 2, 3},
+			}
+			rtpSessWrite.WriteRTP(&pkt)
+		}
+	}()
+
+	pkt := rtp.Packet{}
+	_, err := rtpSessRead.ReadRTP(make([]byte, 1600), &pkt)
+	require.NoError(t, err)
+
+	assert.Equal(t, uint16(4), pkt.SequenceNumber)
 }

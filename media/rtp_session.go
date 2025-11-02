@@ -36,6 +36,7 @@ import (
 var (
 	DefaultOnReadRTCP  func(pkt rtcp.Packet, rtpStats RTPReadStats)  = nil
 	DefaultOnWriteRTCP func(pkt rtcp.Packet, rtpStats RTPWriteStats) = nil
+	RTPSourceLock      bool
 )
 
 type RTPSession struct {
@@ -55,6 +56,11 @@ type RTPSession struct {
 	onWriteRTCP func(pkt rtcp.Packet, rtpStats RTPWriteStats)
 
 	closed bool
+
+	// sourceLock when enabled locks reading RTP packets into single source addr which handles security issue
+	sourceLock        bool
+	sourceLockPackets int
+	sourceLockAddr    *net.UDPAddr
 }
 
 // Some of fields here are exported (as readonly) intentionally
@@ -144,6 +150,7 @@ func NewRTPSession(sess *MediaSession) *RTPSession {
 		rtcpClosed:  make(chan struct{}),
 		onReadRTCP:  DefaultOnReadRTCP,
 		onWriteRTCP: DefaultOnWriteRTCP,
+		sourceLock:  RTPSourceLock,
 	}
 }
 
@@ -187,11 +194,16 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 
 		// Validate pkt. Check is it keep alive
 		if readPkt.Version == 0 {
-			DefaultLogger().Debug("Received RTP with invalid version. Skipping")
+			DefaultLogger().Debug("Received RTP with invalid version. Skipping", "pkt.ssrc", readPkt.SSRC, "pkt.seq", readPkt.SequenceNumber)
 			continue
 		}
 		if len(readPkt.Payload) == 0 {
-			DefaultLogger().Debug("Received RTP with empty Payload. Skipping")
+			DefaultLogger().Debug("Received RTP with empty Payload. Keep Alive? Skipping", "pkt.ssrc", readPkt.SSRC, "pkt.seq", readPkt.SequenceNumber)
+			continue
+		}
+
+		if s.sourceLock && !s.sourceLockProtection(readPkt, s.Sess.LastReadRTPFrom) {
+			DefaultLogger().Debug("RTP Source lock protection learning. Skipping", "pkt.ssrc", readPkt.SSRC, "pkt.seq", readPkt.SequenceNumber)
 			continue
 		}
 
@@ -262,6 +274,38 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 	// stats.lastRTPTimestamp = readPkt.Timestamp
 
 	return n, err
+}
+
+// sourceLockProtection locks RTP handling only to one source change
+func (s *RTPSession) sourceLockProtection(pkt *rtp.Packet, from net.Addr) bool {
+	// TODO: Consider handling flood RTP protection
+	// RTP must be udp
+	fromAddr, ok := from.(*net.UDPAddr)
+	if !ok {
+		return false
+	}
+
+	if s.sourceLockAddr != nil {
+		return s.sourceLockAddr.IP.Equal(fromAddr.IP) && s.sourceLockAddr.Port == fromAddr.Port && s.sourceLockAddr.Zone == fromAddr.Zone
+	}
+
+	if s.readStats.lastSeq.seqNum+1 != pkt.SequenceNumber {
+		if s.readStats.lastSeq.seqNum != 0 {
+			// if not first packet then reset
+			s.sourceLockPackets = 0
+			return false
+		}
+	}
+
+	// We wait couple packets before considering this is right source
+	s.sourceLockPackets++
+	if s.sourceLockPackets < 4 {
+		// Not enough packets
+		return false
+	}
+
+	s.sourceLockAddr = fromAddr
+	return true
 }
 
 func (s *RTPSession) ReadRTPRaw(buf []byte) (int, error) {
