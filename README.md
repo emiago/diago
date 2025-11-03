@@ -48,6 +48,12 @@ NOTE: For specifics and questions what is covered by RFC, please open Issue. Not
 ## Contributions
 Please open first issues instead PRs. Library is under development and could not have latest code pushed.
 
+Please avoid following:
+- Creating BIG PRs that create feature or lot of refactoring without having Issue that explains and discuss more about requirements
+- Creating Change Log or some other textual files that add some sort of documentation. This is why we need Issue and ID issue. If you want 
+  to have this better be documented pls open issue. Lot of is highlighted on releases so if change is big it will probably be stored.
+- English is main language for code and for comments. Any other language used in any commit will be rejected.
+
 
 ## Usage 
 
