@@ -142,10 +142,10 @@ type MediaConfig struct {
 	// Experimental
 	SecureRTPAlg uint16
 	// Used internally
-	secureRTP   int // 0 - none, 1 - sdes
-	bindIP      net.IP
-	externalIP  net.IP
-	rtpSymetric bool
+	secureRTP  int // 0 - none, 1 - sdes
+	bindIP     net.IP
+	externalIP net.IP
+	rtpNAT     int
 
 	// TODO, For now it is global on media package
 	// RTPPortStart int
