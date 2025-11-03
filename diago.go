@@ -223,6 +223,16 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		}
 	}
 
+	handleNoDialog := func(req *sip.Request, tx sip.ServerTransaction, err error) error {
+		var response *sip.Response
+		if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
+			response = sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, "Call/Transaction Does Not Exist", nil)
+		} else {
+			response = sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil)
+		}
+		return errors.Join(err, tx.Respond(response))
+	}
+
 	server.OnInvite(errHandler(func(req *sip.Request, tx sip.ServerTransaction) error {
 		// What if multiple server transports?
 		id, err := sip.UASReadRequestDialogID(req)
@@ -308,11 +318,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	server.OnBye(errHandler(func(req *sip.Request, tx sip.ServerTransaction) error {
 		sd, cd, err := dg.cache.MatchDialog(req)
 		if err != nil {
-			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
-				return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
-
-			}
-			return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+			return handleNoDialog(req, tx, err)
 		}
 
 		// Respond to BYE
@@ -336,11 +342,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 
 		sd, cd, err := dg.cache.MatchDialog(req)
 		if err != nil {
-			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
-				return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
-
-			}
-			return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+			return handleNoDialog(req, tx, err)
 		}
 
 		if cd != nil {
@@ -377,45 +379,35 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		return tx.Respond(res)
 	}))
 
-	dg.server.OnRefer(func(req *sip.Request, tx sip.ServerTransaction) {
+	dg.server.OnRefer(errHandler(func(req *sip.Request, tx sip.ServerTransaction) error {
 		sd, cd, err := dg.cache.MatchDialog(req)
 		if err != nil {
-			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
-				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
-				return
-
-			}
-			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
-			return
+			return handleNoDialog(req, tx, err)
 		}
 		if cd != nil {
 			cd.handleRefer(dg, req, tx)
-			return
+			return nil
 
 		}
 		// TODO server
 		sd.handleRefer(dg, req, tx)
-	})
+		return nil
+	}))
 
-	dg.server.OnNotify(func(req *sip.Request, tx sip.ServerTransaction) {
+	dg.server.OnNotify(errHandler(func(req *sip.Request, tx sip.ServerTransaction) error {
 		// THIS should match now subscribtion instead dialog
 		sd, cd, err := dg.cache.MatchDialog(req)
 		if err != nil {
-			if errors.Is(err, sipgo.ErrDialogDoesNotExists) {
-				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, err.Error(), nil))
-				return
-
-			}
-			tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
-			return
+			return handleNoDialog(req, tx, err)
 		}
 
 		if cd != nil {
 			cd.handleReferNotify(req, tx)
-			return
+			return nil
 		}
 		sd.handleReferNotify(req, tx)
-	})
+		return nil
+	}))
 	// server.OnRefer(func(req *sip.Request, tx sip.ServerTransaction) {
 	// 	d, err := MatchDialogServer(req)
 	// 	if err != nil {
