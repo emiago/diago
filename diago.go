@@ -216,7 +216,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	}
 
 	if dg.server == nil {
-		dg.server, _ = sipgo.NewServer(ua)
+		dg.server, _ = sipgo.NewServer(ua, sipgo.WithServerLogger(dg.log))
 	}
 	server := dg.server
 
@@ -858,6 +858,7 @@ func (dg *Diago) createClient(tran Transport) (client *sipgo.Client) {
 
 	opts := []sipgo.ClientOption{
 		sipgo.WithClientNAT(),
+		sipgo.WithClientLogger(dg.log),
 	}
 
 	// If resolved use specific connection and port
