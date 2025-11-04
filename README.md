@@ -46,14 +46,13 @@ RTP/AVP:
 NOTE: For specifics and questions what is covered by RFC, please open Issue. Note lot of functionality can be extended even if not built in library. 
 
 ## Contributions
-Please open first issues instead PRs. Library is under development and could not have latest code pushed.
 
 Please avoid following:
-- Creating BIG PRs that create feature or lot of refactoring without having Issue that explains and discuss more about requirements
-- Creating Change Log or some other textual files that add some sort of documentation. This is why we need Issue and ID issue. If you want 
-  to have this better be documented pls open issue. Lot of is highlighted on releases so if change is big it will probably be stored.
+- Creating BIG PR that creates feature or lot of refactoring without previously having Issue that explains problem with discussion more about requirements
+- Creating Change Log or some other textual files that add some sort of documentation. This is why we need Issue and ID issue should be in your commit. If you want(think it is good) to have this better documented(like webpage or readme) pls open issue. Lot of is highlighted on releases so if change is big it will probably be highlighted.
 - English is main language for code and for comments. Any other language used in any commit will be rejected.
 
+Library is under development and could not have latest code pushed. Having small PR that fixes issue are fine but not for more complex problem
 
 ## Usage 
 
