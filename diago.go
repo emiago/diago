@@ -35,7 +35,8 @@ type Diago struct {
 
 	log *slog.Logger
 
-	cache DialogCachePool
+	cache            DialogCachePool
+	serverMiddleware func(next sipgo.RequestHandler) sipgo.RequestHandler
 }
 
 // We can extend this WithClientOptions, WithServerOptions
@@ -176,6 +177,12 @@ func WithLogger(l *slog.Logger) DiagoOption {
 	}
 }
 
+func WithServerRequestMiddleware(f func(next sipgo.RequestHandler) sipgo.RequestHandler) DiagoOption {
+	return func(dg *Diago) {
+		dg.serverMiddleware = f
+	}
+}
+
 // NewDiago construct b2b user agent that will act as server and client
 func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	dg := &Diago{
@@ -214,13 +221,21 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	server := dg.server
 
 	errHandler := func(f func(req *sip.Request, tx sip.ServerTransaction) error) sipgo.RequestHandler {
-		return func(req *sip.Request, tx sip.ServerTransaction) {
+		handler := func(req *sip.Request, tx sip.ServerTransaction) {
 			if err := f(req, tx); err != nil {
-				dg.log.Error("Failed to handle request", "error", err, "req.method", req.Method.String())
+				dg.log.Warn("Failed to handle request", "error", err, "req.method", req.Method.String())
 				return
 			}
 			// Termination gracefull will be done by sipgo now
 		}
+
+		// Return handler wrapped with middleware if user supprots
+		if dg.serverMiddleware != nil {
+			return func(req *sip.Request, tx sip.ServerTransaction) {
+				dg.serverMiddleware(handler)(req, tx)
+			}
+		}
+		return handler
 	}
 
 	handleNoDialog := func(req *sip.Request, tx sip.ServerTransaction, err error) error {
@@ -298,11 +313,11 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		return nil
 	}))
 
-	server.OnCancel(func(req *sip.Request, tx sip.ServerTransaction) {
+	server.OnCancel(errHandler(func(req *sip.Request, tx sip.ServerTransaction) error {
 		// INVITE transaction should be terminated by transaction layer and 200 response will be sent
 		// In case of stateless proxy this we would need to forward
-		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, "Call/Transaction Does Not Exist", nil))
-	})
+		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, "Call/Transaction Does Not Exist", nil))
+	}))
 
 	server.OnAck(errHandler(func(req *sip.Request, tx sip.ServerTransaction) error {
 		d, err := dg.cache.MatchDialogServer(req)
