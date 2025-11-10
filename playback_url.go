@@ -46,7 +46,7 @@ func (p *AudioPlayback) playURL(urlStr string, written *int64) error {
 	readSize := (DefaultPlaybackURLRangeSize / pcmSamples) * pcmSamples
 	req.Header.Add("Range", "bytes=0-"+strconv.Itoa(readSize-1)) // Try with range request
 
-	res, err := client.Do(req)
+	res, err := DefaultPlaybackHTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func (p *AudioPlayback) playURL(urlStr string, written *int64) error {
 				rangeHDR := fmt.Sprintf("bytes=%d-%d", start, end)
 
 				req.Header.Set("Range", rangeHDR) // Try with range request
-				res, err = client.Do(req)
+				res, err = DefaultPlaybackHTTPClient.Do(req)
 				if err != nil {
 					return fmt.Errorf("failed to request range: %w", err)
 				}
