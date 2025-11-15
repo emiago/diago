@@ -4,13 +4,16 @@
 package diago
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
+	"sync"
 	"time"
 
+	"github.com/emiago/diago/audio"
 	"github.com/emiago/diago/media"
 )
 
@@ -36,6 +39,7 @@ type Bridge struct {
 	WaitDialogsNum int
 }
 
+// NewBridge creates bridge with default settings.
 func NewBridge() Bridge {
 	b := Bridge{}
 	b.Init(media.DefaultLogger())
@@ -44,6 +48,10 @@ func NewBridge() Bridge {
 
 func (b *Bridge) Init(log *slog.Logger) {
 	b.log = log
+	if b.log == nil {
+		b.log = media.DefaultLogger()
+	}
+
 	if b.WaitDialogsNum == 0 {
 		b.WaitDialogsNum = 2
 	}
@@ -251,4 +259,282 @@ func (b *Bridge) proxyMediaWithDTMF(m1 *DialogMedia, m2 *DialogMedia) error {
 	written, err := copyWithBuf(r, w, buf.([]byte))
 	log.Debug("Bridge proxy stream finished", "bytes", written)
 	return err
+}
+
+type BridgeMix struct {
+	// Originator is dialog session that created bridge
+	Originator DialogSession
+
+	// TODO: RTPpass. RTP pass means that RTP will be proxied.
+	// This gives high performance but you can not attach any pipeline in media processing
+	// RTPpass bool
+
+	mu              sync.Mutex
+	dialogs         []DialogSession
+	originatorCodec media.Codec
+
+	mixWG  sync.WaitGroup
+	mixErr error
+
+	// minDialogs is just helper flag when to start proxy
+	WaitDialogsNum int
+}
+
+func NewBridgeMix() BridgeMix {
+	b := BridgeMix{}
+	b.Init()
+	return b
+}
+
+func (b *BridgeMix) Init() {
+}
+
+func (b *BridgeMix) AddDialogSession(d DialogSession) error {
+	if b.Originator == nil {
+		b.Originator = d
+
+		m := d.Media()
+		p := MediaProps{}
+		_, err := m.AudioReader(WithAudioReaderMediaProps(&MediaProps{}))
+		if err != nil {
+			return err
+		}
+		b.originatorCodec = p.Codec
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.dialogs = append(b.dialogs, d)
+	lenDialogs := len(b.dialogs)
+
+	if lenDialogs < 2 {
+		return nil
+	}
+
+	if lenDialogs < b.WaitDialogsNum {
+		return nil
+	}
+
+	// Stop any current mixing
+	// if err := b.mixStop(); err != nil {
+	// 	return fmt.Errorf("failed to stop current mixing: %w", err)
+	// }
+
+	// TODO add here stream build up
+	b.mixStart()
+	return nil
+}
+
+// Mix explicitely starts mixing. Make sure you have increased WaitDialogsNum
+func (b *BridgeMix) Mix() (err error) {
+	return b.mix()
+}
+
+func (b *BridgeMix) mixStart() {
+	// Start new mix
+	b.mixWG.Add(1)
+	go func() {
+		defer b.mixWG.Done()
+		if err := b.mix(); err != nil {
+			b.mixErr = err
+		}
+	}()
+}
+
+func (b *BridgeMix) mixStop() error {
+	var allErros error
+	for _, d := range b.dialogs {
+		err := d.Media().StopRTP(2, 0) // Stop reading or writing
+		errors.Join(allErros, err)
+	}
+
+	// Waits mix termination
+	b.mixWG.Wait()
+	return allErros
+}
+
+func (b *BridgeMix) mix() error {
+	if len(b.dialogs) < 2 {
+		return fmt.Errorf("number of dialogs must be at least 2")
+	}
+
+	type PCMStream struct {
+		id           uint32
+		r            io.Reader
+		w            io.Writer
+		mediaSession *media.MediaSession
+
+		// read buf
+		buf []byte
+		n   int
+	}
+
+	addDialogStream := func(d DialogSession, stream *PCMStream, firstMediaProps *MediaProps) error {
+		m := d.Media()
+
+		// m.StopRTP(2, 0)
+
+		p := MediaProps{}
+		r, err := m.AudioReader(WithAudioReaderMediaProps(&MediaProps{}))
+		if err != nil {
+			return err
+		}
+
+		if b.originatorCodec.SampleRate != p.Codec.SampleRate && b.originatorCodec.SampleDur != p.Codec.SampleDur {
+			return fmt.Errorf("Codec missmatch. Resampling or transcoding is not supported")
+		}
+
+		// Attach PCM decoder
+		pcmReader := audio.PCMDecoderReader{}
+		if err := pcmReader.Init(p.Codec, r); err != nil {
+			return err
+		}
+
+		// Now do write stream
+		p = MediaProps{}
+		w, err := m.AudioWriter(WithAudioWriterMediaProps(&p))
+		if err != nil {
+			return err
+		}
+
+		pcmWriter := audio.PCMEncoderWriter{}
+		if err := pcmWriter.Init(p.Codec, w); err != nil {
+			return err
+		}
+
+		*stream = PCMStream{
+			r:            &pcmReader,
+			w:            &pcmWriter,
+			mediaSession: m.mediaSession,
+			id:           m.RTPPacketWriter.SSRC,
+			buf:          make([]byte, media.RTPBufSize),
+		}
+		return nil
+	}
+
+	rwStreams := make([]PCMStream, len(b.dialogs))
+	firstMediaProps := MediaProps{}
+
+	err := func() error {
+		// We need to lock here as b.dialogs can change
+		b.mu.Lock()
+		defer b.mu.Unlock()
+
+		for i, d := range b.dialogs {
+			if err := addDialogStream(d, &rwStreams[i], &firstMediaProps); err != nil {
+				return err
+			}
+		}
+		return nil
+	}()
+	if err != nil {
+		return err
+	}
+
+	readAllStreams := func() error {
+		for i, r := range rwStreams {
+			// We expect to have data or we will deadline very quickly
+			// Blocking/Sampling will happen on Write Side so in this time received samples should be present
+			// Buffering with timestamps checking needs to be added
+			// Alternative is to have this in seperate goroutines with locked buffer reads
+			r.mediaSession.StopRTP(1, 1*time.Millisecond)
+
+			// Mostly PCM sample size should be same or less our sampling
+			// but we should keep same sampling or deal this per writer?
+			n, err := r.r.Read(r.buf)
+			rwStreams[i].n = n
+			if err != nil {
+				return err
+			}
+
+			fmt.Println("Reading", r.buf[:n])
+		}
+		return nil
+	}
+
+	mixStreams := func(mixedBuf []byte) (int, error) {
+		// How to now not block on READ if stream does not have any data
+		maxN := 0
+		// zero mixed buf
+		for i := 0; i < len(mixedBuf); i += 2 {
+			// mixedBuf[i] = 0
+			binary.LittleEndian.PutUint16(mixedBuf[i:], uint16(0))
+		}
+
+		for _, r := range rwStreams {
+			n := r.n
+			readBuf := r.buf[:n]
+
+			if n == 0 {
+				// Skip any mixing if nothing has read
+				continue
+			}
+
+			for i := 0; i < n; i += 2 {
+				frame := int16(binary.LittleEndian.Uint16(readBuf[i:]))
+				current := int16(binary.LittleEndian.Uint16(mixedBuf[i:]))
+				// TODO consider cliping and other
+				// fmt.Println("mixing", current, frame*direction)
+				mixed := current + frame
+				binary.LittleEndian.PutUint16(mixedBuf[i:], uint16(mixed))
+			}
+			maxN = max(maxN, n)
+		}
+		return maxN, nil
+
+	}
+
+	unmixStream := func(r *PCMStream, mixedBuf []byte) []byte {
+		n := len(mixedBuf)
+		if n > len(r.buf) {
+			panic("stream buf is shorter than mixed buf")
+		}
+
+		for i := 0; i < n; i += 2 {
+			frame := int16(binary.LittleEndian.Uint16(r.buf[i:]))
+			current := int16(binary.LittleEndian.Uint16(mixedBuf[i:]))
+			mixed := current - frame
+			if n > r.n {
+				// In case mixed buffer is bigger than our read buf, just override
+				mixed = current
+			}
+			binary.LittleEndian.PutUint16(r.buf[i:], uint16(mixed))
+		}
+
+		// NOTE: This can be higher than actual read bytes
+		return r.buf[:n]
+	}
+
+	mixBuf := make([]byte, media.RTPBufSize)
+	for {
+		// First read all streams at this point of time and fill buffer
+		if err := readAllStreams(); err != nil {
+			return err
+		}
+
+		// Mix all streams
+		n, err := mixStreams(mixBuf)
+		if err != nil {
+			return err
+		}
+
+		// broadcast to all
+		for _, w := range rwStreams {
+			streamBuf := unmixStream(&w, mixBuf[:n])
+			if _, err := w.w.Write(streamBuf); err != nil {
+				// Detect is this Deadline or EOF error caused by stream exiting
+				return err
+			}
+		}
+	}
+	// We need buffering up to 80ms ?
+	// We need to read and decode frames from all streams
+	// If frame is missing or it is not aligned with timestamp it will not effect mix
+
+}
+
+// Wait waits that mixing is stopped
+func (b *BridgeMix) Wait() error {
+	b.mixWG.Wait()
+	return b.mixErr
 }
