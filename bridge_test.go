@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -194,5 +196,81 @@ func TestIntegrationBridging(t *testing.T) {
 
 		t.Log("Hanguping")
 		dialog.Hangup(ctx)
+	}
+}
+
+func TestIntegrationBridgingMix(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Create transaction users, as many as needed.
+	ua, _ := sipgo.NewUA(
+		sipgo.WithUserAgent("inbound"),
+	)
+	defer ua.Close()
+	tu := NewDiago(ua, WithTransport(
+		Transport{
+			Transport: "udp",
+			BindHost:  "127.0.0.1",
+			BindPort:  5090,
+		},
+	))
+
+	bridge := NewBridgeMix()
+
+	err := tu.ServeBackground(ctx, func(in *DialogServerSession) {
+		in.Trying()
+		in.Ringing()
+		in.Answer()
+
+		// Add us in bridge
+		t.Log("Adding into bridge", in.ID)
+		if err := bridge.AddDialogSession(in); err != nil {
+			t.Log("Adding dialog in bridge failed", err)
+			return
+		}
+
+		if err := bridge.Wait(); err != nil {
+			t.Log("Bridge wait exit with error", "error", err, "id", in.ID)
+		}
+		<-in.Context().Done()
+	})
+	assert.NoError(t, err)
+
+	{
+		ua, _ := sipgo.NewUA()
+		defer ua.Close()
+
+		dg := newDialer(ua)
+
+		// Make number of calls that will have audio mixed in bridge
+		wg := sync.WaitGroup{}
+		for i := range 2 {
+			dialog, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
+			require.NoError(t, err)
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				defer dialog.Close()
+				sound := []byte("12345" + strconv.Itoa(i))
+
+				w, _ := dialog.AudioWriter()
+				r, _ := dialog.AudioReader()
+				_, err = w.Write(sound)
+				require.NoError(t, err)
+
+				buf := make([]byte, media.RTPBufSize)
+				n, err := r.Read(buf)
+				require.NoError(t, err)
+				t.Log("Sound received", "i", i, "buf", buf[:n])
+
+				assert.Equal(t, 6, n)
+				assert.NotEqual(t, sound, buf[:n])
+
+				t.Log("Hanguping")
+				dialog.Hangup(ctx)
+			}(i)
+
+		}
+		wg.Wait()
 	}
 }
