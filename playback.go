@@ -4,6 +4,7 @@
 package diago
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -96,7 +97,9 @@ func (p *AudioPlayback) PlayFile(filename string) (int64, error) {
 		return 0, fmt.Errorf("only playing wav file is now supported, but detected=%s", ext)
 	}
 
-	return p.Play(file, "audio/wav")
+	// Using bufio to improve disk reading
+	fileReader := bufio.NewReaderSize(file, 64*1024)
+	return p.Play(fileReader, "audio/wav")
 }
 
 func (p *AudioPlayback) stream(body io.Reader, playWriter io.Writer) (int64, error) {

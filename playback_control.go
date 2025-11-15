@@ -14,6 +14,16 @@ type AudioPlaybackControl struct {
 	control *audioControl
 }
 
+func NewAudioPlaybackControl(a AudioPlayback) AudioPlaybackControl {
+	// Replace audio playback writer with control
+	writer := a.writer
+	control := &audioControl{
+		Writer: writer,
+	}
+	a.writer = control
+	return AudioPlaybackControl{AudioPlayback: a, control: control}
+}
+
 func (p *AudioPlaybackControl) Mute(mute bool) {
 	p.control.Mute(mute)
 }
