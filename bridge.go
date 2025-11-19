@@ -10,7 +10,9 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/emiago/diago/audio"
@@ -273,8 +275,9 @@ type BridgeMix struct {
 	dialogs         []DialogSession
 	originatorCodec media.Codec
 
-	mixWG  sync.WaitGroup
-	mixErr error
+	mixWG    sync.WaitGroup
+	mixErr   error
+	mixState atomic.Int32
 
 	// minDialogs is just helper flag when to start proxy
 	WaitDialogsNum int
@@ -305,23 +308,36 @@ func (b *BridgeMix) AddDialogSession(d DialogSession) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.dialogs = append(b.dialogs, d)
-	lenDialogs := len(b.dialogs)
-
-	if lenDialogs < 2 {
-		return nil
-	}
-
-	if lenDialogs < b.WaitDialogsNum {
-		return nil
-	}
 
 	// Stop any current mixing
-	// if err := b.mixStop(); err != nil {
-	// 	return fmt.Errorf("failed to stop current mixing: %w", err)
-	// }
+	fmt.Println("Mixing stopped by add", d.Id())
+	if err := b.mixStop(); err != nil {
+		return fmt.Errorf("failed to stop current mixing: %w", err)
+	}
 
 	// TODO add here stream build up
 	b.mixStart()
+	return nil
+}
+
+func (b *BridgeMix) RemoveDialogSession(dialogID string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	for i, d := range b.dialogs {
+		if d.Id() == dialogID {
+			b.dialogs = append(b.dialogs[:i], b.dialogs[i+1:]...)
+
+			// Update stream list
+			fmt.Println("Mixing stopped by remove", dialogID)
+			if err := b.mixStop(); err != nil {
+				return fmt.Errorf("failed to stop current mixing: %w", err)
+			}
+			b.mixStart()
+			break
+		}
+	}
+
 	return nil
 }
 
@@ -331,25 +347,47 @@ func (b *BridgeMix) Mix() (err error) {
 }
 
 func (b *BridgeMix) mixStart() {
+	if len(b.dialogs) < 2 {
+		return
+	}
+	if len(b.dialogs) < b.WaitDialogsNum {
+		return
+	}
+
 	// Start new mix
 	b.mixWG.Add(1)
+
 	go func() {
 		defer b.mixWG.Done()
 		if err := b.mix(); err != nil {
+			// b.mu.Lock()
 			b.mixErr = err
+			//
 		}
 	}()
+	b.mixState.Store(1) //running
 }
 
 func (b *BridgeMix) mixStop() error {
+	if b.mixState.Load() == 0 {
+		return nil
+	}
 	var allErros error
+	b.mixState.Store(2) // stoping
 	for _, d := range b.dialogs {
-		err := d.Media().StopRTP(2, 0) // Stop reading or writing
+		err := d.Media().StopRTP(2, 0) // Stop writing
 		errors.Join(allErros, err)
 	}
 
 	// Waits mix termination
 	b.mixWG.Wait()
+	b.mixState.Store(0)
+
+	// Now enable RTP writing
+	for _, d := range b.dialogs {
+		err := d.Media().StartRTP(2, 0) // Stop writing
+		errors.Join(allErros, err)
+	}
 	return allErros
 }
 
@@ -368,11 +406,10 @@ func (b *BridgeMix) mix() error {
 		buf []byte
 		n   int
 	}
+	fmt.Println("Mixing start")
 
 	addDialogStream := func(d DialogSession, stream *PCMStream, firstMediaProps *MediaProps) error {
 		m := d.Media()
-
-		// m.StopRTP(2, 0)
 
 		p := MediaProps{}
 		r, err := m.AudioReader(WithAudioReaderMediaProps(&MediaProps{}))
@@ -437,13 +474,17 @@ func (b *BridgeMix) mix() error {
 			// Blocking/Sampling will happen on Write Side so in this time received samples should be present
 			// Buffering with timestamps checking needs to be added
 			// Alternative is to have this in seperate goroutines with locked buffer reads
-			r.mediaSession.StopRTP(1, 1*time.Millisecond)
+			r.mediaSession.StopRTP(1, 2*time.Millisecond)
 
 			// Mostly PCM sample size should be same or less our sampling
 			// but we should keep same sampling or deal this per writer?
 			n, err := r.r.Read(r.buf)
 			rwStreams[i].n = n
 			if err != nil {
+				if errors.Is(err, os.ErrDeadlineExceeded) {
+					fmt.Println("Skipping stream read", r.id)
+					continue
+				}
 				return err
 			}
 
@@ -523,6 +564,18 @@ func (b *BridgeMix) mix() error {
 			streamBuf := unmixStream(&w, mixBuf[:n])
 			if _, err := w.w.Write(streamBuf); err != nil {
 				// Detect is this Deadline or EOF error caused by stream exiting
+				fmt.Println("Writing stopped", err, "id", w.id, errors.Is(err, os.ErrDeadlineExceeded))
+				if errors.Is(err, os.ErrDeadlineExceeded) {
+					state := b.mixState.Load()
+					if state != 1 {
+						// We are stopped
+						return err
+					}
+
+					// Mixing has been stopped or some stream
+					continue
+
+				}
 				return err
 			}
 		}
