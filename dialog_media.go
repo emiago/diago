@@ -306,11 +306,12 @@ func WithAudioReaderDTMF(r *DTMFReader) AudioReaderOption {
 	}
 }
 
-// AudioReader gets current audio reader. It MUST be called after Answer.
-// Use AuidioListen for optimized reading.
+// AudioReader returns io.Reader on which you can read your ENCODED audio.
+// By default it is RTPPacketReader unless overwritten with SetAudioReader().
+//
+// NOTE: AudioReader must be called after negotiation is finished, like Answer()
 // Reading buffer should be equal or bigger of media.RTPBufSize
-// Options allow more intercepting audio reading like Stats or DTMF
-// NOTE that this interceptors will stay,
+// Use AuidioListen for optimized reading.
 func (d *DialogMedia) AudioReader(opts ...AudioReaderOption) (io.Reader, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -381,6 +382,9 @@ func WithAudioWriterDTMF(r *DTMFWriter) AudioWriterOption {
 	}
 }
 
+// AudioWriter returns io.Writer on which you can write your ENCODED audio.
+// By default it is RTPPacketWriter unless overwritten with SetAudioWriter().
+// NOTE: RTPPacketWriter has running sample clock, but it expects samples sent, match sample duration of codec.
 func (d *DialogMedia) AudioWriter(opts ...AudioWriterOption) (io.Writer, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
