@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emiago/diago/audio"
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
@@ -19,6 +20,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func ulawDecode(b []byte) []byte {
+	dec := make([]byte, len(b)*2)
+	n, _ := audio.DecodeUlawTo(dec, b)
+	return dec[:n]
+}
+
+func ulawEncode(b []byte) []byte {
+	dec := make([]byte, len(b)/2)
+	n, _ := audio.EncodeUlawTo(dec, b)
+	return dec[:n]
+}
 func TestBridgeProxy(t *testing.T) {
 	b := NewBridge()
 	b.WaitDialogsNum = 99 // Do not start proxy
@@ -271,6 +283,14 @@ func TestIntegrationBridgingMix(t *testing.T) {
 		assert.Equal(t, 0, bridge.mixState)
 	})
 
+	t.Run("CheckMixing", func(t *testing.T) {
+		mixedBuf := make([]byte, 12)
+		audio.PCMMix(mixedBuf, mixedBuf, ulawDecode([]byte("123450")))
+		audio.PCMMix(mixedBuf, mixedBuf, ulawDecode([]byte("123451")))
+		audio.PCMUnmix(mixedBuf, mixedBuf, ulawDecode([]byte("123451")))
+		t.Log("Mixed", ulawEncode(mixedBuf), string(ulawEncode(mixedBuf)))
+	})
+
 	t.Run("SoundMixed", func(t *testing.T) {
 		ua, _ := sipgo.NewUA()
 		defer ua.Close()
@@ -298,6 +318,95 @@ func TestIntegrationBridgingMix(t *testing.T) {
 				n, err := r.Read(buf)
 				require.NoError(t, err)
 				t.Log("Sound received", "i", i, "buf", buf[:n], "ssrc", dialog.RTPPacketWriter.SSRC)
+				t.Log("Hanguping", "ssrc", dialog.RTPPacketWriter.SSRC)
+
+				if i == 0 {
+					assert.Equal(t, []byte{34, 35, 36, 37, 38, 34}, buf[:n]) // For now As regression
+				} else if i == 1 {
+					assert.Equal(t, []byte{34, 35, 36, 37, 38, 34}, buf[:n]) // For now As regression
+				} else if i == 2 {
+					assert.Equal(t, []byte{34, 35, 36, 37, 38, 33}, buf[:n]) // For now As regression
+				}
+				dialog.Hangup(ctx)
+			}(i)
+
+		}
+		wg.Wait()
+	})
+
+	t.Run("SoundProxied", func(t *testing.T) {
+		ua, _ := sipgo.NewUA()
+		defer ua.Close()
+
+		dg := newDialer(ua)
+
+		// Make number of calls that will have audio mixed in bridge
+		// wg := sync.WaitGroup{}
+		bridge.WaitDialogsNum = 2 // Do not start mixing until all 3 get joined, otherwise there will be no gurantee when something is mixed
+
+		dialog1, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
+		require.NoError(t, err)
+
+		dialog2, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
+		require.NoError(t, err)
+
+		// Write sound on dialog 1 and make sure it is read on dialog2
+		sound := []byte("123450")
+		go func(dialog *DialogClientSession) {
+			w, _ := dialog.AudioWriter()
+			for i := 0; i < 3; i++ {
+				w.Write(sound)
+			}
+
+		}(dialog1)
+
+		r, _ := dialog2.AudioReader()
+
+		buf := make([]byte, media.RTPBufSize)
+		for i := 0; i < 3; i++ {
+			n, err := r.Read(buf)
+			require.NoError(t, err)
+			assert.Equal(t, sound, buf[:n])
+			t.Log("Sound received", "buf", buf[:n])
+		}
+	})
+
+	t.Run("SoundMixedLong", func(t *testing.T) {
+		ua, _ := sipgo.NewUA()
+		defer ua.Close()
+
+		dg := newDialer(ua)
+
+		// Make number of calls that will have audio mixed in bridge
+		wg := sync.WaitGroup{}
+		bridge.WaitDialogsNum = 3 // Do not start mixing until all 3 get joined, otherwise there will be no gurantee when something is mixed
+		for i := range 3 {
+			// Create some jitter
+			time.Sleep(5 * time.Millisecond)
+			dialog, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
+			require.NoError(t, err)
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				defer dialog.Close()
+				sound := []byte("12345" + strconv.Itoa(i))
+
+				w, _ := dialog.AudioWriter()
+				r, _ := dialog.AudioReader()
+
+				for k := 0; k < 20; k++ {
+					echoTime := time.Now()
+					_, err = w.Write(sound)
+					require.NoError(t, err)
+
+					buf := make([]byte, media.RTPBufSize)
+					n, err := r.Read(buf)
+					require.NoError(t, err)
+
+					assert.Equal(t, 6, n)
+					// We expect that there will be some processing due to sample arriving
+					assert.LessOrEqual(t, 15*time.Millisecond, time.Since(echoTime))
+				}
 				t.Log("Hanguping", "ssrc", dialog.RTPPacketWriter.SSRC)
 				dialog.Hangup(ctx)
 			}(i)

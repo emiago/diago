@@ -401,7 +401,6 @@ func (b *BridgeMix) mix() error {
 		r            io.Reader
 		w            io.Writer
 		mediaSession *media.MediaSession
-
 		// read buf
 		buf []byte
 		n   int
@@ -446,6 +445,7 @@ func (b *BridgeMix) mix() error {
 			id:           m.RTPPacketWriter.SSRC,
 			buf:          make([]byte, media.RTPBufSize),
 		}
+
 		return nil
 	}
 
@@ -468,13 +468,15 @@ func (b *BridgeMix) mix() error {
 		return err
 	}
 
-	readAllStreams := func() error {
+	// We need to skip any packets arrived before this time
+
+	readAllStreams := func(total *int) error {
 		for i, r := range rwStreams {
 			// We expect to have data or we will deadline very quickly
 			// Blocking/Sampling will happen on Write Side so in this time received samples should be present
 			// Buffering with timestamps checking needs to be added
 			// Alternative is to have this in seperate goroutines with locked buffer reads
-			r.mediaSession.StopRTP(1, 2*time.Millisecond)
+			r.mediaSession.StopRTP(1, 1*time.Millisecond)
 
 			// Mostly PCM sample size should be same or less our sampling
 			// but we should keep same sampling or deal this per writer?
@@ -487,8 +489,8 @@ func (b *BridgeMix) mix() error {
 				}
 				return err
 			}
-
-			fmt.Println("Reading", r.buf[:n])
+			*total = max(*total, n)
+			fmt.Println("Reading stream", "ssrc", r.id, "n", n)
 		}
 		return nil
 	}
@@ -511,14 +513,7 @@ func (b *BridgeMix) mix() error {
 				continue
 			}
 
-			for i := 0; i < n; i += 2 {
-				frame := int16(binary.LittleEndian.Uint16(readBuf[i:]))
-				current := int16(binary.LittleEndian.Uint16(mixedBuf[i:]))
-				// TODO consider cliping and other
-				// fmt.Println("mixing", current, frame*direction)
-				mixed := current + frame
-				binary.LittleEndian.PutUint16(mixedBuf[i:], uint16(mixed))
-			}
+			audio.PCMMix(mixedBuf, mixedBuf, readBuf)
 			maxN = max(maxN, n)
 		}
 		return maxN, nil
@@ -527,30 +522,40 @@ func (b *BridgeMix) mix() error {
 
 	unmixStream := func(r *PCMStream, mixedBuf []byte) []byte {
 		n := len(mixedBuf)
-		if n > len(r.buf) {
+		if len(r.buf) < len(mixedBuf) {
 			panic("stream buf is shorter than mixed buf")
 		}
 
-		for i := 0; i < n; i += 2 {
-			frame := int16(binary.LittleEndian.Uint16(r.buf[i:]))
-			current := int16(binary.LittleEndian.Uint16(mixedBuf[i:]))
-			mixed := current - frame
-			if n > r.n {
-				// In case mixed buffer is bigger than our read buf, just override
-				mixed = current
-			}
-			binary.LittleEndian.PutUint16(r.buf[i:], uint16(mixed))
-		}
-
+		readBuf := r.buf[:n]
+		audio.PCMUnmix(readBuf, mixedBuf, readBuf)
 		// NOTE: This can be higher than actual read bytes
-		return r.buf[:n]
+		return readBuf
 	}
 
 	mixBuf := make([]byte, media.RTPBufSize)
+	// Currently we consider that sample clock is done by Audio Writers
+	/*
+
+				Fastest starts writing but rest will delay Reading
+				----x----y---z-----|x----y----z|---x------
+				    ^      20ms     ^              ^
+
+
+				Slowest determines ticking and adds initial jitter for X and Y  but after it will have no impact except IO delay
+				---x---y----z-------tx---ty--|z-x-y|-----tx---ty----|z
+		           		    ^      20ms       ^              ^
+
+	*/
 	for {
 		// First read all streams at this point of time and fill buffer
-		if err := readAllStreams(); err != nil {
+		total := 0
+		if err := readAllStreams(&total); err != nil {
 			return err
+		}
+
+		if total == 0 {
+			fmt.Println("Nothing read")
+			continue
 		}
 
 		// Mix all streams
@@ -561,7 +566,14 @@ func (b *BridgeMix) mix() error {
 
 		// broadcast to all
 		for _, w := range rwStreams {
-			streamBuf := unmixStream(&w, mixBuf[:n])
+			streamBuf := mixBuf[:n]
+			if w.n > 0 {
+				streamBuf = unmixStream(&w, mixBuf[:n])
+			}
+			writeStart := time.Now()
+
+			// Mark as stream read
+			w.n = 0
 			if _, err := w.w.Write(streamBuf); err != nil {
 				// Detect is this Deadline or EOF error caused by stream exiting
 				fmt.Println("Writing stopped", err, "id", w.id, errors.Is(err, os.ErrDeadlineExceeded))
@@ -578,6 +590,7 @@ func (b *BridgeMix) mix() error {
 				}
 				return err
 			}
+			fmt.Println("Writing finihed", w.id, time.Since(writeStart))
 		}
 	}
 	// We need buffering up to 80ms ?
