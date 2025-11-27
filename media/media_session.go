@@ -819,10 +819,10 @@ func generateSDPForAudio(rtpProfile string, originIP net.IP, connectionIP net.IP
 	// TODO optimize this with string builder
 	s := []string{
 		"v=0",
-		fmt.Sprintf("o=- %d %d IN IP4 %s", ntpTime, ntpTime, originIP),
+		fmt.Sprintf("o=- %d %d IN %s %s", ntpTime, ntpTime, sdpIP(originIP), originIP),
 		"s=Sip Go Media",
 		// "b=AS:84",
-		fmt.Sprintf("c=IN IP4 %s", connectionIP),
+		fmt.Sprintf("c=IN %s %s", sdpIP(connectionIP), connectionIP),
 		"t=0 0",
 		fmt.Sprintf("m=audio %d %s %s", rtpPort, rtpProfile, strings.Join(fmts, " ")),
 	}
@@ -883,4 +883,12 @@ func generateMasterKeySalt(profile srtp.ProtectionProfile) ([]byte, int, error) 
 		return nil, 0, err
 	}
 	return buf, keyLen, nil
+}
+
+func sdpIP(ip net.IP) string {
+	fmt.Println("SDP IP", ip.String(), ip)
+	if ip.To4() == nil {
+		return "IP6"
+	}
+	return "IP4"
 }
