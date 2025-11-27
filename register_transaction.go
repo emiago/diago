@@ -42,6 +42,8 @@ type RegisterOptions struct {
 	RetryInterval time.Duration
 	AllowHeaders  []string
 
+	OnRegistered func()
+
 	// Useragent default will be used on what is provided as NewUA()
 	// UserAgent         string
 	// UserAgentHostname string
@@ -93,6 +95,16 @@ func newRegisterTransaction(client *sipgo.Client, recipient sip.Uri, contact sip
 }
 
 func (t *RegisterTransaction) Register(ctx context.Context) error {
+	if err := t.register(ctx); err != nil {
+		return err
+	}
+
+	if t.opts.OnRegistered != nil {
+		t.opts.OnRegistered()
+	}
+	return nil
+}
+func (t *RegisterTransaction) register(ctx context.Context) error {
 	username, password := t.opts.Username, t.opts.Password
 	client := t.client
 	req := t.Origin
