@@ -39,6 +39,10 @@ var (
 	//
 	// Experimental
 	RTPProfileSAVPDisable = false
+
+	// RTPNAT options
+	RTPNATDisabled = 0
+	RTPNATSymetric = 1
 )
 
 func logRTPRead(m *MediaSession, raddr net.Addr, p *rtp.Packet) {

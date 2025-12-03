@@ -147,7 +147,9 @@ type AnswerOptions struct {
 	OnRefer       func(referDialog *DialogClientSession)
 	// Codecs that will be used
 	Codecs []media.Codec
-	// This is MediaSession.RTPNAT
+
+	// RTPNAT is media.MediaSession.RTPNAT
+	// Check media.RTPNAT... options
 	RTPNAT int
 }
 
