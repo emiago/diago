@@ -886,7 +886,6 @@ func generateMasterKeySalt(profile srtp.ProtectionProfile) ([]byte, int, error) 
 }
 
 func sdpIP(ip net.IP) string {
-	fmt.Println("SDP IP", ip.String(), ip)
 	if ip.To4() == nil {
 		return "IP6"
 	}
