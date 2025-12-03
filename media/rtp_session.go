@@ -36,7 +36,9 @@ import (
 var (
 	DefaultOnReadRTCP  func(pkt rtcp.Packet, rtpStats RTPReadStats)  = nil
 	DefaultOnWriteRTCP func(pkt rtcp.Packet, rtpStats RTPWriteStats) = nil
-	RTPSourceLock      bool
+
+	// RTPSourceLock enables source locking after IP changes
+	RTPSourceLock bool
 )
 
 type RTPSession struct {
@@ -202,7 +204,7 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 			continue
 		}
 
-		if s.sourceLock && !s.sourceLockProtection(readPkt, s.Sess.LastReadRTPFrom) {
+		if s.sourceLock && !s.sourceLockProtection(readPkt, s.Sess.ReadRTPFromAddr) {
 			DefaultLogger().Debug("RTP Source lock protection learning. Skipping", "pkt.ssrc", readPkt.SSRC, "pkt.seq", readPkt.SequenceNumber)
 			continue
 		}

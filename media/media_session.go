@@ -118,13 +118,14 @@ type MediaSession struct {
 	remoteCtxSRTP *srtp.Context
 	srtpRemoteTag int
 
-	// RTP NAT enables handling RTP behind NAT
+	// RTP NAT enables handling RTP behind NAT. Checkout also RTPSourceLock
 	RTPNAT          int // 0 - disabled, 1 - Learn source change (RTP Symetric)
 	learnedRTPFrom  atomic.Pointer[net.UDPAddr]
 	learnedRTCPFrom atomic.Pointer[net.UDPAddr]
-	// LastReadRTPFrom is set after Read operation. NOT THREAD SAFE
+
+	// ReadRTPFromAddr is set after Read operation. NOT THREAD SAFE and should be only used together with Read
 	// It can be used to validate source of RTP packet
-	LastReadRTPFrom net.Addr
+	ReadRTPFromAddr net.Addr
 }
 
 func NewMediaSession(ip net.IP, port int) (s *MediaSession, e error) {
@@ -560,7 +561,7 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	}
 
 	logRTPRead(m, from, pkt)
-	m.LastReadRTPFrom = from
+	m.ReadRTPFromAddr = from
 
 	// Handle NAT
 	if m.RTPNAT == 1 && from.String() != m.Raddr.String() {
