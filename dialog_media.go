@@ -15,10 +15,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/emiago/sipgo/sip"
+
 	"github.com/emiago/diago/audio"
 	"github.com/emiago/diago/media"
 	"github.com/emiago/diago/media/sdp"
-	"github.com/emiago/sipgo/sip"
 )
 
 var (
@@ -165,7 +166,7 @@ func (d *DialogMedia) initMediaSessionFromConf(conf MediaConfig) error {
 		Mode:       sdp.ModeSendrecv,
 		SecureRTP:  conf.secureRTP,
 		SRTPAlg:    conf.SecureRTPAlg,
-		RTPNAT:     conf.RTPNAT,
+		RTPNAT:     conf.rtpNAT,
 	}
 
 	if err := sess.Init(); err != nil {
