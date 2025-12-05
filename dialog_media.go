@@ -165,7 +165,7 @@ func (d *DialogMedia) initMediaSessionFromConf(conf MediaConfig) error {
 		Mode:       sdp.ModeSendrecv,
 		SecureRTP:  conf.secureRTP,
 		SRTPAlg:    conf.SecureRTPAlg,
-		RTPNAT:     conf.RTPNAT,
+		RTPNAT:     conf.rtpNAT,
 	}
 
 	if err := sess.Init(); err != nil {
