@@ -280,10 +280,11 @@ func TestIntegrationBridgingMix(t *testing.T) {
 
 		bridgeServeWg.Wait()
 		assert.Equal(t, 0, len(bridge.dialogs))
-		assert.Equal(t, 0, bridge.mixState)
+		assert.EqualValues(t, 0, bridge.stateRead())
 	})
 
 	t.Run("CheckMixing", func(t *testing.T) {
+
 		mixedBuf := make([]byte, 12)
 		audio.PCMMix(mixedBuf, mixedBuf, ulawDecode([]byte("123450")))
 		audio.PCMMix(mixedBuf, mixedBuf, ulawDecode([]byte("123451")))
@@ -342,13 +343,15 @@ func TestIntegrationBridgingMix(t *testing.T) {
 
 		// Make number of calls that will have audio mixed in bridge
 		// wg := sync.WaitGroup{}
-		bridge.WaitDialogsNum = 2 // Do not start mixing until all 3 get joined, otherwise there will be no gurantee when something is mixed
+		bridge.WaitDialogsNum = 3 // Do not start mixing until all 3 get joined, otherwise there will be no gurantee when something is mixed
 
 		dialog1, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
 		require.NoError(t, err)
+		defer dialog1.Hangup(ctx)
 
 		dialog2, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
 		require.NoError(t, err)
+		defer dialog2.Hangup(ctx)
 
 		// Write sound on dialog 1 and make sure it is read on dialog2
 		sound := []byte("123450")
@@ -371,7 +374,7 @@ func TestIntegrationBridgingMix(t *testing.T) {
 		}
 	})
 
-	t.Run("SoundMixedLong", func(t *testing.T) {
+	t.Run("SoundMixingLong", func(t *testing.T) {
 		ua, _ := sipgo.NewUA()
 		defer ua.Close()
 
@@ -454,7 +457,7 @@ func TestIntegrationBridgingMix(t *testing.T) {
 		require.Eventually(t, func() bool {
 			bridge.mu.Lock()
 			defer bridge.mu.Unlock()
-			return len(bridge.dialogs) == 2 && bridge.mixState.Load() == 1
+			return len(bridge.dialogs) == 2 && bridge.stateRead() == 1
 		}, 3*time.Second, 100*time.Millisecond)
 
 		wg := sync.WaitGroup{}
