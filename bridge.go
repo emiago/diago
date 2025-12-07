@@ -12,7 +12,6 @@ import (
 	"net"
 	"os"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/emiago/diago/audio"
@@ -277,7 +276,7 @@ type BridgeMix struct {
 
 	mixWG    sync.WaitGroup
 	mixErr   error
-	mixState atomic.Int32
+	mixState int
 
 	// minDialogs is just helper flag when to start proxy
 	WaitDialogsNum int
@@ -293,6 +292,9 @@ func (b *BridgeMix) Init() {
 }
 
 func (b *BridgeMix) AddDialogSession(d DialogSession) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	if b.Originator == nil {
 		b.Originator = d
 
@@ -305,17 +307,12 @@ func (b *BridgeMix) AddDialogSession(d DialogSession) error {
 		b.originatorCodec = p.Codec
 	}
 
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.dialogs = append(b.dialogs, d)
-
 	// Stop any current mixing
-	fmt.Println("Mixing stopped by add", d.Id())
-	if err := b.mixStop(); err != nil {
+	if err := b.mixStopWait(); err != nil {
 		return fmt.Errorf("failed to stop current mixing: %w", err)
 	}
 
-	// TODO add here stream build up
+	b.dialogs = append(b.dialogs, d)
 	b.mixStart()
 	return nil
 }
@@ -326,18 +323,15 @@ func (b *BridgeMix) RemoveDialogSession(dialogID string) error {
 
 	for i, d := range b.dialogs {
 		if d.Id() == dialogID {
-			b.dialogs = append(b.dialogs[:i], b.dialogs[i+1:]...)
-
-			// Update stream list
-			fmt.Println("Mixing stopped by remove", dialogID)
-			if err := b.mixStop(); err != nil {
+			if err := b.mixStopWait(); err != nil {
 				return fmt.Errorf("failed to stop current mixing: %w", err)
 			}
+
+			b.dialogs = append(b.dialogs[:i], b.dialogs[i+1:]...)
 			b.mixStart()
 			break
 		}
 	}
-
 	return nil
 }
 
@@ -346,56 +340,78 @@ func (b *BridgeMix) Mix() (err error) {
 	return b.mix()
 }
 
-func (b *BridgeMix) mixStart() {
+func (b *BridgeMix) mixStart() error {
 	if len(b.dialogs) < 2 {
-		return
+		return nil
 	}
 	if len(b.dialogs) < b.WaitDialogsNum {
-		return
+		return nil
 	}
 
 	// Start new mix
 	b.mixWG.Add(1)
-
+	b.stateWriteUnsafe(1)
 	go func() {
 		defer b.mixWG.Done()
+		defer b.stateWrite(0)
 		if err := b.mix(); err != nil {
 			// b.mu.Lock()
 			b.mixErr = err
 			//
 		}
 	}()
-	b.mixState.Store(1) //running
+	return nil
 }
 
-func (b *BridgeMix) mixStop() error {
-	if b.mixState.Load() == 0 {
-		return nil
+func (b *BridgeMix) stateWrite(s int) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.stateWriteUnsafe(s)
+}
+
+func (b *BridgeMix) stateWriteUnsafe(s int) {
+	b.mixState = s
+}
+
+func (b *BridgeMix) stateRead() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.mixState
+}
+
+func (b *BridgeMix) stateReadUnsafe() int {
+	return b.mixState
+}
+
+func (b *BridgeMix) mixStop() (bool, error) {
+	if state := b.stateReadUnsafe(); state != 1 {
+		// Only if state is running this goroutine can stop it
+		return false, nil
 	}
+	b.stateWriteUnsafe(2)
 	var allErros error
-	b.mixState.Store(2) // stoping
 	for _, d := range b.dialogs {
 		err := d.Media().StopRTP(2, 0) // Stop writing
 		errors.Join(allErros, err)
 	}
+	return true, allErros
+}
 
-	// Waits mix termination
-	b.mixWG.Wait()
-	b.mixState.Store(0)
-
-	// Now enable RTP writing
-	for _, d := range b.dialogs {
-		err := d.Media().StartRTP(2, 0) // Stop writing
-		errors.Join(allErros, err)
+func (b *BridgeMix) mixStopWait() error {
+	stopped, err := b.mixStop()
+	if err != nil {
+		return fmt.Errorf("failed to stop current mixing: %w", err)
 	}
-	return allErros
+
+	if stopped {
+		b.mu.Unlock()
+		b.mixWG.Wait()
+		b.mu.Lock()
+	}
+	return nil
 }
 
 func (b *BridgeMix) mix() error {
-	if len(b.dialogs) < 2 {
-		return fmt.Errorf("number of dialogs must be at least 2")
-	}
-
 	type PCMStream struct {
 		id           uint32
 		r            io.Reader
@@ -405,6 +421,9 @@ func (b *BridgeMix) mix() error {
 		buf []byte
 		n   int
 	}
+
+	// Lets first check should we stop any current mixing
+
 	fmt.Println("Mixing start")
 
 	addDialogStream := func(d DialogSession, stream *PCMStream, firstMediaProps *MediaProps) error {
@@ -449,20 +468,20 @@ func (b *BridgeMix) mix() error {
 		return nil
 	}
 
-	rwStreams := make([]PCMStream, len(b.dialogs))
 	firstMediaProps := MediaProps{}
 
-	err := func() error {
+	rwStreams, err := func() ([]PCMStream, error) {
 		// We need to lock here as b.dialogs can change
 		b.mu.Lock()
 		defer b.mu.Unlock()
+		rwStreams := make([]PCMStream, len(b.dialogs))
 
 		for i, d := range b.dialogs {
 			if err := addDialogStream(d, &rwStreams[i], &firstMediaProps); err != nil {
-				return err
+				return nil, err
 			}
 		}
-		return nil
+		return rwStreams, nil
 	}()
 	if err != nil {
 		return err
@@ -490,7 +509,7 @@ func (b *BridgeMix) mix() error {
 				return err
 			}
 			*total = max(*total, n)
-			fmt.Println("Reading stream", "ssrc", r.id, "n", n)
+			// fmt.Println("Reading stream", "ssrc", r.id, "n", n)
 		}
 		return nil
 	}
@@ -576,9 +595,9 @@ func (b *BridgeMix) mix() error {
 			w.n = 0
 			if _, err := w.w.Write(streamBuf); err != nil {
 				// Detect is this Deadline or EOF error caused by stream exiting
-				fmt.Println("Writing stopped", err, "id", w.id, errors.Is(err, os.ErrDeadlineExceeded))
+				// fmt.Println("Writing stopped", err, "id", w.id, errors.Is(err, os.ErrDeadlineExceeded))
 				if errors.Is(err, os.ErrDeadlineExceeded) {
-					state := b.mixState.Load()
+					state := b.stateRead()
 					if state != 1 {
 						// We are stopped
 						return err
