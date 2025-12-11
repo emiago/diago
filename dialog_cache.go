@@ -59,7 +59,7 @@ type DialogCachePool struct {
 }
 
 func (p *DialogCachePool) MatchDialogClient(req *sip.Request) (*DialogClientSession, error) {
-	id, err := sip.UACReadRequestDialogID(req)
+	id, err := sip.DialogIDFromRequestUAC(req)
 	if err != nil {
 		return nil, errors.Join(err, sipgo.ErrDialogOutsideDialog)
 	}
@@ -73,7 +73,7 @@ func (p *DialogCachePool) MatchDialogClient(req *sip.Request) (*DialogClientSess
 }
 
 func (p *DialogCachePool) MatchDialogServer(req *sip.Request) (*DialogServerSession, error) {
-	id, err := sip.UASReadRequestDialogID(req)
+	id, err := sip.DialogIDFromRequestUAS(req)
 	if err != nil {
 		return nil, errors.Join(err, sipgo.ErrDialogOutsideDialog)
 	}

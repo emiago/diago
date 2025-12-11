@@ -45,7 +45,7 @@ type clientTxRequester struct {
 }
 
 func (r *clientTxRequester) Request(ctx context.Context, req *sip.Request) (sip.ClientTransaction, error) {
-	key, _ := sip.MakeClientTxKey(req)
+	key, _ := sip.ClientTxKeyMake(req)
 	rec := NewConnRecorder()
 	tx := sip.NewClientTx(key, req, rec, slog.Default())
 	if err := tx.Init(); err != nil {

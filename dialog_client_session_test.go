@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"math/rand/v2"
+	"sync"
 	"testing"
 
 	"github.com/emiago/diago/media"
@@ -356,6 +357,7 @@ func TestIntegrationDialogClientBadMediaNegotiation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	lock := sync.Mutex{}
 	requests := []sip.Message{}
 	responses := []sip.Message{}
 
@@ -363,6 +365,8 @@ func TestIntegrationDialogClientBadMediaNegotiation(t *testing.T) {
 		ua, _ := sipgo.NewUA(sipgo.WithUserAgent("server"))
 		defer ua.Close()
 		ua.TransportLayer().OnMessage(func(msg sip.Message) {
+			lock.Lock()
+			defer lock.Unlock()
 			requests = append(requests, msg)
 		})
 
@@ -390,6 +394,8 @@ func TestIntegrationDialogClientBadMediaNegotiation(t *testing.T) {
 	defer ua.Close()
 
 	ua.TransportLayer().OnMessage(func(msg sip.Message) {
+		lock.Lock()
+		defer lock.Unlock()
 		responses = append(responses, msg)
 	})
 
@@ -407,6 +413,9 @@ func TestIntegrationDialogClientBadMediaNegotiation(t *testing.T) {
 	})
 	t.Log(err)
 	require.Error(t, err)
+
+	lock.Lock()
+	defer lock.Unlock()
 	require.Len(t, requests, 3)
 	require.Len(t, responses, 2)
 
