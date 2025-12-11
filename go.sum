@@ -11,6 +11,8 @@ github.com/emiago/sipgo v1.0.0-beta-3 h1:3f9CCo3CGU9fh3Pul5ZFwgoLKrFd7cXtOfY2Coc
 github.com/emiago/sipgo v1.0.0-beta-3/go.mod h1:DuwAxBZhKMqIzQFPGZb1MVAGU6Wuxj64oTOhd5dx/FY=
 github.com/emiago/sipgo v1.0.0-beta-4 h1:6ChWYT1BOENubjdh3e0olG5gUhYYP2O9ipOv9pvGWVU=
 github.com/emiago/sipgo v1.0.0-beta-4/go.mod h1:DuwAxBZhKMqIzQFPGZb1MVAGU6Wuxj64oTOhd5dx/FY=
+github.com/emiago/sipgo v1.0.0 h1:l+Ytb33cZJHz4AscVXtT+U6au2s2cvVeQqcIyfC7m2s=
+github.com/emiago/sipgo v1.0.0/go.mod h1:DuwAxBZhKMqIzQFPGZb1MVAGU6Wuxj64oTOhd5dx/FY=
 github.com/go-audio/riff v1.0.0 h1:d8iCGbDvox9BfLagY94fBynxSPHO80LmZCaOsmKxokA=
 github.com/go-audio/riff v1.0.0/go.mod h1:l3cQwc85y79NQFCRB7TiPoNiaijp6q8Z0Uv38rVG498=
 github.com/gobwas/httphead v0.1.0 h1:exrUm0f4YX0L7EBwZHuCF4GDp8aJfVeBrlLQrs6NqWU=
