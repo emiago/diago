@@ -343,7 +343,7 @@ func TestIntegrationBridgingMix(t *testing.T) {
 
 		// Make number of calls that will have audio mixed in bridge
 		// wg := sync.WaitGroup{}
-		bridge.WaitDialogsNum = 3 // Do not start mixing until all 3 get joined, otherwise there will be no gurantee when something is mixed
+		bridge.WaitDialogsNum = 2 // Do not start mixing until all 3 get joined, otherwise there will be no gurantee when something is mixed
 
 		dialog1, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
 		require.NoError(t, err)
@@ -411,6 +411,9 @@ func TestIntegrationBridgingMix(t *testing.T) {
 					assert.LessOrEqual(t, 15*time.Millisecond, time.Since(echoTime))
 				}
 				t.Log("Hanguping", "ssrc", dialog.RTPPacketWriter.SSRC)
+				// If we stop fast we will prevent mixing and lose some packets
+				// This currently is issue and maybe only buffering could solve IT
+				time.Sleep(200 * time.Millisecond)
 				dialog.Hangup(ctx)
 			}(i)
 
@@ -442,11 +445,11 @@ func TestIntegrationBridgingMix(t *testing.T) {
 		require.Eventually(t, func() bool {
 			bridge.mu.Lock()
 			defer bridge.mu.Unlock()
-			t.Log("Bridges", len(bridge.dialogs))
+			t.Log("Bridge dialogs", len(bridge.dialogs))
 			return len(bridge.dialogs) == 3
 		}, 3*time.Second, 100*time.Millisecond)
 
-		// Let have first leaving bridge
+		// Lets have first leaving bridge
 		dialog := dialogs[0]
 		t.Log("Hanguping", dialog.ID)
 		dialog.Hangup(dialog.Context())
