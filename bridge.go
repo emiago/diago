@@ -280,15 +280,17 @@ type BridgeMix struct {
 
 	// minDialogs is just helper flag when to start proxy
 	WaitDialogsNum int
+	log            *slog.Logger
 }
 
-func NewBridgeMix() BridgeMix {
+func NewBridgeMix() *BridgeMix {
 	b := BridgeMix{}
 	b.Init()
-	return b
+	return &b
 }
 
 func (b *BridgeMix) Init() {
+	b.log = media.DefaultLogger().With("caller", "bridge_mix")
 }
 
 func (b *BridgeMix) AddDialogSession(d DialogSession) error {
@@ -308,11 +310,13 @@ func (b *BridgeMix) AddDialogSession(d DialogSession) error {
 	}
 
 	// Stop any current mixing
+	b.log.Debug("Stoping mix", "dialog", d.Id())
 	if err := b.mixStopWait(); err != nil {
 		return fmt.Errorf("failed to stop current mixing: %w", err)
 	}
 
 	b.dialogs = append(b.dialogs, d)
+	b.log.Debug("Added dialog", "dialog", d.Id(), "total", len(b.dialogs))
 	b.mixStart()
 	return nil
 }
@@ -321,18 +325,30 @@ func (b *BridgeMix) RemoveDialogSession(dialogID string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	// NOTE: We need to first update list but we can not restart mixing inside loop
+	// as Lock is unlocked by stop
+	var dialog DialogSession
+	var newDialogs []DialogSession
 	for i, d := range b.dialogs {
 		if d.Id() == dialogID {
-			if err := b.mixStopWait(); err != nil {
-				return fmt.Errorf("failed to stop current mixing: %w", err)
-			}
-
-			b.dialogs = append(b.dialogs[:i], b.dialogs[i+1:]...)
-			b.mixStart()
+			dialog = d
+			newDialogs = append(b.dialogs[:i], b.dialogs[i+1:]...)
 			break
 		}
 	}
-	return nil
+
+	if dialog == nil {
+		return nil
+	}
+
+	b.log.Debug("Stoping mix", "dialog", dialog.Id())
+	if err := b.mixStopWait(); err != nil {
+		return fmt.Errorf("failed to stop current mixing: %w", err)
+	}
+
+	b.dialogs = newDialogs
+	b.log.Debug("Removed dialog", "dialog", dialog.Id(), "total", len(b.dialogs))
+	return b.mixStart()
 }
 
 // Mix explicitely starts mixing. Make sure you have increased WaitDialogsNum
@@ -398,6 +414,7 @@ func (b *BridgeMix) mixStop() (bool, error) {
 }
 
 func (b *BridgeMix) mixStopWait() error {
+	// DO NOT CALL THIS INSIDE LOOP of b.dialogs. This Unlocks
 	stopped, err := b.mixStop()
 	if err != nil {
 		return fmt.Errorf("failed to stop current mixing: %w", err)
@@ -423,9 +440,6 @@ func (b *BridgeMix) mix() error {
 	}
 
 	// Lets first check should we stop any current mixing
-
-	fmt.Println("Mixing start")
-
 	addDialogStream := func(d DialogSession, stream *PCMStream, firstMediaProps *MediaProps) error {
 		m := d.Media()
 
@@ -503,7 +517,6 @@ func (b *BridgeMix) mix() error {
 			rwStreams[i].n = n
 			if err != nil {
 				if errors.Is(err, os.ErrDeadlineExceeded) {
-					fmt.Println("Skipping stream read", r.id)
 					continue
 				}
 				return err
@@ -573,7 +586,8 @@ func (b *BridgeMix) mix() error {
 		}
 
 		if total == 0 {
-			fmt.Println("Nothing read")
+			b.log.Debug("Nothing read, delaying read")
+			time.Sleep(10 * time.Millisecond)
 			continue
 		}
 
@@ -589,7 +603,7 @@ func (b *BridgeMix) mix() error {
 			if w.n > 0 {
 				streamBuf = unmixStream(&w, mixBuf[:n])
 			}
-			writeStart := time.Now()
+			// writeStart := time.Now()
 
 			// Mark as stream read
 			w.n = 0
@@ -609,7 +623,7 @@ func (b *BridgeMix) mix() error {
 				}
 				return err
 			}
-			fmt.Println("Writing finihed", w.id, time.Since(writeStart))
+			// b.log.Debug("Writing finished", "ssrc", w.id, "dur", time.Since(writeStart))
 		}
 	}
 	// We need buffering up to 80ms ?
