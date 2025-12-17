@@ -264,24 +264,22 @@ func (b *Bridge) proxyMediaWithDTMF(m1 *DialogMedia, m2 *DialogMedia) error {
 }
 
 type BridgeMix struct {
-	// Originator is dialog session that created bridge
-	Originator DialogSession
-
 	// TODO: RTPpass. RTP pass means that RTP will be proxied.
 	// This gives high performance but you can not attach any pipeline in media processing
 	// RTPpass bool
 
-	mu              sync.Mutex
-	dialogs         []DialogSession
-	originatorCodec media.Codec
+	mu      sync.Mutex
+	dialogs []DialogSession
 
 	mixWG    sync.WaitGroup
 	mixErr   error
 	mixState int
 
-	// minDialogs is just helper flag when to start proxy
+	// WaitDialogsNum is just helper flag when to start proxy
 	WaitDialogsNum int
-	log            *slog.Logger
+	// WithRealtimeReader is almost always nesessary if you are delaying audio streaming(mixing) in bridge
+	WithRealtimeReader bool
+	log                *slog.Logger
 }
 
 func NewBridgeMix() *BridgeMix {
@@ -318,18 +316,6 @@ func (b *BridgeMix) DialogSessionsList() []DialogSession {
 func (b *BridgeMix) AddDialogSession(d DialogSession) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-
-	if b.Originator == nil {
-		b.Originator = d
-
-		m := d.Media()
-		p := MediaProps{}
-		_, err := m.AudioReader(WithAudioReaderMediaProps(&MediaProps{}))
-		if err != nil {
-			return err
-		}
-		b.originatorCodec = p.Codec
-	}
 
 	// Stop any current mixing
 	b.log.Debug("Stoping mix", "dialog", d.Id())
@@ -370,6 +356,7 @@ func (b *BridgeMix) RemoveDialogSession(dialogID string) error {
 			break
 		}
 	}
+
 	b.log.Debug("Removed dialog", "dialog", dialog.Id(), "total", len(b.dialogs))
 	return b.mixStart()
 }
@@ -380,7 +367,7 @@ func (b *BridgeMix) Mix() (err error) {
 }
 
 func (b *BridgeMix) mixStart() error {
-	if len(b.dialogs) < 2 {
+	if len(b.dialogs) < 1 {
 		return nil
 	}
 	if len(b.dialogs) < b.WaitDialogsNum {
@@ -393,9 +380,10 @@ func (b *BridgeMix) mixStart() error {
 	go func() {
 		defer b.mixWG.Done()
 		defer b.stateWrite(0)
-		b.log.Debug("Starting mix")
+		b.log.Info("Starting mix")
 		if err := b.mix(); err != nil {
 			// b.mu.Lock()
+			b.log.Info("Mix stopped with error", "error", err)
 			b.mixErr = err
 			//
 		}
@@ -449,7 +437,13 @@ func (b *BridgeMix) mixStopWait() error {
 		b.mixWG.Wait()
 		b.mu.Lock()
 	}
-	return nil
+	// Enable RTP again
+	var allErros error
+	for _, d := range b.dialogs {
+		err := d.Media().StartRTP(1, 0) // Stop reading
+		errors.Join(allErros, err)
+	}
+	return allErros
 }
 
 func (b *BridgeMix) mix() error {
@@ -459,28 +453,47 @@ func (b *BridgeMix) mix() error {
 		w            io.Writer
 		mediaSession *media.MediaSession
 		// read buf
-		buf       []byte
-		n         int
-		readFails int
+		buf []byte
+		n   int
 	}
 
 	// Lets first check should we stop any current mixing
+	var firstDialogCodec media.Codec
 	addDialogStream := func(d DialogSession, stream *PCMStream, firstMediaProps *MediaProps) error {
 		m := d.Media()
 
 		p := MediaProps{}
-		r, err := m.AudioReader(WithAudioReaderMediaProps(&MediaProps{}))
+		r, err := m.AudioReader(WithAudioReaderMediaProps(&p))
 		if err != nil {
 			return err
 		}
 
-		if b.originatorCodec.SampleRate != p.Codec.SampleRate && b.originatorCodec.SampleDur != p.Codec.SampleDur {
+		if firstDialogCodec.SampleRate == 0 {
+			firstDialogCodec = p.Codec
+		}
+
+		if firstDialogCodec.SampleRate != p.Codec.SampleRate && firstDialogCodec.SampleDur != p.Codec.SampleDur {
 			return fmt.Errorf("Codec missmatch. Resampling or transcoding is not supported")
 		}
 
+		rtr := func() io.Reader {
+			if !b.WithRealtimeReader {
+				return r
+			}
+
+			if rtr, ok := r.(*RTPRealTimeReader); ok {
+				return rtr
+			}
+
+			rtr := &RTPRealTimeReader{}
+			rtr.Init(r, m.RTPPacketReader, p.Codec)
+			m.SetAudioReader(rtr)
+			return rtr
+		}()
+
 		// Attach PCM decoder
 		pcmReader := audio.PCMDecoderReader{}
-		if err := pcmReader.Init(p.Codec, r); err != nil {
+		if err := pcmReader.Init(p.Codec, rtr); err != nil {
 			return err
 		}
 
@@ -592,6 +605,14 @@ func (b *BridgeMix) mix() error {
 		audio.PCMUnmix(readBuf, mixedBuf, readBuf)
 		// NOTE: This can be higher than actual read bytes
 		return readBuf
+	}
+
+	if len(rwStreams) == 1 {
+		b.log.Info("Only single stream in bridge, reading bufffers...")
+		// Just keep streaming
+		stream := rwStreams[0]
+		_, err := media.ReadAll(stream.r, media.RTPBufSize)
+		return err
 	}
 
 	mixBuf := make([]byte, media.RTPBufSize)
