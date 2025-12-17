@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -293,6 +294,27 @@ func (b *BridgeMix) Init() {
 	b.log = media.DefaultLogger().With("caller", "bridge_mix")
 }
 
+func (b *BridgeMix) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	str := fmt.Sprintf("state: %d", b.mixState)
+	str += " dialogs:["
+	for _, d := range b.dialogs {
+		str += " " + d.Id()
+	}
+	str += "]"
+	return str
+}
+
+// DialogSessionsList returns list of dialogs in bridge
+// It is not safe to use dialogs for media until they are removed from bridge
+func (b *BridgeMix) DialogSessionsList() []DialogSession {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return slices.Clone(b.dialogs)
+}
+
 func (b *BridgeMix) AddDialogSession(d DialogSession) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -325,18 +347,13 @@ func (b *BridgeMix) RemoveDialogSession(dialogID string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	// NOTE: We need to first update list but we can not restart mixing inside loop
-	// as Lock is unlocked by stop
 	var dialog DialogSession
-	var newDialogs []DialogSession
-	for i, d := range b.dialogs {
+	for _, d := range b.dialogs {
 		if d.Id() == dialogID {
 			dialog = d
-			newDialogs = append(b.dialogs[:i], b.dialogs[i+1:]...)
 			break
 		}
 	}
-
 	if dialog == nil {
 		return nil
 	}
@@ -346,7 +363,13 @@ func (b *BridgeMix) RemoveDialogSession(dialogID string) error {
 		return fmt.Errorf("failed to stop current mixing: %w", err)
 	}
 
-	b.dialogs = newDialogs
+	// NOTE: mixStopWait unlocks so we can not do any update before
+	for i, d := range b.dialogs {
+		if d.Id() == dialogID {
+			b.dialogs = append(b.dialogs[:i], b.dialogs[i+1:]...)
+			break
+		}
+	}
 	b.log.Debug("Removed dialog", "dialog", dialog.Id(), "total", len(b.dialogs))
 	return b.mixStart()
 }
@@ -370,6 +393,7 @@ func (b *BridgeMix) mixStart() error {
 	go func() {
 		defer b.mixWG.Done()
 		defer b.stateWrite(0)
+		b.log.Debug("Starting mix")
 		if err := b.mix(); err != nil {
 			// b.mu.Lock()
 			b.mixErr = err
@@ -407,7 +431,7 @@ func (b *BridgeMix) mixStop() (bool, error) {
 	b.stateWriteUnsafe(2)
 	var allErros error
 	for _, d := range b.dialogs {
-		err := d.Media().StopRTP(2, 0) // Stop writing
+		err := d.Media().StopRTP(1, 0) // Stop reading
 		errors.Join(allErros, err)
 	}
 	return true, allErros
@@ -435,8 +459,9 @@ func (b *BridgeMix) mix() error {
 		w            io.Writer
 		mediaSession *media.MediaSession
 		// read buf
-		buf []byte
-		n   int
+		buf       []byte
+		n         int
+		readFails int
 	}
 
 	// Lets first check should we stop any current mixing
@@ -517,6 +542,11 @@ func (b *BridgeMix) mix() error {
 			rwStreams[i].n = n
 			if err != nil {
 				if errors.Is(err, os.ErrDeadlineExceeded) {
+					state := b.stateRead()
+					if state != 1 {
+						// We are stopped
+						return err
+					}
 					continue
 				}
 				return err
@@ -587,7 +617,7 @@ func (b *BridgeMix) mix() error {
 
 		if total == 0 {
 			b.log.Debug("Nothing read, delaying read")
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 			continue
 		}
 
@@ -607,7 +637,9 @@ func (b *BridgeMix) mix() error {
 
 			// Mark as stream read
 			w.n = 0
-			if _, err := w.w.Write(streamBuf); err != nil {
+			n, err := w.w.Write(streamBuf)
+			b.log.Debug("Writing stream", "stream", w.id, "n", n, "err", err)
+			if err != nil {
 				// Detect is this Deadline or EOF error caused by stream exiting
 				// fmt.Println("Writing stopped", err, "id", w.id, errors.Is(err, os.ErrDeadlineExceeded))
 				if errors.Is(err, os.ErrDeadlineExceeded) {

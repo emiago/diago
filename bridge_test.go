@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -228,10 +229,9 @@ func TestIntegrationBridgingMix(t *testing.T) {
 	))
 
 	bridge := NewBridgeMix()
-	bridgeServeWg := sync.WaitGroup{}
+	dialogExit := make(chan string, 10)
 	err := tu.ServeBackground(ctx, func(in *DialogServerSession) {
-		bridgeServeWg.Add(1)
-		defer bridgeServeWg.Done()
+		defer func() { dialogExit <- in.ID }()
 
 		in.Trying()
 		in.Ringing()
@@ -278,7 +278,9 @@ func TestIntegrationBridgingMix(t *testing.T) {
 			dialog.Close()
 		}
 
-		bridgeServeWg.Wait()
+		for range len(dialogs) {
+			<-dialogExit
+		}
 		assert.Equal(t, 0, len(bridge.dialogs))
 		assert.EqualValues(t, 0, bridge.stateRead())
 	})
@@ -302,11 +304,14 @@ func TestIntegrationBridgingMix(t *testing.T) {
 		wg := sync.WaitGroup{}
 		bridge.WaitDialogsNum = 3 // Do not start mixing until all 3 get joined, otherwise there will be no gurantee when something is mixed
 		for i := range 3 {
-			dialog, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
-			require.NoError(t, err)
+
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
+
+				dialog, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
+				require.NoError(t, err)
+
 				defer dialog.Close()
 				sound := []byte("12345" + strconv.Itoa(i))
 
@@ -319,7 +324,6 @@ func TestIntegrationBridgingMix(t *testing.T) {
 				n, err := r.Read(buf)
 				require.NoError(t, err)
 				t.Log("Sound received", "i", i, "buf", buf[:n], "ssrc", dialog.RTPPacketWriter.SSRC)
-				t.Log("Hanguping", "ssrc", dialog.RTPPacketWriter.SSRC)
 
 				if i == 0 {
 					assert.Equal(t, []byte{34, 35, 36, 37, 38, 34}, buf[:n]) // For now As regression
@@ -328,14 +332,26 @@ func TestIntegrationBridgingMix(t *testing.T) {
 				} else if i == 2 {
 					assert.Equal(t, []byte{34, 35, 36, 37, 38, 33}, buf[:n]) // For now As regression
 				}
+				t.Log("Hanguping", "ssrc", dialog.RTPPacketWriter.SSRC)
 				dialog.Hangup(ctx)
 			}(i)
 
 		}
 		wg.Wait()
+
+		for range 3 {
+			<-dialogExit
+		}
+		assert.Equal(t, 0, len(bridge.DialogSessionsList()), bridge.String())
 	})
 
 	t.Run("SoundProxied", func(t *testing.T) {
+		defer func() {
+			for range 2 {
+				<-dialogExit
+			}
+		}()
+
 		ua, _ := sipgo.NewUA()
 		defer ua.Close()
 
@@ -372,6 +388,7 @@ func TestIntegrationBridgingMix(t *testing.T) {
 			assert.Equal(t, sound, buf[:n])
 			t.Log("Sound received", "buf", buf[:n])
 		}
+
 	})
 
 	t.Run("SoundMixingLong", func(t *testing.T) {
@@ -419,6 +436,11 @@ func TestIntegrationBridgingMix(t *testing.T) {
 
 		}
 		wg.Wait()
+
+		for range 3 {
+			<-dialogExit
+		}
+		assert.Equal(t, 0, len(bridge.dialogs))
 	})
 
 	t.Run("MixingWorksAfterLeaving", func(t *testing.T) {
@@ -457,12 +479,9 @@ func TestIntegrationBridgingMix(t *testing.T) {
 		dialogs = dialogs[1:]
 
 		// We should wait that this complets somehow?
-		require.Eventually(t, func() bool {
-			bridge.mu.Lock()
-			defer bridge.mu.Unlock()
-			return len(bridge.dialogs) == 2 && bridge.stateRead() == 1
-		}, 3*time.Second, 100*time.Millisecond)
-
+		for range 1 {
+			<-dialogExit
+		}
 		wg := sync.WaitGroup{}
 		for i, dialog := range dialogs {
 			wg.Add(1)
@@ -483,9 +502,70 @@ func TestIntegrationBridgingMix(t *testing.T) {
 		wg.Wait()
 
 		// Now hangup
+		for _, dialog := range dialogs {
+			dialog.Hangup(dialog.Context())
+			dialog.Close()
+		}
+
+		for range 2 {
+			<-dialogExit
+		}
+		assert.Equal(t, 0, len(bridge.dialogs))
+	})
+
+	t.Run("MixingWorksAfterRejoining", func(t *testing.T) {
+		ua, _ := sipgo.NewUA()
+		defer ua.Close()
+
+		dg := newDialer(ua)
+		dialogs := make([]*DialogClientSession, 2)
+		for i := range 2 {
+			dialog, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
+			require.NoError(t, err)
+			dialogs[i] = dialog
+
+			sound := []byte("12345" + strconv.Itoa(i))
+
+			w, _ := dialog.AudioWriter()
+			// Buffer some more writes
+			for range 5 {
+				_, err = w.Write(sound)
+				require.NoError(t, err)
+			}
+		}
+
+		// Now hangup first
+		require.NoError(t, dialogs[0].Hangup(context.TODO()))
+
+		// Dial again
+		dialog, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
+		require.NoError(t, err)
+		dialogs[0] = dialog
+		w, _ := dialog.AudioWriter()
+		for range 5 {
+			_, err = w.Write([]byte("987654"))
+			require.NoError(t, err)
+		}
+
+		r, _ := dialogs[1].AudioReader()
+		buf := make([]byte, media.RTPBufSize)
+
+		expectSound := append(slices.Repeat([]string{"123450"}, 5), slices.Repeat([]string{"987654"}, 5)...)
+		for _, sound := range expectSound {
+			n, err := r.Read(buf)
+			require.NoError(t, err)
+			assert.Equal(t, sound, string(buf[:n]))
+		}
+
+		// Now hangup
 		for _, dialog := range dialogs[1:] {
 			dialog.Hangup(dialog.Context())
 			dialog.Close()
 		}
+
+		for range 2 {
+			<-dialogExit
+		}
+
 	})
 }
