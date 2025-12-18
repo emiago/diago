@@ -18,6 +18,7 @@ import (
 
 	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/sip"
+	"github.com/pion/dtls/v3"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/srtp/v3"
@@ -110,6 +111,9 @@ type MediaSession struct {
 	// TODO support multile for offering
 	SRTPAlg uint16
 
+	// DTLSConf used for DTLS
+	DTLSConf DTLSConfig
+
 	// filterCodecs is common list of codecs after negotiation
 	filterCodecs []Codec
 	rtpConn      net.PacketConn
@@ -130,6 +134,8 @@ type MediaSession struct {
 	// ReadRTPFromAddr is set after Read operation. NOT THREAD SAFE and should be only used together with Read
 	// It can be used to validate source of RTP packet
 	ReadRTPFromAddr net.Addr
+	// DTLS
+	dtlsConn *dtls.Conn
 }
 
 func NewMediaSession(ip net.IP, port int) (s *MediaSession, e error) {
@@ -336,7 +342,38 @@ func (s *MediaSession) LocalSDP() []byte {
 		}
 	}
 
-	return generateSDPForAudio(rtpProfile, ip, connIP, rtpPort, s.Mode, codecs, localSDES)
+	var fingerprints []sdpFingerprints
+	dtlsSetupRole := "actpass"
+	if s.SecureRTP == 2 {
+		if s.Raddr.IP != nil {
+			// We do have remote IP, so probably we are server
+			//  lets be then active roll
+			dtlsSetupRole = "active"
+		}
+		// DTLS
+		// This is only needed for self signed certificates?
+		// https://datatracker.ietf.org/doc/html/rfc5763#section-2
+		// 	 If Alice uses only self- signed certificates for the communication with Bob, a fingerprint is
+		//    included in the SDP offer/answer exchange.
+		// 		The fingerprint alone protects against active attacks on the media
+		//    but not active attacks on the signaling.  In order to prevent active
+		//    attacks on the signaling, "Enhancements for Authenticated Identity
+		//    Management in the Session Initiation Protocol (SIP)" [RFC4474]
+		fingerprints = make([]sdpFingerprints, len(s.DTLSConf.Certificates))
+		for i, cert := range s.DTLSConf.Certificates {
+			fingerprint, err := dtlsSHA256Fingerprint(cert)
+			if err != nil {
+				DefaultLogger().Error("Failed to generate dtls certificate fingerprint", "error", err)
+				continue
+			}
+			fingerprints[i] = sdpFingerprints{
+				fingerprint: fingerprint,
+				alg:         "SHA-256",
+			}
+		}
+	}
+
+	return generateSDPForAudio(rtpProfile, ip, connIP, rtpPort, s.Mode, codecs, localSDES, fingerprints, dtlsSetupRole)
 }
 
 // RemoteSDP applies remote SDP.
@@ -386,6 +423,8 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	if err != nil {
 		return err
 	}
+	s.SetRemoteAddr(&net.UDPAddr{IP: ci.IP, Port: md.Port})
+
 	// Check for SDES
 	for _, v := range attrs {
 		if strings.HasPrefix(v, "crypto:") {
@@ -432,13 +471,90 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 
 			break
 		}
+
+	}
+
+	// Check for DTLS
+	if len(s.DTLSConf.Certificates) > 0 {
+		setup := ""
+		fingerprints := make([]sdpFingerprints, 0, 1) // at least must be 1
+		for _, v := range attrs {
+			if strings.HasPrefix(v, "setup:") {
+				setup = strings.TrimSpace(v[len("setup:"):])
+				continue
+			}
+
+			// This may only needed to be done when answering call
+			if strings.HasPrefix(v, "fingerprint:") {
+				vals := strings.Split(v[len("fingerprint:"):], " ")
+				if len(vals) < 2 {
+					return fmt.Errorf("sdp: bad fingerprint attribute attr=%q", v)
+				}
+				alg := vals[1]
+				fp := vals[2]
+				// TODO fingerprint validation
+				fingerprints = append(fingerprints, sdpFingerprints{
+					alg:         alg,
+					fingerprint: fp,
+				})
+			}
+		}
+
+		if setup == "" {
+			return fmt.Errorf("Empty a=setup value attribute for dtls")
+		}
+
+		// THIS may need external or after SIP ACK establishment
+		switch setup {
+		case "actpass", "passive":
+			// we are client
+			s.dtlsConn, err = dtlsClientConf(s.rtpConn, &s.Raddr, s.DTLSConf)
+			if err != nil {
+				return fmt.Errorf("failed to setup dlts client conn: %w", err)
+			}
+
+		default:
+			// we are server
+			s.dtlsConn, err = dtlsServerConf(s.rtpConn, &s.Raddr, s.DTLSConf)
+			if err != nil {
+				return fmt.Errorf("failed to setup dlts server conn: %w", err)
+			}
+		}
+
+		if err := s.dtlsConn.Handshake(); err != nil {
+			return fmt.Errorf("dtls conn handshake: %w", err)
+		}
+
+		state, ok := s.dtlsConn.ConnectionState()
+		if !ok {
+			return fmt.Errorf("failed to get dtls client state")
+		}
+
+		matchedFPErr := func() error {
+			for _, fp := range fingerprints {
+				DefaultLogger().Debug("Checking fingerprint", "alg", fp.alg, "fg", fp.fingerprint)
+				if fp.alg == "SHA-256" {
+					remoteFP, err := dtlsSHA256CertificateFingerprint(state.PeerCertificates[0])
+					if err != nil {
+						return err
+					}
+
+					if fp.fingerprint == remoteFP {
+						return nil
+					}
+				}
+			}
+			return fmt.Errorf("no matched fingerprint")
+		}()
+
+		if matchedFPErr != nil {
+			return matchedFPErr
+		}
 	}
 
 	if secureRequest && s.remoteCtxSRTP == nil {
 		return fmt.Errorf("remote requested secure RTP, but no context is created proto=%s", md.Proto)
 	}
-
-	s.SetRemoteAddr(&net.UDPAddr{IP: ci.IP, Port: md.Port})
 	return nil
 }
 
@@ -855,7 +971,12 @@ type sdesInline struct {
 	tag    int
 }
 
-func generateSDPForAudio(rtpProfile string, originIP net.IP, connectionIP net.IP, rtpPort int, mode string, codecs []Codec, sdes sdesInline) []byte {
+type sdpFingerprints struct {
+	fingerprint string
+	alg         string
+}
+
+func generateSDPForAudio(rtpProfile string, originIP net.IP, connectionIP net.IP, rtpPort int, mode string, codecs []Codec, sdes sdesInline, fingerprints []sdpFingerprints, dtlsSetup string) []byte {
 	ntpTime := GetCurrentNTPTimestamp()
 
 	fmts := make([]string, len(codecs))
@@ -902,6 +1023,16 @@ func generateSDPForAudio(rtpProfile string, originIP net.IP, connectionIP net.IP
 
 	if sdes.alg != "" {
 		s = append(s, fmt.Sprintf("a=crypto:%d %s inline:%s", sdes.tag, sdes.alg, sdes.base64))
+	}
+
+	if fingerprints != nil {
+		s = append(s, "a=setup: "+dtlsSetup)
+		for _, d := range fingerprints {
+			if d.fingerprint == "" {
+				continue
+			}
+			s = append(s, fmt.Sprintf("a=fingerprint:%s %s", d.alg, d.fingerprint))
+		}
 	}
 	// s := []string{
 	// 	"v=0",
