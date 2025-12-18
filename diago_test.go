@@ -6,6 +6,7 @@ package diago
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"io"
 	"log/slog"
 	"net"
@@ -17,6 +18,7 @@ import (
 	"github.com/emiago/diago/examples"
 	"github.com/emiago/diago/media"
 	"github.com/emiago/diago/media/sdp"
+	"github.com/emiago/diago/testdata"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/stretchr/testify/assert"
@@ -371,6 +373,91 @@ func TestIntegrationDiagoSRTPCall(t *testing.T) {
 	// require.NoError(t, err)
 
 	d, err := dg.Invite(ctx, sip.Uri{User: "11", Host: "127.0.0.1", Port: 15443}, InviteOptions{Transport: "tcp"})
+	require.NoError(t, err)
+
+	// pb, err := d.PlaybackCreate()
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	ulaw := make([]byte, 160)
+	audio.EncodeUlawTo(ulaw, bytes.Repeat([]byte{1}, 320))
+
+	reader := bytes.NewBuffer(ulaw)
+	r, _ := d.AudioReader()
+	w, _ := d.AudioWriter()
+	_, err = media.Copy(reader, w)
+	require.ErrorIs(t, err, io.EOF)
+
+	recv := make([]byte, 160)
+	r.Read(recv)
+	assert.Equal(t, ulaw, recv)
+}
+
+func TestIntegrationDiagoDTLSCall(t *testing.T) {
+	// TODO: USE TLS as transport for more correct test
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	{
+		ua, _ := sipgo.NewUA()
+		defer ua.Close()
+
+		dg := NewDiago(ua,
+			WithTransport(
+				Transport{
+					ID:        "tcp",
+					Transport: "tcp",
+					BindHost:  "127.0.0.1",
+					BindPort:  16443,
+					MediaSRTP: 2, // This enables SRTP
+					MediaDTLSConf: media.DTLSConfig{
+						Certificates: []tls.Certificate{testdata.ServerCertificate()},
+					},
+				},
+			),
+			WithMediaConfig(
+				MediaConfig{
+					Codecs: []media.Codec{media.CodecAudioUlaw, media.CodecAudioAlaw},
+				},
+			))
+
+		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+			d.Trying()
+			if err := d.Answer(); err != nil {
+				panic(err)
+			}
+
+			err := d.Echo()
+			slog.Info("Echo finished with", "error", err)
+
+		})
+		require.NoError(t, err)
+	}
+
+	ua, _ := sipgo.NewUA()
+	dg := NewDiago(ua,
+		WithTransport(
+			Transport{
+				ID:        "tcp",
+				Transport: "tcp",
+				BindHost:  "127.0.0.1",
+				BindPort:  16441,
+				MediaSRTP: 2, // USE DTLS
+				MediaDTLSConf: media.DTLSConfig{
+					Certificates: []tls.Certificate{testdata.ClientCertificate()},
+				},
+			},
+		),
+		WithMediaConfig(
+			MediaConfig{
+				Codecs: []media.Codec{media.CodecAudioUlaw, media.CodecAudioAlaw},
+			},
+		))
+
+	// err = dg.ServeBackground(ctx, func(d *DialogServerSession) {})
+	// require.NoError(t, err)
+
+	d, err := dg.Invite(ctx, sip.Uri{User: "11", Host: "127.0.0.1", Port: 16443}, InviteOptions{Transport: "tcp"})
 	require.NoError(t, err)
 
 	// pb, err := d.PlaybackCreate()

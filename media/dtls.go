@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2024, Emir Aganovic
+
 package media
 
 import (
@@ -11,6 +14,10 @@ import (
 
 	"github.com/pion/dtls/v3"
 	"github.com/pion/logging"
+)
+
+var (
+	DTLSTrace bool
 )
 
 type DTLSConfig struct {
@@ -42,6 +49,12 @@ func dtlsServer(conn net.PacketConn, raddr net.Addr, certificates []tls.Certific
 		ClientAuth: dtls.NoClientCert,
 	}
 
+	if DTLSTrace {
+		loggerFactory := logging.NewDefaultLoggerFactory()
+		loggerFactory.DefaultLogLevel = logging.LogLevelTrace
+		config.LoggerFactory = loggerFactory
+	}
+
 	return dtls.Server(conn, raddr, config)
 }
 
@@ -51,12 +64,9 @@ func dtlsClientConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls
 
 func dtlsClient(conn net.PacketConn, raddr net.Addr, certificates []tls.Certificate, serverName string) (*dtls.Conn, error) {
 	// Client DTLS config
-	loggerFactory := logging.NewDefaultLoggerFactory()
-	loggerFactory.DefaultLogLevel = logging.LogLevelTrace
 
 	config := &dtls.Config{
-		LoggerFactory: loggerFactory,
-		Certificates:  certificates,
+		Certificates: certificates,
 		// CipherSuites: []dtls.CipherSuiteID{
 		// 	dtls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 		// },
@@ -67,6 +77,12 @@ func dtlsClient(conn net.PacketConn, raddr net.Addr, certificates []tls.Certific
 		InsecureSkipVerify:   serverName == "", // Accept self-signed certs (for dev)
 		ServerName:           serverName,       // If insecure is false
 		ExtendedMasterSecret: dtls.RequireExtendedMasterSecret,
+	}
+
+	if DTLSTrace {
+		loggerFactory := logging.NewDefaultLoggerFactory()
+		loggerFactory.DefaultLogLevel = logging.LogLevelTrace
+		config.LoggerFactory = loggerFactory
 	}
 
 	return dtls.Client(conn, raddr, config)

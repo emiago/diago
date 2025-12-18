@@ -166,6 +166,7 @@ func (d *DialogMedia) initMediaSessionFromConf(conf MediaConfig) error {
 		SecureRTP:  conf.secureRTP,
 		SRTPAlg:    conf.SecureRTPAlg,
 		RTPNAT:     conf.rtpNAT,
+		DTLSConf:   conf.dtlsConf,
 	}
 
 	if err := sess.Init(); err != nil {

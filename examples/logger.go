@@ -18,4 +18,5 @@ func SetupLogger() {
 	media.RTCPDebug = os.Getenv("RTCP_DEBUG") == "true"
 	sip.SIPDebug = os.Getenv("SIP_DEBUG") == "true"
 	sip.TransactionFSMDebug = os.Getenv("SIP_TRANSACTION_DEBUG") == "true"
+	media.DTLSTrace = os.Getenv("DTLS_DEBUG") == "true"
 }

@@ -68,8 +68,9 @@ type Transport struct {
 	// MediaExternalIP changes SDP IP, by default it tries to use external host if it is IP defined
 	MediaExternalIP net.IP
 	// MediaSRTP offers SRTP. Values: 0-none, 1-sdes
-	MediaSRTP   int
-	mediaBindIP net.IP
+	MediaSRTP     int
+	mediaBindIP   net.IP
+	MediaDTLSConf media.DTLSConfig
 
 	// In case TLS protocol
 	TLSConf *tls.Config
@@ -146,6 +147,7 @@ type MediaConfig struct {
 	bindIP     net.IP
 	externalIP net.IP
 	rtpNAT     int
+	dtlsConf   media.DTLSConfig
 
 	// TODO, For now it is global on media package
 	// RTPPortStart int
@@ -280,6 +282,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 				secureRTP:  tran.MediaSRTP,
 				bindIP:     tran.mediaBindIP,
 				externalIP: tran.MediaExternalIP,
+				dtlsConf:   tran.MediaDTLSConf,
 			},
 		}
 
@@ -659,6 +662,7 @@ func (dg *Diago) NewDialog(recipient sip.Uri, opts NewDialogOptions) (d *DialogC
 		secureRTP:  tran.MediaSRTP,
 		bindIP:     tran.mediaBindIP,
 		externalIP: tran.MediaExternalIP,
+		dtlsConf:   tran.MediaDTLSConf,
 	}
 
 	// if opts.Codecs != nil {
