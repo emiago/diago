@@ -108,7 +108,7 @@ type MediaSession struct {
 	// ExternalIP that should be used for building SDP
 	ExternalIP net.IP
 
-	SecureRTP int // 0 none, 1 - SDES
+	SecureRTP int // 0 none, 1 - SDES, 2 - DTLS
 	// TODO support multile for offering
 	SRTPAlg uint16
 
@@ -537,8 +537,6 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 		default:
 			return fmt.Errorf("unknown setup value %q", setup)
 		}
-
-		fmt.Println("DTLS CONN done", role, setup)
 
 		s.onFinalize = func() error {
 			DefaultLogger().Debug("Starting dtls handshake",
