@@ -471,6 +471,8 @@ func TestIntegrationDiagoDTLSCall(t *testing.T) {
 	reader := bytes.NewBuffer(ulaw)
 	r, _ := d.AudioReader()
 	w, _ := d.AudioWriter()
+	time.Sleep(1 * time.Second)
+	t.Log("---------------------------Writing media")
 	_, err = media.Copy(reader, w)
 	require.ErrorIs(t, err, io.EOF)
 

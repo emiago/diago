@@ -294,6 +294,10 @@ func (d *DialogClientSession) waitAnswerEarly(ctx context.Context, opts sipgo.An
 			return err
 		}
 
+		if err := sess.Finalize(); err != nil {
+			return err
+		}
+
 		rtpSess := media.NewRTPSession(sess)
 		d.mu.Lock()
 		d.initRTPSessionUnsafe(sess, rtpSess)
@@ -359,7 +363,19 @@ func (d *DialogClientSession) applyRemoteSDP() error {
 // Ack acknowledgeds media
 // Before Ack normally you want to setup more stuff like bridging
 func (d *DialogClientSession) Ack(ctx context.Context) error {
-	return d.ack(ctx, nil)
+	if err := d.ack(ctx, nil); err != nil {
+		return err
+	}
+
+	// NOTE:
+	// We want to finalize media after sending ACK.
+	// Due to possible DTLS negotiation there is no guarantee that this
+	// will start before ACK
+	fmt.Println("Finalize client------------")
+	if err := d.mediaSession.Finalize(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // AckLate sends ACK with media. Use this in combination with late(delay) offer

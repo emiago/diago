@@ -216,6 +216,12 @@ func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
 	if err := d.RespondSDP(sess.LocalSDP()); err != nil {
 		return err
 	}
+
+	fmt.Println("Server finalize ------------")
+	if err := sess.Finalize(); err != nil {
+		return err
+	}
+
 	// Must be called after media and reader writer is setup
 	return rtpSess.MonitorBackground()
 }
@@ -285,6 +291,11 @@ func (d *DialogServerSession) ReadAck(req *sip.Request, tx sip.ServerTransaction
 			// This is Late offer response
 			if err := sess.RemoteSDP(body); err != nil {
 				return err
+			}
+
+			// Finalize session
+			if err := sess.Finalize(); err != nil {
+				return nil
 			}
 		}
 		return nil

@@ -137,6 +137,8 @@ type MediaSession struct {
 	ReadRTPFromAddr net.Addr
 	// DTLS
 	dtlsConn *dtls.Conn
+
+	onFinalize func() error
 }
 
 func NewMediaSession(ip net.IP, port int) (s *MediaSession, e error) {
@@ -343,13 +345,16 @@ func (s *MediaSession) LocalSDP() []byte {
 		}
 	}
 
-	var fingerprints []sdpFingerprints
-	dtlsSetupRole := "actpass"
+	var dtlsSet *dtlsSetup
 	if s.SecureRTP == 2 {
+		dtlsSet = &dtlsSetup{
+			setup:        "actpass",
+			fingerprints: make([]sdpFingerprints, len(s.DTLSConf.Certificates)),
+		}
 		if s.Raddr.IP != nil {
 			// We do have remote IP, so probably we are server
 			//  lets be then active roll
-			dtlsSetupRole = "active"
+			dtlsSet.setup = "active"
 		}
 		// DTLS
 		// This is only needed for self signed certificates?
@@ -360,14 +365,13 @@ func (s *MediaSession) LocalSDP() []byte {
 		//    but not active attacks on the signaling.  In order to prevent active
 		//    attacks on the signaling, "Enhancements for Authenticated Identity
 		//    Management in the Session Initiation Protocol (SIP)" [RFC4474]
-		fingerprints = make([]sdpFingerprints, len(s.DTLSConf.Certificates))
 		for i, cert := range s.DTLSConf.Certificates {
 			fingerprint, err := dtlsSHA256Fingerprint(cert)
 			if err != nil {
 				DefaultLogger().Error("Failed to generate dtls certificate fingerprint", "error", err)
 				continue
 			}
-			fingerprints[i] = sdpFingerprints{
+			dtlsSet.fingerprints[i] = sdpFingerprints{
 				fingerprint: fingerprint,
 				alg:         "SHA-256",
 			}
@@ -375,7 +379,7 @@ func (s *MediaSession) LocalSDP() []byte {
 
 	}
 
-	return generateSDPForAudio(rtpProfile, ip, connIP, rtpPort, s.Mode, codecs, localSDES, fingerprints, dtlsSetupRole)
+	return generateSDPForAudio(rtpProfile, ip, connIP, rtpPort, s.Mode, codecs, localSDES, dtlsSet)
 }
 
 // RemoteSDP applies remote SDP.
@@ -425,11 +429,8 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	if err != nil {
 		return err
 	}
-<<<<<<< HEAD
 	s.SetRemoteAddr(&net.UDPAddr{IP: ci.IP, Port: md.Port})
 
-=======
->>>>>>> 1d74947 (fix: having DTLS first e2e Test working)
 	// Check for SDES
 	for _, v := range attrs {
 		if strings.HasPrefix(v, "crypto:") {
@@ -510,36 +511,42 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 		}
 
 		// THIS may need external or after SIP ACK establishment
+		s.DTLSConf.fingerprints = fingerprints
+		role := "client"
 		switch setup {
 		case "actpass", "passive":
-			// we are server, connection must exists
+			// we are client, as remote wants to be server
 			// if s.dtlsConn == nil {
 			// 	panic("No dtls connection")
 			// }
-
-			s.dtlsConn, err = dtlsServerConf(s.rtpConn, &s.Raddr, s.DTLSConf)
+			s.dtlsConn, err = dtlsClientConf(s.rtpConn, &s.Raddr, s.DTLSConf)
 			if err != nil {
 				return fmt.Errorf("failed to setup dlts client conn: %w", err)
 			}
 
-		default:
-			// we are client
-			s.dtlsConn, err = dtlsClientConf(s.rtpConn, &s.Raddr, s.DTLSConf)
+		case "active":
+			role = "server"
+			// we are server as remote wants to be client
+			s.dtlsConn, err = dtlsServerConf(s.rtpConn, &s.Raddr, s.DTLSConf)
 			if err != nil {
 				return fmt.Errorf("failed to setup dlts server conn: %w", err)
 			}
+			// return nil
 
 			// NOTE: setup:active allows the answer and the DTLS handshake to occur in parallel.
-
+		default:
+			return fmt.Errorf("unknown setup value %q", setup)
 		}
 
-		go func() error {
+		fmt.Println("DTLS CONN done", role, setup)
+
+		s.onFinalize = func() error {
 			DefaultLogger().Debug("Starting dtls handshake",
 				"setup", setup,
+				"role", role,
 				"laddr", s.dtlsConn.LocalAddr().String(),
 				"raddr", s.dtlsConn.RemoteAddr().String(),
 			)
-
 			if err := s.dtlsConn.Handshake(); err != nil {
 				return fmt.Errorf("dtls conn handshake: %w", err)
 			}
@@ -578,45 +585,44 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 				}
 			}
 
-			matchedFPErr := func() error {
-				return nil
-				// Issue here is that PeerCertificates are empty
-				if err := state.UnmarshalBinary(make([]byte, 1500)); err != nil {
-					return err
-				}
-				remoteCert := state.PeerCertificates[0]
+			return nil
+			// // Issue here is that PeerCertificates are empty
+			// if err := state.UnmarshalBinary(make([]byte, 1500)); err != nil {
+			// 	return err
+			// }
+			remoteCert := state.PeerCertificates[0]
 
-				for _, fp := range fingerprints {
-					DefaultLogger().Debug("Checking fingerprint", "alg", fp.alg, "fg", fp.fingerprint)
-					if fp.alg == "SHA-256" {
-						remoteFP, err := dtlsSHA256CertificateFingerprint(remoteCert)
-						if err != nil {
-							return err
-						}
+			for _, fp := range fingerprints {
+				DefaultLogger().Debug("Checking fingerprint", "alg", fp.alg, "fg", fp.fingerprint)
+				if fp.alg == "SHA-256" {
+					remoteFP, err := dtlsSHA256CertificateFingerprint(remoteCert)
+					if err != nil {
+						return err
+					}
 
-						if fp.fingerprint == remoteFP {
-							return nil
-						}
+					if fp.fingerprint == remoteFP {
+						return nil
 					}
 				}
-				return fmt.Errorf("no matched fingerprint")
-			}()
-
-			if matchedFPErr != nil {
-				return matchedFPErr
 			}
-			return nil
-		}()
+			return fmt.Errorf("no matched fingerprint")
+		}
 	}
 
 	if secureRequest && s.remoteCtxSRTP == nil {
 		return fmt.Errorf("remote requested secure RTP, but no context is created proto=%s", md.Proto)
 	}
-<<<<<<< HEAD
-=======
+	return nil
+}
 
-	s.SetRemoteAddr(&net.UDPAddr{IP: ci.IP, Port: md.Port})
->>>>>>> 1d74947 (fix: having DTLS first e2e Test working)
+// Finalize finalizes negotiation and does verification
+// Should be called only after exchage of SDP is done
+func (s *MediaSession) Finalize() error {
+	if s.onFinalize != nil {
+		err := s.onFinalize()
+		s.onFinalize = nil
+		return err
+	}
 	return nil
 }
 
@@ -1064,7 +1070,12 @@ type sdpFingerprints struct {
 	alg         string
 }
 
-func generateSDPForAudio(rtpProfile string, originIP net.IP, connectionIP net.IP, rtpPort int, mode string, codecs []Codec, sdes sdesInline, fingerprints []sdpFingerprints, dtlsSetup string) []byte {
+type dtlsSetup struct {
+	setup        string
+	fingerprints []sdpFingerprints
+}
+
+func generateSDPForAudio(rtpProfile string, originIP net.IP, connectionIP net.IP, rtpPort int, mode string, codecs []Codec, sdes sdesInline, dtlsSet *dtlsSetup) []byte {
 	ntpTime := GetCurrentNTPTimestamp()
 
 	fmts := make([]string, len(codecs))
@@ -1113,7 +1124,11 @@ func generateSDPForAudio(rtpProfile string, originIP net.IP, connectionIP net.IP
 		s = append(s, fmt.Sprintf("a=crypto:%d %s inline:%s", sdes.tag, sdes.alg, sdes.base64))
 	}
 
-	if fingerprints != nil {
+	if dtlsSet != nil {
+		fingerprints := dtlsSet.fingerprints
+		dtlsSetup := dtlsSet.setup
+
+		// if fingerprints != nil {
 		s = append(s, "a=setup:"+dtlsSetup)
 		for _, d := range fingerprints {
 			if d.fingerprint == "" {
@@ -1121,7 +1136,9 @@ func generateSDPForAudio(rtpProfile string, originIP net.IP, connectionIP net.IP
 			}
 			s = append(s, fmt.Sprintf("a=fingerprint:%s %s", d.alg, d.fingerprint))
 		}
+		// }
 	}
+
 	// s := []string{
 	// 	"v=0",
 	// 	fmt.Sprintf("o=- %d %d IN IP4 %s", ntpTime, ntpTime, originIP),

@@ -24,16 +24,20 @@ type DTLSConfig struct {
 	Certificates []tls.Certificate
 	// If used as client this would verify server certificate
 	ServerName string
-}
 
-func dtlsServerConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls.Conn, error) {
-	return dtlsServer(conn, raddr, conf.Certificates)
+	fingerprints []sdpFingerprints
 }
 
 func dtlsServer(conn net.PacketConn, raddr net.Addr, certificates []tls.Certificate) (*dtls.Conn, error) {
+	return dtlsServerConf(conn, raddr, DTLSConfig{
+		Certificates: certificates,
+	})
+}
+
+func dtlsServerConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls.Conn, error) {
 	config := &dtls.Config{
 		// Use appropriate certificate or generate self-signed
-		Certificates: certificates,
+		Certificates: conf.Certificates,
 		// CipherSuites: []dtls.CipherSuiteID{
 		// 	dtls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 		// },
@@ -45,8 +49,16 @@ func dtlsServer(conn net.PacketConn, raddr net.Addr, certificates []tls.Certific
 		// SignatureSchemes: []tls.SignatureScheme{
 		// 	tls.ECDSAWithP256AndSHA256
 		// },
+
 		// If you're acting as the server
-		ClientAuth: dtls.NoClientCert,
+		// We are verifying Connection fingerprints so we require client cert
+		// use dtls.NoClientCert without verfication
+		ClientAuth: dtls.RequestClientCert,
+
+		// IT IS STILL UNCLEAR WHY WE CAN NOT READ CERTIFICATE HERE
+		VerifyConnection: func(state *dtls.State) error {
+			return dtlsVerifyConnection(state, conf.fingerprints)
+		},
 	}
 
 	if DTLSTrace {
@@ -58,15 +70,18 @@ func dtlsServer(conn net.PacketConn, raddr net.Addr, certificates []tls.Certific
 	return dtls.Server(conn, raddr, config)
 }
 
-func dtlsClientConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls.Conn, error) {
-	return dtlsClient(conn, raddr, conf.Certificates, conf.ServerName)
-}
-
 func dtlsClient(conn net.PacketConn, raddr net.Addr, certificates []tls.Certificate, serverName string) (*dtls.Conn, error) {
 	// Client DTLS config
-
-	config := &dtls.Config{
+	return dtlsClientConf(conn, raddr, DTLSConfig{
 		Certificates: certificates,
+		ServerName:   serverName,
+	})
+}
+
+func dtlsClientConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls.Conn, error) {
+	serverName := conf.ServerName
+	config := &dtls.Config{
+		Certificates: conf.Certificates,
 		// CipherSuites: []dtls.CipherSuiteID{
 		// 	dtls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 		// },
@@ -77,6 +92,9 @@ func dtlsClient(conn net.PacketConn, raddr net.Addr, certificates []tls.Certific
 		InsecureSkipVerify:   serverName == "", // Accept self-signed certs (for dev)
 		ServerName:           serverName,       // If insecure is false
 		ExtendedMasterSecret: dtls.RequireExtendedMasterSecret,
+		VerifyConnection: func(state *dtls.State) error {
+			return dtlsVerifyConnection(state, conf.fingerprints)
+		},
 	}
 
 	if DTLSTrace {
@@ -86,6 +104,34 @@ func dtlsClient(conn net.PacketConn, raddr net.Addr, certificates []tls.Certific
 	}
 
 	return dtls.Client(conn, raddr, config)
+}
+
+func dtlsVerifyConnection(state *dtls.State, fingerprints []sdpFingerprints) error {
+	if len(state.PeerCertificates) == 0 {
+		return fmt.Errorf("No certificate found in dtls")
+	}
+
+	remoteCert := state.PeerCertificates[0]
+	for _, fp := range fingerprints {
+		var remoteFP string
+		if fp.alg == "SHA-256" {
+			var err error
+			remoteFP, err = dtlsSHA256CertificateFingerprint(remoteCert)
+			if err != nil {
+				return err
+			}
+		} else {
+			DefaultLogger().Debug("Skiping fingerprint due to unsuported alg", "alg", fp.alg)
+			continue
+		}
+
+		DefaultLogger().Debug("Comparing fingerprint", "alg", fp.alg, "fp", fp.fingerprint, "rfp", remoteFP)
+		if fp.fingerprint == remoteFP {
+			return nil
+		}
+	}
+
+	return nil
 }
 
 func dtlsSDPAttr(fingerprint string) []string {
