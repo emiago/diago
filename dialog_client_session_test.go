@@ -9,6 +9,7 @@ import (
 	"math/rand/v2"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
@@ -220,8 +221,22 @@ func TestIntegrationDialogClientEarlyMedia(t *testing.T) {
 				BindPort:  15060,
 			},
 		))
+
+		authServer := NewDigestServer()
 		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
 			t.Log("Call received")
+
+			err := authServer.AuthorizeDialog(d, DigestAuth{
+				Username: "test",
+				Password: "test123",
+				Realm:    "",
+				Expire:   10 * time.Second,
+			})
+			if err != nil {
+				t.Log("Failed to authorize", "error", err)
+				return
+			}
+
 			d.Trying()
 			if err := d.ProgressMedia(); err != nil {
 				t.Log("Failed to progress media", err)
@@ -257,6 +272,8 @@ func TestIntegrationDialogClientEarlyMedia(t *testing.T) {
 
 	err = dialog.Invite(ctx, InviteClientOptions{
 		EarlyMediaDetect: true,
+		Username:         "test",
+		Password:         "test123",
 	})
 	require.ErrorIs(t, err, ErrClientEarlyMedia)
 
@@ -272,7 +289,8 @@ func TestIntegrationDialogClientEarlyMedia(t *testing.T) {
 		earlyMediaBuf, _ = media.ReadAll(r, 160)
 	}()
 
-	dialog.WaitAnswer(ctx, sipgo.AnswerOptions{})
+	err = dialog.WaitAnswer(ctx, sipgo.AnswerOptions{})
+	require.NoError(t, err)
 	dialog.Ack(ctx)
 
 	<-dialog.Context().Done()
