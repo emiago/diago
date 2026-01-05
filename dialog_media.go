@@ -662,6 +662,9 @@ func (d *DTMFReader) Listen(onDTMF func(dtmf rune) error, dur time.Duration) err
 	buf := make([]byte, media.RTPBufSize)
 	for {
 		if _, err := d.readDeadline(buf, dur); err != nil {
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				return nil
+			}
 			return err
 		}
 	}
