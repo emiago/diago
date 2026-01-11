@@ -1,4 +1,4 @@
-<img src="icons/diago-text.png" width="300" alt="DIAGO">
+<img src="icons/diago-icon-text.svg" width="300" alt="DIAGO">
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/emiago/diago)](https://goreportcard.com/report/github.com/emiago/diago)
 ![Coverage](https://img.shields.io/badge/coverage-61.1%25-blue)
@@ -7,7 +7,7 @@
 Short of **dialog + GO**.  
 **Library for building VOIP solutions in GO!**
 
-Built on top of optimized [SIPgo library]((https://emiago.github.io/diago))!  
+Built on top of optimized [SIPgo library](https://github.com/emiago/sipgo)!  
 In short it allows developing fast and easy testable VOIP apps to handle calls, registrations and more... 
 
 *Diago is mainly project driven lib, so lot of API design will/should be challenged with real working apps needs*
@@ -52,7 +52,7 @@ Please avoid following:
 - Creating Change Log or some other textual files that add some sort of documentation. This is why we need Issue and ID issue should be in your commit. If you want(think it is good) to have this better documented(like webpage or readme) pls open issue. Lot of is highlighted on releases so if change is big it will probably be highlighted.
 - English is main language for code and for comments. Any other language used in any commit will be rejected.
 
-Library is under development and could not have latest code pushed. Having small PR that fixes issue are fine but not for more complex problem
+Library is under development heavy features and could not have latest code pushed. Having small PR that fixes issue are fine but not for more complex problem
 
 ## Usage 
 
@@ -62,8 +62,8 @@ ua, _ := sipgo.NewUA()
 dg := diago.NewDiago(ua)
 
 dg.Serve(ctx, func(inDialog *diago.DialogServerSession) {
-	inDialog.Trying() // Progress -> 100 Trying
-	inDialog.Answer(); // Answer
+	inDialog.Trying() // 100 Trying
+	inDialog.Answer(); // Answer - 200 OK SDP
 
 	// Make sure file below exists in work dir
 	playfile, err := os.Open("demo-echotest.wav")

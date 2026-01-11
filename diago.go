@@ -746,7 +746,7 @@ func (dg *Diago) findTransport(transport string, id string) (Transport, bool) {
 }
 
 // Register will create register transaction and keep registration ongoing until error is hit.
-// For more granular control over registraions user RegisterTransaction
+// For more granular control over registrations use RegisterTransaction
 func (dg *Diago) Register(ctx context.Context, recipient sip.Uri, opts RegisterOptions) error {
 	t, err := dg.RegisterTransaction(ctx, recipient, opts)
 	if err != nil {
