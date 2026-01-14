@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	DTLSTrace bool
+	DTLSDebug bool
 )
 
 type DTLSConfig struct {
@@ -57,11 +57,14 @@ func dtlsServerConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls
 
 		// IT IS STILL UNCLEAR WHY WE CAN NOT READ CERTIFICATE HERE
 		VerifyConnection: func(state *dtls.State) error {
+			if len(conf.fingerprints) == 0 {
+				return nil
+			}
 			return dtlsVerifyConnection(state, conf.fingerprints)
 		},
 	}
 
-	if DTLSTrace {
+	if DTLSDebug {
 		loggerFactory := logging.NewDefaultLoggerFactory()
 		loggerFactory.DefaultLogLevel = logging.LogLevelTrace
 		config.LoggerFactory = loggerFactory
@@ -93,11 +96,15 @@ func dtlsClientConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls
 		ServerName:           serverName,       // If insecure is false
 		ExtendedMasterSecret: dtls.RequireExtendedMasterSecret,
 		VerifyConnection: func(state *dtls.State) error {
+			if len(conf.fingerprints) == 0 {
+				return nil
+			}
 			return dtlsVerifyConnection(state, conf.fingerprints)
 		},
+		// ClientAuth: dtls.RequestClientCert,
 	}
 
-	if DTLSTrace {
+	if DTLSDebug {
 		loggerFactory := logging.NewDefaultLoggerFactory()
 		loggerFactory.DefaultLogLevel = logging.LogLevelTrace
 		config.LoggerFactory = loggerFactory
@@ -108,7 +115,7 @@ func dtlsClientConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls
 
 func dtlsVerifyConnection(state *dtls.State, fingerprints []sdpFingerprints) error {
 	if len(state.PeerCertificates) == 0 {
-		return fmt.Errorf("No certificate found in dtls")
+		return fmt.Errorf("no certificate found in dtls")
 	}
 
 	remoteCert := state.PeerCertificates[0]

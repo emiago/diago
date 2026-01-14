@@ -328,6 +328,7 @@ func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerO
 		}
 		return errors.Join(err, d.Bye(ctx))
 	}
+
 	return nil
 }
 
@@ -367,14 +368,13 @@ func (d *DialogClientSession) Ack(ctx context.Context) error {
 		return err
 	}
 
-	// NOTE:
-	// We want to finalize media after sending ACK.
-	// Due to possible DTLS negotiation there is no guarantee that this
-	// will start before ACK
-	fmt.Println("Finalize client------------")
+	// // NOTE it generally advisable todo this after successfull ACK:
+	// // but after this step ACK will probably successed and we want
+	// // to avoid races in media setup
 	if err := d.mediaSession.Finalize(); err != nil {
 		return err
 	}
+
 	return nil
 }
 

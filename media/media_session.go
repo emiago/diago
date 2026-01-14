@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"slices"
 	"strconv"
@@ -347,6 +346,7 @@ func (s *MediaSession) LocalSDP() []byte {
 
 	var dtlsSet *dtlsSetup
 	if s.SecureRTP == 2 {
+		rtpProfile = "UDP/TLS/RTP/SAVP"
 		dtlsSet = &dtlsSetup{
 			setup:        "actpass",
 			fingerprints: make([]sdpFingerprints, len(s.DTLSConf.Certificates)),
@@ -402,6 +402,8 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	case "RTP/AVP":
 	case "RTP/SAVP":
 		secureRequest = true
+	case "UDP/TLS/RTP/SAVP":
+		// secureRequest = true
 	default:
 		return fmt.Errorf("unsupported media description protocol proto=%s", md.Proto)
 	}
@@ -481,7 +483,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	}
 
 	// Check for DTLS
-	if len(s.DTLSConf.Certificates) > 0 {
+	if len(s.DTLSConf.Certificates) > 0 || s.SecureRTP == 2 {
 		setup := ""
 		fingerprints := make([]sdpFingerprints, 0, 1) // at least must be 1
 		for _, v := range attrs {
@@ -556,13 +558,25 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 				return fmt.Errorf("failed to get dtls client state")
 			}
 
+			// if state.
+
 			// THIS IS WAY TO SUPPORT DOUBLE RTCP Connection over DTLS
 			if false {
 				prof, _ := s.dtlsConn.SelectedSRTPProtectionProfile()
 				p := srtp.ProtectionProfile(prof)
-				masterKeyLen, _ := p.KeyLen()
-				masterSaltLen, _ := p.SaltLen()
-				keyingMaterial, _ := state.ExportKeyingMaterial("EXTRACTOR-dtls_srtp", nil, 2*(masterKeyLen+masterSaltLen))
+				masterKeyLen, err := p.KeyLen()
+				if err != nil {
+					return fmt.Errorf("dtls - failed to get master keylen: %w", err)
+				}
+				masterSaltLen, err := p.SaltLen()
+				if err != nil {
+					return fmt.Errorf("dtls - failed to get master saltlen: %w", err)
+				}
+				keyingMaterial, err := state.ExportKeyingMaterial("EXTRACTOR-dtls_srtp", nil, 2*(masterKeyLen+masterSaltLen))
+				if err != nil {
+					return fmt.Errorf("dtls - failed to export keying material: %w", err)
+				}
+
 				clientKey := keyingMaterial[:masterKeyLen]
 				serverKey := keyingMaterial[masterKeyLen : 2*masterKeyLen]
 				clientSalt := keyingMaterial[2*masterKeyLen : 2*masterKeyLen+masterSaltLen]
@@ -571,13 +585,13 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 				if setup == "active" {
 					srtpSession, err := srtp.CreateContext(clientKey, clientSalt, srtp.ProtectionProfileAes128CmHmacSha1_80)
 					if err != nil {
-						log.Fatalf("Failed to create SRTP context: %v", err)
+						return fmt.Errorf("failed to create SRTP context: %w", err)
 					}
 					s.localCtxSRTP = srtpSession
 				} else {
 					srtpSession, err := srtp.CreateContext(serverKey, serverSalt, srtp.ProtectionProfileAes128CmHmacSha1_80)
 					if err != nil {
-						log.Fatalf("Failed to create SRTP context: %v", err)
+						return fmt.Errorf("failed to create SRTP context: %w", err)
 					}
 					s.remoteCtxSRTP = srtpSession
 				}
@@ -720,7 +734,9 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 
 	// Check is DTLS
 	if m.dtlsConn != nil {
+		fmt.Println("READING DTLS", m.dtlsConn.LocalAddr().String())
 		n, err := m.dtlsConn.Read(buf)
+		fmt.Println("READING DTLS DONE", m.dtlsConn.LocalAddr().String())
 		if err != nil {
 			return 0, err
 		}
@@ -1126,15 +1142,14 @@ func generateSDPForAudio(rtpProfile string, originIP net.IP, connectionIP net.IP
 		fingerprints := dtlsSet.fingerprints
 		dtlsSetup := dtlsSet.setup
 
-		// if fingerprints != nil {
 		s = append(s, "a=setup:"+dtlsSetup)
+		s = append(s, "a=connection:new") // Cane be new or existing. Marks it needs new transport
 		for _, d := range fingerprints {
 			if d.fingerprint == "" {
 				continue
 			}
 			s = append(s, fmt.Sprintf("a=fingerprint:%s %s", d.alg, d.fingerprint))
 		}
-		// }
 	}
 
 	// s := []string{

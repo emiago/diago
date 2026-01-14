@@ -546,6 +546,11 @@ type InviteOptions struct {
 }
 
 // Invite makes outgoing call leg and waits for answer.
+// It is helper that calls
+// - NewDialog
+// - dialog.Invite
+//
+// For more details and errors check those functions more
 // If you want to bridge call then use helper InviteBridge
 func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts InviteOptions) (d *DialogClientSession, err error) {
 	d, err = dg.NewDialog(recipient, NewDialogOptions{Transport: opts.Transport})
