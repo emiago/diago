@@ -586,6 +586,9 @@ func (d *DialogMedia) ListenBackground() (stop func() error, err error) {
 			return err
 		}
 		wg.Wait() // This makes sure we have exited reading
+		if err := d.mediaSession.StartRTP(1); err != nil {
+			return err
+		}
 		return readErr
 	}, nil
 }
