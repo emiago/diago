@@ -55,35 +55,44 @@ func (w *RTPDtmfReader) Read(b []byte) (int, error) {
 }
 
 func (w *RTPDtmfReader) processDTMFEvent(ev DTMFEvent) {
+	// Debug logging
 	if DefaultLogger().Handler().Enabled(context.Background(), slog.LevelDebug) {
-		// Expensive call on logger
 		DefaultLogger().Debug("Processing DTMF event", "ev", ev)
 	}
+
+	// ============================================
+	// 1. Final packet (EndOfEvent = true)
+	// ============================================
 	if ev.EndOfEvent {
-		if w.lastEv.Duration == 0 {
-			return
-		}
-		// Does this match to our last ev
-		// Consider Event can be 0, that is why we check is also lastEv.Duration set
-		if w.lastEv.Event != ev.Event {
+		// Ignore final packet if we never received a start packet
+		if w.lastEv.Event == 0 && w.lastEv.Duration == 0 {
 			return
 		}
 
-		dur := ev.Duration - w.lastEv.Duration
-		if dur <= 3*160 { // Expect at least ~50ms duration
-			DefaultLogger().Debug("Received DTMF packet but short duration", "dur", dur)
+		// Ignore duplicate FIN caused by RTP retransmissions
+		if w.lastEv.Event == ev.Event && w.dtmfSet {
 			return
 		}
 
+		// Convert and store finalized DTMF event
 		w.dtmf = DTMFToRune(ev.Event)
 		w.dtmfSet = true
+
+		// Reset state
 		w.lastEv = DTMFEvent{}
 		return
 	}
-	if w.lastEv.Duration > 0 && w.lastEv.Event == ev.Event {
+
+	// ============================================
+	// 2. Non-final RTP 101 packet
+	// ============================================
+	// If this is a new event → update last event info
+	if w.lastEv.Event != ev.Event {
+		w.lastEv = ev
 		return
 	}
-	w.lastEv = ev
+
+	// Same event → ignore (normal case)
 }
 
 func (w *RTPDtmfReader) ReadDTMF() (rune, bool) {
