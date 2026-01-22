@@ -5,11 +5,11 @@ go 1.23.0
 toolchain go1.24.2
 
 require (
+	github.com/emiago/dtls/v3 v3.0.0-20260122183559-8b8d23e359c0
 	github.com/emiago/sipgo v1.1.0
 	github.com/go-audio/riff v1.0.0
 	github.com/google/uuid v1.6.0
 	github.com/icholy/digest v1.1.0
-	github.com/pion/dtls/v3 v3.0.10
 	github.com/pion/logging v0.2.4
 	github.com/pion/rtcp v1.2.15
 	github.com/pion/rtp v1.8.18
@@ -37,5 +37,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 )
-
-replace github.com/pion/dtls/v3 v3.0.10 => github.com/emiago/dtls/v3 v3.0.0-20260119193300-76b4a2c33545
