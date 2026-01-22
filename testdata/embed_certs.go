@@ -14,7 +14,7 @@ import (
 //go:generate bash -c "./generate_certs_rsa.sh"
 
 var (
-	//go:embed certs/server.crt
+	//go:embed certs/rootca-cert.pem
 	rootCA []byte
 
 	//go:embed certs/server.crt
