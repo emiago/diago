@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/emiago/diago/media/sdp"
+	"github.com/emiago/dtls/v3"
 	"github.com/emiago/sipgo/sip"
-	"github.com/pion/dtls/v3"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/srtp/v3"
@@ -348,13 +348,13 @@ func (s *MediaSession) LocalSDP() []byte {
 	if s.SecureRTP == 2 {
 		rtpProfile = "UDP/TLS/RTP/SAVP"
 		dtlsSet = &dtlsSetup{
-			setup:        "actpass",
+			setup:        "active",
 			fingerprints: make([]sdpFingerprints, len(s.DTLSConf.Certificates)),
 		}
 		if s.Raddr.IP != nil {
 			// We do have remote IP, so probably we are server
 			//  lets be then active roll
-			dtlsSet.setup = "active"
+			dtlsSet.setup = "passive"
 		}
 		// DTLS
 		// This is only needed for self signed certificates?
@@ -552,7 +552,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 				return fmt.Errorf("dtls conn handshake: %w", err)
 			}
 
-			DefaultLogger().Debug("Getting DTLS state")
+			DefaultLogger().Debug("Handshake finished. Checking DTLS State")
 
 			state, ok := s.dtlsConn.ConnectionState()
 			if !ok {
@@ -580,25 +580,42 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			clientSalt := keyingMaterial[2*masterKeyLen : 2*masterKeyLen+masterSaltLen]
 			serverSalt := keyingMaterial[2*masterKeyLen+masterSaltLen:]
 
-			s.remoteCtxSRTP, err = srtp.CreateContext(clientKey, clientSalt, p)
+			DefaultLogger().Info("Keying material", "mat", string(keyingMaterial), "client", string(clientKey), "server", string(serverKey))
+			// s.remoteCtxSRTP, err = srtp.CreateContext(clientKey, clientSalt, p)
+			// if role != "active" {
+			if role == "server" {
+				// Change order
+				clientKey, serverKey = serverKey, clientKey
+				clientSalt, serverSalt = serverSalt, clientSalt
+			}
+
+			s.localCtxSRTP, err = srtp.CreateContext(clientKey, clientSalt, p)
 			if err != nil {
 				return fmt.Errorf("failed to create SRTP context: %w", err)
 			}
 
-			s.localCtxSRTP, err = srtp.CreateContext(serverKey, serverSalt, p)
+			// s.localCtxSRTP, err = srtp.CreateContext(serverKey, serverSalt, p)
+			s.remoteCtxSRTP, err = srtp.CreateContext(serverKey, serverSalt, p)
 			if err != nil {
 				return fmt.Errorf("failed to create SRTP context: %w", err)
 			}
 
 			// Issue is current DTLS library is keeping DTLS open with demuxing which is more WEBRTC needed
 			// In other words we want to close active reader which was used in handshake setup
-			if err := s.dtlsConn.CloseReader(); err != nil {
-				return fmt.Errorf("closing dtls conn :%w", err)
-			}
+			// if err := s.dtlsConn.CloseReader(); err != nil {
+			// 	return fmt.Errorf("closing dtls conn :%w", err)
+			// }
+
+			// TODO library sets some deadline on connection before reading ReadFromContext.
+			// This may cause io.Timeout on our Read. So we need to reset this
+			// time.Sleep(1 * time.Millisecond)
+			// s.rtpConn.SetReadDeadline(time.Time{})
 
 			if s.localCtxSRTP == nil && s.remoteCtxSRTP == nil {
 				panic("no context setup")
 			}
+
+			DefaultLogger().Debug("DTLS Readers closed")
 
 			return nil
 			// // Issue here is that PeerCertificates are empty
@@ -743,7 +760,7 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	if m.remoteCtxSRTP != nil {
 		decrypted, err := m.remoteCtxSRTP.DecryptRTP(buf, buf[:n], &pkt.Header)
 		if err != nil {
-			return n, fmt.Errorf("srtp decrypt: %w", err)
+			return n, fmt.Errorf("Read SRTP Decrypt error: %w", err)
 		}
 		if len(decrypted) > len(buf) {
 			DefaultLogger().Warn("Growing Decrypted RTP buffer", "diff", len(decrypted)-len(buf))

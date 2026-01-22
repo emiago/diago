@@ -396,6 +396,7 @@ func TestIntegrationDiagoSRTPCall(t *testing.T) {
 
 func TestIntegrationDiagoDTLSCall(t *testing.T) {
 	// TODO: USE TLS as transport for more correct test
+	// media.DTLSDebug = true
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	{
@@ -409,9 +410,10 @@ func TestIntegrationDiagoDTLSCall(t *testing.T) {
 					Transport: "tcp",
 					BindHost:  "127.0.0.1",
 					BindPort:  16443,
-					MediaSRTP: 2, // This enables SRTP
+					MediaSRTP: 2, // This enables SRTP DTLS
 					MediaDTLSConf: media.DTLSConfig{
-						Certificates: []tls.Certificate{testdata.ServerCertificate()},
+						Certificates:     []tls.Certificate{testdata.ServerCertificate()},
+						ServerClientAuth: media.ServerClientAuthNoCert,
 					},
 				},
 			),
@@ -443,9 +445,8 @@ func TestIntegrationDiagoDTLSCall(t *testing.T) {
 				BindHost:  "127.0.0.1",
 				BindPort:  16441,
 				MediaSRTP: 2, // USE DTLS
-				MediaDTLSConf: media.DTLSConfig{
-					Certificates: []tls.Certificate{testdata.ClientCertificate()},
-				},
+				// We do not need any Certificate verification
+				MediaDTLSConf: media.DTLSConfig{},
 			},
 		),
 		WithMediaConfig(

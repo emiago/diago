@@ -217,10 +217,10 @@ func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
 		return err
 	}
 
-	fmt.Println("Server finalize ------------")
 	if err := sess.Finalize(); err != nil {
 		return err
 	}
+	// fmt.Println("--------SErver finalized")
 
 	// Must be called after media and reader writer is setup
 	return rtpSess.MonitorBackground()

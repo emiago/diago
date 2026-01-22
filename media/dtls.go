@@ -12,7 +12,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/pion/dtls/v3"
+	"github.com/emiago/dtls/v3"
 	"github.com/pion/logging"
 )
 
@@ -20,10 +20,20 @@ var (
 	DTLSDebug bool
 )
 
+const (
+	ServerClientAuthNoCert      = int(dtls.NoClientCert)
+	ServerClientAuthRequireCert = int(dtls.RequestClientCert)
+)
+
 type DTLSConfig struct {
 	Certificates []tls.Certificate
 	// If used as client this would verify server certificate
 	ServerName string
+
+	// ServerClientAuth determines the server's policy for
+	// TLS Client Authentication. The default is ServerClientAuthNoCert.
+	// Check ServerClientAuth
+	ServerClientAuth int
 
 	fingerprints []sdpFingerprints
 }
@@ -54,7 +64,9 @@ func dtlsServerConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls
 		// If you're acting as the server
 		// We are verifying Connection fingerprints so we require client cert
 		// use dtls.NoClientCert without verfication
-		ClientAuth:           dtls.RequestClientCert,
+		// ClientAuth:           dtls.RequestClientCert,
+		// ClientAuth:           dtls.ClientAuthType(conf.ServerClientAuth),
+		ClientAuth:           dtls.NoClientCert,
 		ExtendedMasterSecret: dtls.RequireExtendedMasterSecret,
 
 		// IT IS STILL UNCLEAR WHY WE CAN NOT READ CERTIFICATE HERE
@@ -64,6 +76,7 @@ func dtlsServerConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls
 			}
 			return dtlsVerifyConnection(state, conf.fingerprints)
 		},
+		StopReaderAfterHandshake: true,
 	}
 
 	if DTLSDebug {
@@ -97,6 +110,7 @@ func dtlsClientConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls
 		InsecureSkipVerify:   serverName == "", // Accept self-signed certs (for dev)
 		ServerName:           serverName,       // If insecure is false
 		ExtendedMasterSecret: dtls.RequireExtendedMasterSecret,
+		// ClientAuth:           dtls.NoClientCert,
 		VerifyConnection: func(state *dtls.State) error {
 			if len(conf.fingerprints) == 0 {
 				return nil
@@ -104,6 +118,7 @@ func dtlsClientConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls
 			return dtlsVerifyConnection(state, conf.fingerprints)
 		},
 		// ClientAuth: dtls.RequestClientCert,
+		StopReaderAfterHandshake: true,
 	}
 
 	if DTLSDebug {

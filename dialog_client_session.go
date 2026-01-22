@@ -368,9 +368,8 @@ func (d *DialogClientSession) Ack(ctx context.Context) error {
 		return err
 	}
 
-	// // NOTE it generally advisable todo this after successfull ACK:
-	// // but after this step ACK will probably successed and we want
-	// // to avoid races in media setup
+	// NOTE it generally advisable todo this after successfull ACK:
+	// Server may not even listen yet as it is waiting for ACK
 	if err := d.mediaSession.Finalize(); err != nil {
 		return err
 	}
