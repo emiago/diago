@@ -580,9 +580,6 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			clientSalt := keyingMaterial[2*masterKeyLen : 2*masterKeyLen+masterSaltLen]
 			serverSalt := keyingMaterial[2*masterKeyLen+masterSaltLen:]
 
-			DefaultLogger().Info("Keying material", "mat", string(keyingMaterial), "client", string(clientKey), "server", string(serverKey))
-			// s.remoteCtxSRTP, err = srtp.CreateContext(clientKey, clientSalt, p)
-			// if role != "active" {
 			if role == "server" {
 				// Change order
 				clientKey, serverKey = serverKey, clientKey
@@ -600,22 +597,11 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 				return fmt.Errorf("failed to create SRTP context: %w", err)
 			}
 
-			// Issue is current DTLS library is keeping DTLS open with demuxing which is more WEBRTC needed
-			// In other words we want to close active reader which was used in handshake setup
-			// if err := s.dtlsConn.CloseReader(); err != nil {
-			// 	return fmt.Errorf("closing dtls conn :%w", err)
-			// }
-
-			// TODO library sets some deadline on connection before reading ReadFromContext.
-			// This may cause io.Timeout on our Read. So we need to reset this
-			// time.Sleep(1 * time.Millisecond)
-			// s.rtpConn.SetReadDeadline(time.Time{})
-
 			if s.localCtxSRTP == nil && s.remoteCtxSRTP == nil {
 				panic("no context setup")
 			}
 
-			DefaultLogger().Debug("DTLS Readers closed")
+			DefaultLogger().Debug("DTLS SRTP setuped")
 
 			return nil
 			// // Issue here is that PeerCertificates are empty
