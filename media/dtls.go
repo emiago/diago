@@ -64,9 +64,7 @@ func dtlsServerConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls
 		// If you're acting as the server
 		// We are verifying Connection fingerprints so we require client cert
 		// use dtls.NoClientCert without verfication
-		// ClientAuth:           dtls.RequestClientCert,
-		// ClientAuth:           dtls.ClientAuthType(conf.ServerClientAuth),
-		ClientAuth:           dtls.NoClientCert,
+		ClientAuth:           dtls.ClientAuthType(conf.ServerClientAuth),
 		ExtendedMasterSecret: dtls.RequireExtendedMasterSecret,
 
 		// IT IS STILL UNCLEAR WHY WE CAN NOT READ CERTIFICATE HERE
