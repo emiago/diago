@@ -394,7 +394,7 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 			Transport{
 				Transport: "udp",
 				BindHost:  "127.0.0.1",
-				BindPort:  15060,
+				BindPort:  15077,
 			},
 		))
 		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
@@ -414,7 +414,7 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 	err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
 	require.NoError(t, err)
 
-	dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15060}, InviteOptions{})
+	dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15077}, InviteOptions{})
 	require.NoError(t, err)
 
 	// Update media with new local IP

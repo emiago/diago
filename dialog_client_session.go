@@ -428,6 +428,7 @@ func (d *DialogClientSession) ReInvite(ctx context.Context) error {
 	sdp := d.mediaSession.LocalSDP()
 	contact := d.remoteContactUnsafe()
 	d.mu.Unlock()
+
 	req := sip.NewRequest(sip.INVITE, contact.Address)
 	req.AppendHeader(d.InviteRequest.Contact())
 	req.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
@@ -493,15 +494,6 @@ func (d *DialogClientSession) reInviteDo(ctx context.Context, req *sip.Request) 
 // media MUST BE Forked
 func (d *DialogClientSession) reInviteMediaSession(ctx context.Context, ms *media.MediaSession) error {
 	sdp := ms.LocalSDP()
-
-	err := d.DialogClientSession.Invite(ctx, func(c *sipgo.Client, req *sip.Request) error {
-		// Do nothing
-		return nil
-	})
-	if err != nil {
-		// sess.Close()
-		return err
-	}
 
 	// NOTE: we do not change original invite request
 	d.mu.Lock()

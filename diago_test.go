@@ -286,6 +286,7 @@ func TestIntegrationDiagoCallWithCustomCodecs(t *testing.T) {
 	}
 
 	ua, _ := sipgo.NewUA()
+	defer ua.Close()
 	dg := NewDiago(ua,
 		WithTransport(
 			Transport{
@@ -353,6 +354,7 @@ func TestIntegrationDiagoSRTPCall(t *testing.T) {
 	}
 
 	ua, _ := sipgo.NewUA()
+	defer ua.Close()
 	dg := NewDiago(ua,
 		WithTransport(
 			Transport{
@@ -437,6 +439,7 @@ func TestIntegrationDiagoDTLSCall(t *testing.T) {
 	}
 
 	ua, _ := sipgo.NewUA()
+	defer ua.Close()
 	dg := NewDiago(ua,
 		WithTransport(
 			Transport{
