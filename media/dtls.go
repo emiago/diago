@@ -41,6 +41,7 @@ type DTLSConfig struct {
 func dtlsServer(conn net.PacketConn, raddr net.Addr, certificates []tls.Certificate) (*dtls.Conn, error) {
 	return dtlsServerConf(conn, raddr, DTLSConfig{
 		Certificates: certificates,
+		// ServerClientAuth: ServerClientAuthRequireCert,
 	})
 }
 

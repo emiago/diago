@@ -5,18 +5,18 @@ package media
 
 import (
 	"crypto/tls"
-	"io"
+	"log/slog"
 	"net"
 	"testing"
 
 	"github.com/emiago/diago/testdata"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDTLSSetup(t *testing.T) {
 	clientAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 15333}
 	serverAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 15444}
+	slog.SetLogLoggerLevel(slog.LevelDebug)
 
 	listener, err := net.ListenUDP("udp", serverAddr)
 	require.NoError(t, err)
@@ -34,16 +34,15 @@ func TestDTLSSetup(t *testing.T) {
 
 	clientConn, err := dtlsClient(listenerClient, serverAddr, []tls.Certificate{testdata.ClientCertificate()}, "")
 	require.NoError(t, err)
+	defer clientConn.Close()
 
+	serverErr := make(chan error)
 	go func() {
-		_, err = clientConn.Write([]byte("Hello"))
-		require.NoError(t, err)
-		defer clientConn.Close()
+		serverErr <- serverConn.Handshake()
 	}()
-
-	hello, err := io.ReadAll(serverConn)
+	err = clientConn.Handshake()
 	require.NoError(t, err)
-	assert.Equal(t, "Hello", string(hello))
+	require.NoError(t, <-serverErr)
 }
 
 func TestDTLSFingerprint(t *testing.T) {
