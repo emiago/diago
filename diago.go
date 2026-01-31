@@ -190,7 +190,7 @@ func WithServerRequestMiddleware(f func(next sipgo.RequestHandler) sipgo.Request
 func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	dg := &Diago{
 		ua:  ua,
-		log: slog.Default(),
+		log: sip.DefaultLogger(),
 		serveHandler: func(d *DialogServerSession) {
 			fmt.Println("Serve Handler not implemented")
 		},
@@ -451,12 +451,12 @@ func (dg *Diago) handleReInvite(req *sip.Request, tx sip.ServerTransaction, id s
 
 		}
 		// No Error means we have ID
-		s, err := dg.cache.client.DialogLoad(ctx, id)
+		c, err := dg.cache.client.DialogLoad(ctx, id)
 		if err != nil {
 			return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusCallTransactionDoesNotExists, "Call/Transaction Does Not Exist", nil))
 		}
 
-		return s.handleReInvite(req, tx)
+		return c.handleReInvite(req, tx)
 	}
 
 	return s.handleReInvite(req, tx)
