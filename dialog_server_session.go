@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
+	"strconv"
 	"sync/atomic"
 
 	"github.com/emiago/diago/media"
@@ -109,8 +111,8 @@ func (d *DialogServerSession) RemoteContact() *sip.ContactHeader {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	if d.lastInvite != nil {
-		return d.lastInvite.Contact()
+	if d.remoteContactTarget != nil {
+		return d.remoteContactTarget
 	}
 	return d.InviteRequest.Contact()
 }
@@ -366,7 +368,29 @@ func (d *DialogServerSession) handleRefer(dg *Diago, req *sip.Request, tx sip.Se
 }
 
 func (d *DialogServerSession) handleReInvite(req *sip.Request, tx sip.ServerTransaction) error {
+	// Check is current pending dialog
+	if state := d.LoadState(); state == sip.DialogStateEstablished {
+		// RFC 3261 §14.2 — UAS Behavior
+		// If a UAS receives an INVITE request for an existing dialog while another INVITE transaction is in progress, it MUST return a 491 (Request Pending) response to the new INVITE.”
+		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestPending, "Request Pending", nil))
+	}
+
+	// NOTE: Calling ReadRequest increases remote CSEQ.
+	// We should not call this until dialog is confirmed, otherwise any intermidiate response
+	// will have wrong CSEQ
 	if err := d.ReadRequest(req, tx); err != nil {
+		if errors.Is(err, sipgo.ErrDialogInvalidCseq) {
+			// https://datatracker.ietf.org/doc/html/rfc3261#section-14.2
+			// 			A UAS that receives a second INVITE before it sends the final
+			//    response to a first INVITE with a lower CSeq sequence number on the
+			//    same dialog MUST return a 500 (Server Internal Error)  response to the
+			//    second INVITE and MUST include a Retry-After header field with a
+			//    randomly chosen value of between 0 and 10 seconds.
+			res := sip.NewResponseFromRequest(req, sip.StatusInternalServerError, "Internal Server Error", nil)
+			res.AppendHeader(sip.NewHeader("Retry-After", strconv.Itoa(rand.IntN(10))))
+			return tx.Respond(res)
+		}
+
 		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
 	}
 

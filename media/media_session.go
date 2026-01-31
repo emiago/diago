@@ -237,8 +237,7 @@ func (s *MediaSession) StartRTP(rw int8) error {
 }
 
 // Fork is special call to be used in case when there is session update
-// It preserves pointer to same conneciton but rest is remobed
-// After this call it still expected that
+// It preserves pointer to same conneciton but rest is removed
 func (s *MediaSession) Fork() *MediaSession {
 	cp := MediaSession{
 		Laddr:    s.Laddr, // TODO clone it although it is read only

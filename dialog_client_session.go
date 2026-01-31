@@ -7,9 +7,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	mrand "math/rand/v2"
 	"net"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
@@ -67,9 +69,9 @@ func (d *DialogClientSession) RemoteContact() *sip.ContactHeader {
 }
 
 func (d *DialogClientSession) remoteContactUnsafe() *sip.ContactHeader {
-	if d.lastInvite != nil {
+	if d.remoteContactTarget != nil {
 		// Invite update can change contact
-		return d.lastInvite.Contact()
+		return d.remoteContactTarget
 	}
 	return d.InviteResponse.Contact()
 }
@@ -321,7 +323,12 @@ func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerO
 		return err
 	}
 
-	if err := d.applyRemoteSDP(); err != nil {
+	remoteSDP := d.InviteResponse.Body()
+	if remoteSDP == nil {
+		return fmt.Errorf("no SDP in response")
+	}
+
+	if err := d.applyRemoteSDP(remoteSDP); err != nil {
 		// Terminate call. Call must be ACK before doing BYE
 		if err := d.Ack(ctx); err != nil {
 			return errors.Join(err, d.Ack(ctx))
@@ -332,12 +339,8 @@ func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerO
 	return nil
 }
 
-func (d *DialogClientSession) applyRemoteSDP() error {
+func (d *DialogClientSession) applyRemoteSDP(remoteSDP []byte) error {
 	sess := d.mediaSession
-	remoteSDP := d.InviteResponse.Body()
-	if remoteSDP == nil {
-		return fmt.Errorf("no SDP in response")
-	}
 
 	// Apply SDP on existing (Early) media if it exists
 	if err := d.checkEarlyMedia(remoteSDP); err != errNoRTPSession {
@@ -364,7 +367,13 @@ func (d *DialogClientSession) applyRemoteSDP() error {
 // Ack acknowledgeds media
 // Before Ack normally you want to setup more stuff like bridging
 func (d *DialogClientSession) Ack(ctx context.Context) error {
-	if err := d.ack(ctx, nil); err != nil {
+	inviteRequest := d.InviteRequest
+	recipient := inviteRequest.Recipient
+	if contact := d.InviteResponse.Contact(); contact != nil {
+		recipient = contact.Address
+	}
+
+	if err := d.ack(ctx, recipient, nil); err != nil {
 		return err
 	}
 
@@ -382,15 +391,15 @@ func (d *DialogClientSession) Ack(ctx context.Context) error {
 // 	return d.ack(ctx, d.mediaSession.LocalSDP())
 // }
 
-func (d *DialogClientSession) ack(ctx context.Context, body []byte) error {
-	inviteRequest := d.InviteRequest
-	recipient := &inviteRequest.Recipient
-	if contact := d.InviteResponse.Contact(); contact != nil {
-		recipient = &contact.Address
-	}
+func (d *DialogClientSession) ack(ctx context.Context, remoteTarget sip.Uri, body []byte) error {
+	// inviteRequest := d.InviteRequest
+	// recipient := &inviteRequest.Recipient
+	// if contact := d.InviteResponse.Contact(); contact != nil {
+	// 	recipient = &contact.Address
+	// }
 	ackRequest := sip.NewRequest(
 		sip.ACK,
-		*recipient.Clone(),
+		remoteTarget,
 	)
 
 	if body != nil {
@@ -424,15 +433,9 @@ func (d *DialogClientSession) ReInvite(ctx context.Context) error {
 	req.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
 	req.SetBody(sdp)
 
-	res, err := d.Do(ctx, req)
+	res, err := d.reInviteDo(ctx, req)
 	if err != nil {
 		return err
-	}
-
-	if !res.IsSuccess() {
-		return sipgo.ErrDialogResponse{
-			Res: res,
-		}
 	}
 
 	cont := res.Contact()
@@ -442,6 +445,115 @@ func (d *DialogClientSession) ReInvite(ctx context.Context) error {
 
 	ack := sip.NewRequest(sip.ACK, cont.Address)
 	return d.WriteRequest(ack)
+}
+
+func (d *DialogClientSession) reInviteDo(ctx context.Context, req *sip.Request) (*sip.Response, error) {
+
+	for {
+		res, err := d.Do(ctx, req.Clone())
+		if err != nil {
+			return nil, err
+		}
+
+		if !res.IsSuccess() {
+			// https://datatracker.ietf.org/doc/html/rfc3261#section-14.1
+			// If a UAC receives a 491 response to a re-INVITE, it SHOULD start a
+			//    timer with a value T chosen as follows:
+			//       1. If the UAC is the owner of the Call-ID of the dialog ID
+			//          (meaning it generated the value), T has a randomly chosen value
+			//          between 2.1 and 4 seconds in units of 10 ms.
+
+			//       2. If the UAC is not the owner of the Call-ID of the dialog ID, T
+			//          has a randomly chosen value of between 0 and 2 seconds in units
+			//          of 10 ms.
+
+			if res.StatusCode == sip.StatusRequestPending {
+				select {
+				case <-time.After(time.Duration(2000+mrand.IntN(200)*10) * time.Millisecond):
+					continue
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+
+			return nil, sipgo.ErrDialogResponse{
+				Res: res,
+			}
+		}
+		// Now do ACK on new Contact
+		if err := d.ack(ctx, res.Contact().Address, nil); err != nil {
+			return res, err
+		}
+
+		return res, nil
+	}
+}
+
+// reInviteMediaSession updates with full new media session
+// media MUST BE Forked
+func (d *DialogClientSession) reInviteMediaSession(ctx context.Context, ms *media.MediaSession) error {
+	sdp := ms.LocalSDP()
+
+	err := d.DialogClientSession.Invite(ctx, func(c *sipgo.Client, req *sip.Request) error {
+		// Do nothing
+		return nil
+	})
+	if err != nil {
+		// sess.Close()
+		return err
+	}
+
+	// NOTE: we do not change original invite request
+	d.mu.Lock()
+	contact := d.remoteContactUnsafe()
+	d.mu.Unlock()
+
+	req := sip.NewRequest(sip.INVITE, contact.Address)
+	req.AppendHeader(d.InviteRequest.Contact())
+	req.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
+	req.SetBody(sdp)
+
+	res, err := d.reInviteDo(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	// Save new remote target contact and update media
+	return func() error {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		d.remoteContactTarget = res.Contact()
+
+		remoteSDP := res.Body()
+		if err := ms.RemoteSDP(remoteSDP); err != nil {
+			return fmt.Errorf("sdp update media remote SDP applying failed: %w", err)
+		}
+
+		return d.mediaUpdateUnsafe(ms)
+	}()
+}
+
+// reInvites withs empty SDP are way to keep alive or do some post media update after receiving offer on 2xx
+func (d *DialogClientSession) reInviteKeepAlive(ctx context.Context) error {
+	// NOTE: we do not change original invite request
+	d.mu.Lock()
+	contact := d.remoteContactUnsafe()
+	d.mu.Unlock()
+
+	req := sip.NewRequest(sip.INVITE, contact.Address)
+	req.AppendHeader(d.InviteRequest.Contact())
+
+	res, err := d.reInviteDo(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	// Save new remote target contact
+	d.mu.Lock()
+	d.remoteContactTarget = res.Contact()
+	d.mu.Unlock()
+
+	return nil
 }
 
 // Refer tries todo refer (blind transfer) on call

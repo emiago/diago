@@ -68,9 +68,9 @@ type DialogMedia struct {
 	audioReader io.Reader
 	audioWriter io.Writer
 
-	// lastInvite is actual last invite sent by remote REINVITE
+	// remoteContactTarget is actual target changed caused by incomign or outgoing REINVITE
 	// We do not use sipgo as this needs mutex but also keeping original invite
-	lastInvite *sip.Request
+	remoteContactTarget *sip.ContactHeader
 
 	onClose       func() error
 	onMediaUpdate func(*DialogMedia)
@@ -193,10 +193,14 @@ func (d *DialogMedia) MediaSession() *media.MediaSession {
 func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransaction, contactHDR sip.Header) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.lastInvite = req
+	d.remoteContactTarget = req.Contact().Clone()
 
-	if err := d.sdpReInviteUnsafe(req.Body()); err != nil {
-		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestTerminated, "Request Terminated - "+err.Error(), nil))
+	// When body is not present this can mean client is doing keep alive
+	// Still offer needs to be responded
+	if req.Body() != nil {
+		if err := d.sdpReInviteUnsafe(req.Body()); err != nil {
+			return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestTerminated, "Request Terminated - "+err.Error(), nil))
+		}
 	}
 
 	// Reply with updated SDP
@@ -240,6 +244,34 @@ func (d *DialogMedia) sdpUpdateUnsafe(sdp []byte) error {
 		return fmt.Errorf("sdp update media remote SDP applying failed: %w", err)
 	}
 
+	// TODO remove this with call mediaUpdateUnsafe
+	// Stop existing rtp
+	if d.rtpSession != nil {
+		if err := d.rtpSession.Close(); err != nil {
+			return err
+		}
+	}
+
+	rtpSess := media.NewRTPSession(msess)
+	d.onCloseUnsafe(func() error {
+		return rtpSess.Close()
+	})
+
+	if err := rtpSess.MonitorBackground(); err != nil {
+		rtpSess.Close()
+		return err
+	}
+
+	d.RTPPacketReader.UpdateRTPSession(rtpSess)
+	d.RTPPacketWriter.UpdateRTPSession(rtpSess)
+
+	// update the reference
+	d.mediaSession = msess
+	d.rtpSession = rtpSess
+	return nil
+}
+
+func (d *DialogMedia) mediaUpdateUnsafe(msess *media.MediaSession) error {
 	// Stop existing rtp
 	if d.rtpSession != nil {
 		if err := d.rtpSession.Close(); err != nil {

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"math/rand/v2"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -334,6 +335,96 @@ func TestIntegrationDialogClientReinvite(t *testing.T) {
 	require.NoError(t, err)
 
 	err = dialog.ReInvite(ctx)
+	require.NoError(t, err)
+
+	dialog.Hangup(ctx)
+}
+
+func TestIntegrationDialogClientReinviteKeepAlive(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	{
+		ua, _ := sipgo.NewUA(sipgo.WithUserAgent("server"))
+		defer ua.Close()
+
+		dg := NewDiago(ua, WithTransport(
+			Transport{
+				Transport: "udp",
+				BindHost:  "127.0.0.1",
+				BindPort:  15060,
+			},
+		))
+		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+			t.Log("Call received")
+			d.AnswerOptions(AnswerOptions{OnMediaUpdate: func(d *DialogMedia) {
+
+			}})
+			<-d.Context().Done()
+		})
+		require.NoError(t, err)
+	}
+
+	ua, _ := sipgo.NewUA()
+	defer ua.Close()
+
+	dg := newDialer(ua)
+	err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
+	require.NoError(t, err)
+
+	dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15060}, InviteOptions{})
+	require.NoError(t, err)
+
+	// Update now with full media
+	err = dialog.reInviteKeepAlive(ctx)
+	require.NoError(t, err)
+
+	dialog.Hangup(ctx)
+}
+
+func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	{
+		ua, _ := sipgo.NewUA(sipgo.WithUserAgent("server"))
+		defer ua.Close()
+
+		dg := NewDiago(ua, WithTransport(
+			Transport{
+				Transport: "udp",
+				BindHost:  "127.0.0.1",
+				BindPort:  15060,
+			},
+		))
+		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+			t.Log("Call received")
+			d.AnswerOptions(AnswerOptions{OnMediaUpdate: func(d *DialogMedia) {
+
+			}})
+			<-d.Context().Done()
+		})
+		require.NoError(t, err)
+	}
+
+	ua, _ := sipgo.NewUA()
+	defer ua.Close()
+
+	dg := newDialer(ua)
+	err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
+	require.NoError(t, err)
+
+	dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15060}, InviteOptions{})
+	require.NoError(t, err)
+
+	// Update media with new local IP
+	ms := dialog.MediaSession().Fork()
+	ms.Laddr = net.UDPAddr{IP: net.IPv4(127, 0, 0, 2), Port: ms.Laddr.Port}
+	err = ms.Init() // This will start new listener
+	require.NoError(t, err)
+
+	// Update now with full media
+	err = dialog.reInviteMediaSession(ctx, ms)
 	require.NoError(t, err)
 
 	dialog.Hangup(ctx)
