@@ -402,8 +402,16 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 				BindPort:  15079,
 			},
 		))
+		digServer := NewDigestServer()
 		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
 			t.Log("Call received")
+			if err := digServer.AuthorizeDialog(d, DigestAuth{
+				Username: "test",
+				Password: "test",
+			}); err != nil {
+				return
+			}
+
 			d.AnswerOptions(AnswerOptions{OnMediaUpdate: func(d *DialogMedia) {
 
 			}})
@@ -433,7 +441,10 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 	// err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
 	// require.NoError(t, err)
 
-	dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15079}, InviteOptions{})
+	dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15079}, InviteOptions{
+		Username: "test",
+		Password: "test",
+	})
 	require.NoError(t, err)
 	pb, _ := dialog.PlaybackCreate()
 	_, err = pb.Play(bytes.NewBuffer(beep), "audio/pcm")
