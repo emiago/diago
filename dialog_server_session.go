@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	mrand "math/rand/v2"
 	"strconv"
 	"sync/atomic"
+	"time"
 
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
@@ -343,6 +345,125 @@ func (d *DialogServerSession) ReInvite(ctx context.Context) error {
 
 	ack := sip.NewRequest(sip.ACK, cont.Address)
 	return d.WriteRequest(ack)
+}
+
+// reInviteMediaSession updates with full new media session
+// media MUST BE Forked
+func (d *DialogServerSession) reInviteMediaSession(ctx context.Context, ms *media.MediaSession) error {
+	sdp := ms.LocalSDP()
+
+	// NOTE: we do not change original invite request
+	d.mu.Lock()
+	contact := d.remoteContactUnsafe()
+	d.mu.Unlock()
+
+	req := sip.NewRequest(sip.INVITE, contact.Address)
+	req.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
+	req.SetBody(sdp)
+
+	res, err := d.reInviteDo(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	// Save new remote target contact and update media
+	return func() error {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		d.remoteContactTarget = res.Contact()
+
+		remoteSDP := res.Body()
+		if err := ms.RemoteSDP(remoteSDP); err != nil {
+			return fmt.Errorf("sdp update media remote SDP applying failed: %w", err)
+		}
+
+		return d.mediaUpdateUnsafe(ms)
+	}()
+}
+
+func (d *DialogServerSession) reInviteDo(ctx context.Context, req *sip.Request) (*sip.Response, error) {
+
+	for {
+		res, err := d.Do(ctx, req.Clone())
+		if err != nil {
+			return nil, err
+		}
+
+		if !res.IsSuccess() {
+			// https://datatracker.ietf.org/doc/html/rfc3261#section-14.1
+			// If a UAC receives a 491 response to a re-INVITE, it SHOULD start a
+			//    timer with a value T chosen as follows:
+			//       1. If the UAC is the owner of the Call-ID of the dialog ID
+			//          (meaning it generated the value), T has a randomly chosen value
+			//          between 2.1 and 4 seconds in units of 10 ms.
+
+			//       2. If the UAC is not the owner of the Call-ID of the dialog ID, T
+			//          has a randomly chosen value of between 0 and 2 seconds in units
+			//          of 10 ms.
+
+			if res.StatusCode == sip.StatusRequestPending {
+				select {
+				case <-time.After(time.Duration(2000+mrand.IntN(200)*10) * time.Millisecond):
+					continue
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+
+			return nil, sipgo.ErrDialogResponse{
+				Res: res,
+			}
+		}
+		// Now do ACK on new Contact
+		if err := d.ack(ctx, res.Contact().Address, nil); err != nil {
+			return res, err
+		}
+
+		return res, nil
+	}
+}
+
+func (d *DialogServerSession) ack(ctx context.Context, remoteTarget sip.Uri, body []byte) error {
+	// inviteRequest := d.InviteRequest
+	// recipient := &inviteRequest.Recipient
+	// if contact := d.InviteResponse.Contact(); contact != nil {
+	// 	recipient = &contact.Address
+	// }
+	ackRequest := sip.NewRequest(
+		sip.ACK,
+		remoteTarget,
+	)
+
+	if body != nil {
+		// This is delayed offer
+		ackRequest.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
+		ackRequest.SetBody(body)
+	}
+
+	if err := d.DialogServerSession.WriteRequest(ackRequest); err != nil {
+		return err
+	}
+
+	// if err := d.DialogServerSession.WriteAck(ctx, ackRequest); err != nil {
+	// 	return err
+	// }
+
+	// Now dialog is established and can be add into store
+	// if err := DialogsClientCache.DialogStore(ctx, d.ID, d); err != nil {
+	// 	return err
+	// }
+	// d.OnClose(func() error {
+	// 	return DialogsClientCache.DialogDelete(context.Background(), d.ID)
+	// })
+	return nil
+}
+
+func (d *DialogServerSession) remoteContactUnsafe() *sip.ContactHeader {
+	if d.remoteContactTarget != nil {
+		// Invite update can change contact
+		return d.remoteContactTarget
+	}
+	return d.InviteRequest.Contact()
 }
 
 // Refer tries todo refer (blind transfer) on call

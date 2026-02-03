@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emiago/diago/audio"
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
@@ -385,7 +386,11 @@ func TestIntegrationDialogClientReinviteKeepAlive(t *testing.T) {
 func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	beep, _ := audio.BeepLoadPCM(media.CodecAudioUlaw)
+	numPkts := len(beep) / media.CodecAudioUlaw.Samples16()
 
+	t.Log("Size beep", len(beep), numPkts)
+	audioReceived := make(chan []byte)
 	{
 		ua, _ := sipgo.NewUA(sipgo.WithUserAgent("server"))
 		defer ua.Close()
@@ -394,7 +399,7 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 			Transport{
 				Transport: "udp",
 				BindHost:  "127.0.0.1",
-				BindPort:  15077,
+				BindPort:  15079,
 			},
 		))
 		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
@@ -402,6 +407,20 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 			d.AnswerOptions(AnswerOptions{OnMediaUpdate: func(d *DialogMedia) {
 
 			}})
+
+			ar, _ := d.AudioReader()
+
+			var err error
+			ms := d.MediaSession().Fork()
+			ms.Laddr = net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 39999}
+			err = ms.Init() // This will start new listener
+			require.NoError(t, err)
+
+			err = d.reInviteMediaSession(ctx, ms)
+			require.NoError(t, err)
+
+			beepEncoded, _ := media.ReadAll(ar, 160)
+			audioReceived <- beepEncoded
 			<-d.Context().Done()
 		})
 		require.NoError(t, err)
@@ -411,23 +430,20 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 	defer ua.Close()
 
 	dg := newDialer(ua)
-	err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
-	require.NoError(t, err)
+	// err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
+	// require.NoError(t, err)
 
-	dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15077}, InviteOptions{})
+	dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15079}, InviteOptions{})
 	require.NoError(t, err)
-
-	// Update media with new local IP
-	ms := dialog.MediaSession().Fork()
-	ms.Laddr = net.UDPAddr{IP: net.IPv4(127, 0, 0, 2), Port: ms.Laddr.Port}
-	err = ms.Init() // This will start new listener
-	require.NoError(t, err)
-
-	// Update now with full media
-	err = dialog.reInviteMediaSession(ctx, ms)
+	pb, _ := dialog.PlaybackCreate()
+	_, err = pb.Play(bytes.NewBuffer(beep), "audio/pcm")
 	require.NoError(t, err)
 
 	dialog.Hangup(ctx)
+	remoteAudio := <-audioReceived
+
+	// 1 packet will not be consumed due to update of RTP packets
+	assert.GreaterOrEqual(t, len(remoteAudio)/160, numPkts-1)
 }
 
 func TestDialogClientInviteFailed(t *testing.T) {

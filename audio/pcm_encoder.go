@@ -288,7 +288,6 @@ func (d *PCMEncoderWriter) Write(lpcm []byte) (int, error) {
 		return n, err
 	}
 	encoded := d.buf[:n]
-	// fmt.Println("Writing lpcm, encoded", len(lpcm), len(encoded))
 
 	nn, err := d.Writer.Write(encoded)
 	if err != nil {
