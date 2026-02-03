@@ -138,6 +138,9 @@ type MediaSession struct {
 	dtlsConn *dtls.Conn
 
 	onFinalize func() error
+
+	sessionID      uint64
+	sessionVersion uint64
 }
 
 func NewMediaSession(ip net.IP, port int) (s *MediaSession, e error) {
@@ -176,6 +179,12 @@ func (s *MediaSession) Init() error {
 	if err := s.createListeners(&s.Laddr); err != nil {
 		return err
 	}
+
+	if s.sessionID == 0 {
+		s.sessionID = GetCurrentNTPTimestamp()
+		s.sessionVersion = s.sessionID + 1
+	}
+
 	return nil
 }
 
@@ -240,13 +249,15 @@ func (s *MediaSession) StartRTP(rw int8) error {
 // It preserves pointer to same conneciton but rest is removed
 func (s *MediaSession) Fork() *MediaSession {
 	cp := MediaSession{
-		Laddr:    s.Laddr, // TODO clone it although it is read only
-		rtpConn:  s.rtpConn,
-		rtcpConn: s.rtcpConn,
-		Codecs:   slices.Clone(s.Codecs),
-		Mode:     sdp.ModeSendrecv,
-		RTPNAT:   s.RTPNAT,
-		sdp:      slices.Clone(s.sdp),
+		Laddr:          s.Laddr, // TODO clone it although it is read only
+		rtpConn:        s.rtpConn,
+		rtcpConn:       s.rtcpConn,
+		Codecs:         slices.Clone(s.Codecs),
+		Mode:           sdp.ModeSendrecv,
+		RTPNAT:         s.RTPNAT,
+		sdp:            slices.Clone(s.sdp),
+		sessionID:      s.sessionID,
+		sessionVersion: s.sessionVersion + 1, // increase version here or we should do this later?
 	}
 	return &cp
 }
@@ -378,7 +389,7 @@ func (s *MediaSession) LocalSDP() []byte {
 
 	}
 
-	return generateSDPForAudio(rtpProfile, ip, connIP, rtpPort, s.Mode, codecs, localSDES, dtlsSet)
+	return generateSDPForAudio(s.sessionID, s.sessionVersion, rtpProfile, ip, connIP, rtpPort, s.Mode, codecs, localSDES, dtlsSet)
 }
 
 // RemoteSDP applies remote SDP.
@@ -389,6 +400,13 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	if err := sdp.Unmarshal(sdpReceived, &sd); err != nil {
 		return fmt.Errorf("fail to parse received SDP: %w", err)
 	}
+
+	si, err := sd.SessionInformation()
+	if err != nil {
+		return err
+	}
+	s.sessionID = si.SessionID
+	s.sessionVersion = si.SessionVersion
 
 	md, err := sd.MediaDescription("audio")
 	if err != nil {
@@ -1068,8 +1086,8 @@ type dtlsSetup struct {
 	fingerprints []sdpFingerprints
 }
 
-func generateSDPForAudio(rtpProfile string, originIP net.IP, connectionIP net.IP, rtpPort int, mode string, codecs []Codec, sdes sdesInline, dtlsSet *dtlsSetup) []byte {
-	ntpTime := GetCurrentNTPTimestamp()
+func generateSDPForAudio(sessionID uint64, sessionVersion uint64, rtpProfile string, originIP net.IP, connectionIP net.IP, rtpPort int, mode string, codecs []Codec, sdes sdesInline, dtlsSet *dtlsSetup) []byte {
+	// ntpTime := GetCurrentNTPTimestamp()
 
 	fmts := make([]string, len(codecs))
 	formatsMap := []string{}
@@ -1099,7 +1117,7 @@ func generateSDPForAudio(rtpProfile string, originIP net.IP, connectionIP net.IP
 	// TODO optimize this with string builder
 	s := []string{
 		"v=0",
-		fmt.Sprintf("o=- %d %d IN %s %s", ntpTime, ntpTime, sdpIP(originIP), originIP),
+		fmt.Sprintf("o=- %d %d IN %s %s", sessionID, sessionVersion, sdpIP(originIP), originIP),
 		"s=Sip Go Media",
 		// "b=AS:84",
 		fmt.Sprintf("c=IN %s %s", sdpIP(connectionIP), connectionIP),

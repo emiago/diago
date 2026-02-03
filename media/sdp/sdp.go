@@ -144,6 +144,40 @@ func (sd SessionDescription) ConnectionInformation() (ci ConnectionInformation, 
 	return ci, nil
 }
 
+type SessionInformation struct {
+	Origin         string
+	SessionID      uint64
+	SessionVersion uint64
+	NetworkType    string
+	AddressType    string
+	Address        string // Informational address
+}
+
+func (sd SessionDescription) SessionInformation() (i SessionInformation, err error) {
+	v := sd.Value("o")
+	if v == "" {
+		return i, fmt.Errorf("Connection information does not exists")
+	}
+	fields := strings.Fields(v)
+	if len(fields) < 6 {
+		return i, fmt.Errorf("Not enough session fields")
+	}
+	i.Origin = fields[0]
+	sessId, sessVersion := fields[1], fields[2]
+	i.SessionID, err = strconv.ParseUint(sessId, 10, 64)
+	if err != nil {
+		return i, err
+	}
+	i.SessionVersion, err = strconv.ParseUint(sessVersion, 10, 64)
+	if err != nil {
+		return i, err
+	}
+	i.NetworkType = fields[3]
+	i.AddressType = fields[4]
+	i.Address = fields[5]
+	return i, nil
+}
+
 // Unmarshal is non validate version of sdp parsing
 // Validation of values needs to be seperate
 // NOT OPTIMIZED
