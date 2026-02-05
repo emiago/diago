@@ -210,9 +210,9 @@ func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
 	d.mu.Lock()
 	d.initRTPSessionUnsafe(sess, rtpSess)
 	// Close RTP session
-	d.onCloseUnsafe(func() error {
-		return rtpSess.Close()
-	})
+	// d.onCloseUnsafe(func() error {
+	// 	return rtpSess.Close()
+	// })
 	d.mu.Unlock()
 
 	// This will now block until ACK received with 64*T1 as max.
@@ -244,9 +244,9 @@ func (d *DialogServerSession) setupRTPSession(rtpSess *media.RTPSession) error {
 	d.mu.Lock()
 	d.initRTPSessionUnsafe(sess, rtpSess)
 	// Close RTP session
-	d.onCloseUnsafe(func() error {
-		return rtpSess.Close()
-	})
+	// d.onCloseUnsafe(func() error {
+	// 	return rtpSess.Close()
+	// })
 	d.mu.Unlock()
 	return nil
 }
@@ -263,9 +263,9 @@ func (d *DialogServerSession) AnswerLate() error {
 	d.mu.Lock()
 	d.initRTPSessionUnsafe(sess, rtpSess)
 	// Close RTP session
-	d.onCloseUnsafe(func() error {
-		return rtpSess.Close()
-	})
+	// d.onCloseUnsafe(func() error {
+	// 	return rtpSess.Close()
+	// })
 	d.mu.Unlock()
 
 	// This will now block until ACK received with 64*T1 as max.
@@ -376,7 +376,6 @@ func (d *DialogServerSession) reInviteMediaSession(ctx context.Context, ms *medi
 		if err := ms.RemoteSDP(remoteSDP); err != nil {
 			return fmt.Errorf("sdp update media remote SDP applying failed: %w", err)
 		}
-
 		return d.mediaUpdateUnsafe(ms)
 	}()
 }
@@ -414,6 +413,7 @@ func (d *DialogServerSession) reInviteDo(ctx context.Context, req *sip.Request) 
 				Res: res,
 			}
 		}
+
 		// Now do ACK on new Contact
 		if err := d.ack(ctx, res.Contact().Address, nil); err != nil {
 			return res, err

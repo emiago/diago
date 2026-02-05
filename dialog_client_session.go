@@ -355,9 +355,9 @@ func (d *DialogClientSession) applyRemoteSDP(remoteSDP []byte) error {
 	rtpSess := media.NewRTPSession(sess)
 	d.mu.Lock()
 	d.initRTPSessionUnsafe(sess, rtpSess)
-	d.onCloseUnsafe(func() error {
-		return rtpSess.Close()
-	})
+	// d.onCloseUnsafe(func() error {
+	// 	return rtpSess.Close()
+	// })
 	d.mu.Unlock()
 
 	// Must be called after reader and writer setup due to race
@@ -481,6 +481,7 @@ func (d *DialogClientSession) reInviteDo(ctx context.Context, req *sip.Request) 
 				Res: res,
 			}
 		}
+
 		// Now do ACK on new Contact
 		if err := d.ack(ctx, res.Contact().Address, nil); err != nil {
 			return res, err
@@ -577,6 +578,16 @@ func (d *DialogClientSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 	}
 
 	return d.handleMediaUpdate(req, tx, d.InviteRequest.Contact())
+}
+
+func (d *DialogClientSession) handleReInviteACK(req *sip.Request, tx sip.ServerTransaction) error {
+	// if err := d.ReadRequest(req, tx); err != nil {
+	// 	return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request - "+err.Error(), nil))
+	// }
+	return d.mediaSession.Finalize()
+
+	// return d.handleMediaUpdate(req, tx, d.InviteRequest.Contact())
+	return nil
 }
 
 func (d *DialogClientSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTransaction) error {

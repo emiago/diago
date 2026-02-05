@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
@@ -119,6 +120,21 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 
 	rtpN, err := reader.ReadRTP(buf, pkt)
 	if err != nil {
+		// In case we error while new reader update happen, then retry again
+		// This can be deadline, timeout, or connection closed
+		r.mu.RLock()
+		newReader := r.reader
+		r.mu.RUnlock()
+		if newReader != reader {
+			// Make sure read is enabled if this is rtp connection
+			// TODO we may need to expose this
+			if ms, ok := newReader.(*MediaSession); ok {
+				ms.rtpConn.SetReadDeadline(time.Time{})
+			}
+			rtpN, err = newReader.ReadRTP(buf, pkt)
+		}
+	}
+	if err != nil {
 		// For now underhood IO should only net closed
 		// Here we are returning EOF to be io package compatilble
 		// like with func io.ReadAll
@@ -189,6 +205,7 @@ func (r *RTPPacketReader) Reader() RTPReader {
 
 func (r *RTPPacketReader) UpdateRTPSession(rtpSess *RTPSession) {
 	r.UpdateReader(rtpSess)
+
 	// codec := CodecFromSession(rtpSess.Sess)
 	// r.mu.Lock()
 	// r.RTPSession = rtpSess
@@ -200,6 +217,11 @@ func (r *RTPPacketReader) UpdateRTPSession(rtpSess *RTPSession) {
 func (r *RTPPacketReader) UpdateReader(reader RTPReader) {
 	// codec := CodecFromSession(rtpSess.Sess)
 	r.mu.Lock()
+	// Make sure that current reading is stopped
+	if m, ok := r.reader.(*MediaSession); ok {
+		m.rtpConn.SetReadDeadline(time.Now())
+	}
 	r.reader = reader
+	// TODO we need to make sure that current Audio Reading is really stopped before updating
 	r.mu.Unlock()
 }

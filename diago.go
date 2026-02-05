@@ -226,7 +226,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	errHandler := func(f func(req *sip.Request, tx sip.ServerTransaction) error) sipgo.RequestHandler {
 		handler := func(req *sip.Request, tx sip.ServerTransaction) {
 			if err := f(req, tx); err != nil {
-				dg.log.Warn("Failed to handle request", "error", err, "req.method", req.Method.String())
+				dg.log.Warn("Failed to handle request", "error", err, "req.method", req.Method.String(), "req.from", req.From().String(), "req.to", req.To().Value())
 				return
 			}
 			// Termination gracefull will be done by sipgo now
@@ -324,14 +324,24 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 	}))
 
 	server.OnAck(errHandler(func(req *sip.Request, tx sip.ServerTransaction) error {
-		d, err := dg.cache.MatchDialogServer(req)
+		// d, err := dg.cache.MatchDialogServer(req)
+		// if err != nil {
+		// 	// Normally ACK will be received if some out of dialog request is received or we responded negatively
+		// 	// tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
+		// 	return err
+		// }
+
+		sd, cd, err := dg.cache.MatchDialog(req)
 		if err != nil {
-			// Normally ACK will be received if some out of dialog request is received or we responded negatively
-			// tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
-			return err
+			return handleNoDialog(req, tx, err)
 		}
 
-		return d.ReadAck(req, tx)
+		if cd != nil {
+			// THis is from REINVITE
+			return cd.handleReInviteACK(req, tx)
+		}
+
+		return sd.ReadAck(req, tx)
 	}))
 
 	server.OnBye(errHandler(func(req *sip.Request, tx sip.ServerTransaction) error {

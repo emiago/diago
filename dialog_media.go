@@ -91,18 +91,23 @@ func (d *DialogMedia) Close() error {
 	onClose := d.onClose
 	d.onClose = nil
 	m := d.mediaSession
+	rtpSess := d.rtpSession
 
 	d.mu.Unlock()
 
-	var e1, e2 error
+	var e1, e2, e3 error
 	if onClose != nil {
 		e1 = onClose()
 	}
 
-	if m != nil {
-		e2 = m.Close()
+	if rtpSess != nil {
+		e2 = rtpSess.Close()
 	}
-	return errors.Join(e1, e2)
+
+	if m != nil {
+		e3 = m.Close()
+	}
+	return errors.Join(e1, e2, e3)
 }
 
 func (d *DialogMedia) OnClose(f func() error) {
@@ -253,9 +258,9 @@ func (d *DialogMedia) sdpUpdateUnsafe(sdp []byte) error {
 	}
 
 	rtpSess := media.NewRTPSession(msess)
-	d.onCloseUnsafe(func() error {
-		return rtpSess.Close()
-	})
+	// d.onCloseUnsafe(func() error {
+	// 	return rtpSess.Close()
+	// })
 
 	if err := rtpSess.MonitorBackground(); err != nil {
 		rtpSess.Close()
@@ -280,17 +285,27 @@ func (d *DialogMedia) mediaUpdateUnsafe(msess *media.MediaSession) error {
 	}
 
 	rtpSess := media.NewRTPSession(msess)
-	d.onCloseUnsafe(func() error {
-		return rtpSess.Close()
-	})
-
 	if err := rtpSess.MonitorBackground(); err != nil {
 		rtpSess.Close()
 		return err
 	}
 
+	// d.onCloseUnsafe(func() error {
+	// 	return rtpSess.Close()
+	// })
+
+	// Make sure any current reader is not consuming old media session
+	fmt.Println("Updating started")
 	d.RTPPacketReader.UpdateRTPSession(rtpSess)
 	d.RTPPacketWriter.UpdateRTPSession(rtpSess)
+
+	// If connection IP changed close
+	// TODO can we make this better?
+	if !d.mediaSession.Laddr.IP.Equal(msess.Laddr.IP) || d.mediaSession.Laddr.Port != msess.Laddr.Port {
+		if err := d.mediaSession.Close(); err != nil {
+			return err
+		}
+	}
 
 	// update the reference
 	d.mediaSession = msess

@@ -192,6 +192,14 @@ func (s *MediaSession) InitWithListeners(lRTP net.PacketConn, lRTCP net.PacketCo
 	s.SetRemoteAddr(raddr)
 }
 
+func (s *MediaSession) String() string {
+	return fmt.Sprintln(
+		"rtp.connection", s.rtpConn.LocalAddr().String(),
+		"rtcp.connection", s.rtcpConn.LocalAddr().String(),
+		"remote.addr", s.Raddr.String(),
+	)
+}
+
 // InitWithSDP allows creating media session with own SDP and bypassing other needs
 func (s *MediaSession) InitWithSDP(localSDP []byte) error {
 	s.sdp = localSDP
@@ -957,6 +965,10 @@ func (m *MediaSession) WriteRTP(p *rtp.Packet) error {
 		return io.ErrShortWrite
 	}
 	return nil
+}
+
+func (m *MediaSession) RTPSetDeadline(rw int, t time.Time) error {
+	return m.rtpConn.SetReadDeadline(t)
 }
 
 func (m *MediaSession) getWriteBuf() []byte {

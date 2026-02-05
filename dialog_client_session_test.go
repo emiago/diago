@@ -6,6 +6,7 @@ package diago
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"math/rand/v2"
 	"net"
 	"sync"
@@ -353,7 +354,7 @@ func TestIntegrationDialogClientReinviteKeepAlive(t *testing.T) {
 			Transport{
 				Transport: "udp",
 				BindHost:  "127.0.0.1",
-				BindPort:  15060,
+				BindPort:  15066,
 			},
 		))
 		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
@@ -373,7 +374,7 @@ func TestIntegrationDialogClientReinviteKeepAlive(t *testing.T) {
 	err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
 	require.NoError(t, err)
 
-	dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15060}, InviteOptions{})
+	dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15066}, InviteOptions{})
 	require.NoError(t, err)
 
 	// Update now with full media
@@ -404,7 +405,7 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 		))
 		digServer := NewDigestServer()
 		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
-			t.Log("Call received")
+			t.Log("New INVITE")
 			if err := digServer.AuthorizeDialog(d, DigestAuth{
 				Username: "test",
 				Password: "test",
@@ -413,23 +414,31 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 			}
 
 			d.AnswerOptions(AnswerOptions{OnMediaUpdate: func(d *DialogMedia) {
-
+				// fmt.Println("Server media update", d)
 			}})
 
-			ar, _ := d.AudioReader()
+			// ar, _ := d.AudioReader()
+			ar := d.RTPPacketReader
+			ctx, cancel := context.WithCancel(context.Background())
+			go func() {
+				defer cancel()
+				beepEncoded, _ := media.ReadAll(ar, 160)
+				audioReceived <- beepEncoded
+			}()
 
+			time.Sleep(60 * time.Millisecond)
 			var err error
 			ms := d.MediaSession().Fork()
-			ms.Laddr = net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 39999}
+			ms.Laddr = net.UDPAddr{IP: net.IPv4(127, 0, 0, 2), Port: 39999}
 			err = ms.Init() // This will start new listener
 			require.NoError(t, err)
 
 			err = d.reInviteMediaSession(ctx, ms)
 			require.NoError(t, err)
 
-			beepEncoded, _ := media.ReadAll(ar, 160)
-			audioReceived <- beepEncoded
-			<-d.Context().Done()
+			// beepEncoded, _ := media.ReadAll(ar, 160)
+			// audioReceived <- beepEncoded
+			<-ctx.Done()
 		})
 		require.NoError(t, err)
 	}
@@ -440,17 +449,26 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 	dg := newDialer(ua)
 	// err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
 	// require.NoError(t, err)
-
-	dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15079}, InviteOptions{
+	dialog, err := dg.NewDialog(sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15079}, NewDialogOptions{})
+	require.NoError(t, err)
+	err = dialog.Invite(ctx, InviteClientOptions{
+		OnMediaUpdate: func(d *DialogMedia) {
+			fmt.Println("Media update", d)
+		},
 		Username: "test",
 		Password: "test",
 	})
+	require.NoError(t, err)
+	err = dialog.Ack(ctx)
+	require.NoError(t, err)
+
 	require.NoError(t, err)
 	pb, _ := dialog.PlaybackCreate()
 	_, err = pb.Play(bytes.NewBuffer(beep), "audio/pcm")
 	require.NoError(t, err)
 
-	dialog.Hangup(ctx)
+	err = dialog.Hangup(ctx)
+	require.NoError(t, err)
 	remoteAudio := <-audioReceived
 
 	// 1 packet will not be consumed due to update of RTP packets
