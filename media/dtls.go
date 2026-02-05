@@ -35,17 +35,12 @@ type DTLSConfig struct {
 	// Check ServerClientAuth
 	ServerClientAuth int
 
-	fingerprints []sdpFingerprints
+	// SRTPProfiles to use in exchange. Check constant vars with media.SRTPProfile...
+	SRTPProfiles []uint16
 }
 
-func dtlsServer(conn net.PacketConn, raddr net.Addr, certificates []tls.Certificate) (*dtls.Conn, error) {
-	return dtlsServerConf(conn, raddr, DTLSConfig{
-		Certificates: certificates,
-		// ServerClientAuth: ServerClientAuthRequireCert,
-	})
-}
+func (conf *DTLSConfig) ToLibConf(fingerprints []sdpFingerprints) *dtls.Config {
 
-func dtlsServerConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls.Conn, error) {
 	config := &dtls.Config{
 		// Use appropriate certificate or generate self-signed
 		Certificates: conf.Certificates,
@@ -68,14 +63,25 @@ func dtlsServerConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls
 		ClientAuth:           dtls.ClientAuthType(conf.ServerClientAuth),
 		ExtendedMasterSecret: dtls.RequireExtendedMasterSecret,
 
+		InsecureSkipVerify: conf.ServerName == "", // Accept self-signed certs (for dev)
+		ServerName:         conf.ServerName,       // If insecure is false
+
 		// IT IS STILL UNCLEAR WHY WE CAN NOT READ CERTIFICATE HERE
 		VerifyConnection: func(state *dtls.State) error {
-			if len(conf.fingerprints) == 0 {
+			if len(fingerprints) == 0 {
 				return nil
 			}
-			return dtlsVerifyConnection(state, conf.fingerprints)
+			return dtlsVerifyConnection(state, fingerprints)
 		},
 		StopReaderAfterHandshake: true,
+	}
+
+	if conf.SRTPProfiles != nil {
+		srtpProfs := make([]dtls.SRTPProtectionProfile, len(conf.SRTPProfiles))
+		for i, p := range conf.SRTPProfiles {
+			srtpProfs[i] = dtls.SRTPProtectionProfile(p)
+		}
+		config.SRTPProtectionProfiles = srtpProfs
 	}
 
 	if DTLSDebug {
@@ -83,50 +89,23 @@ func dtlsServerConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls
 		loggerFactory.DefaultLogLevel = logging.LogLevelTrace
 		config.LoggerFactory = loggerFactory
 	}
+	return config
+}
 
-	return dtls.Server(conn, raddr, config)
+func dtlsServer(conn net.PacketConn, raddr net.Addr, certificates []tls.Certificate) (*dtls.Conn, error) {
+	conf := DTLSConfig{
+		Certificates: certificates,
+	}
+	return dtls.Server(conn, raddr, conf.ToLibConf([]sdpFingerprints{}))
 }
 
 func dtlsClient(conn net.PacketConn, raddr net.Addr, certificates []tls.Certificate, serverName string) (*dtls.Conn, error) {
 	// Client DTLS config
-	return dtlsClientConf(conn, raddr, DTLSConfig{
+	conf := DTLSConfig{
 		Certificates: certificates,
 		ServerName:   serverName,
-	})
-}
-
-func dtlsClientConf(conn net.PacketConn, raddr net.Addr, conf DTLSConfig) (*dtls.Conn, error) {
-	serverName := conf.ServerName
-	config := &dtls.Config{
-		Certificates: conf.Certificates,
-		// CipherSuites: []dtls.CipherSuiteID{
-		// 	dtls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-		// },
-		SRTPProtectionProfiles: []dtls.SRTPProtectionProfile{
-			dtls.SRTP_AEAD_AES_128_GCM,
-			dtls.SRTP_AES128_CM_HMAC_SHA1_80,
-		},
-		InsecureSkipVerify:   serverName == "", // Accept self-signed certs (for dev)
-		ServerName:           serverName,       // If insecure is false
-		ExtendedMasterSecret: dtls.RequireExtendedMasterSecret,
-		// ClientAuth:           dtls.NoClientCert,
-		VerifyConnection: func(state *dtls.State) error {
-			if len(conf.fingerprints) == 0 {
-				return nil
-			}
-			return dtlsVerifyConnection(state, conf.fingerprints)
-		},
-		// ClientAuth: dtls.RequestClientCert,
-		StopReaderAfterHandshake: true,
 	}
-
-	if DTLSDebug {
-		loggerFactory := logging.NewDefaultLoggerFactory()
-		loggerFactory.DefaultLogLevel = logging.LogLevelTrace
-		config.LoggerFactory = loggerFactory
-	}
-
-	return dtls.Client(conn, raddr, config)
+	return dtls.Client(conn, raddr, conf.ToLibConf([]sdpFingerprints{}))
 }
 
 func dtlsVerifyConnection(state *dtls.State, fingerprints []sdpFingerprints) error {

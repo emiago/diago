@@ -261,6 +261,7 @@ func (s *MediaSession) Fork() *MediaSession {
 		sdp:            slices.Clone(s.sdp),
 		sessionID:      s.sessionID,
 		sessionVersion: s.sessionVersion,
+		DTLSConf:       s.DTLSConf,
 	}
 	return &cp
 }
@@ -552,7 +553,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 		}
 
 		// THIS may need external or after SIP ACK establishment
-		s.DTLSConf.fingerprints = fingerprints
+		dtlsConf := s.DTLSConf.ToLibConf(fingerprints)
 		role := "client"
 		switch setup {
 		case "actpass", "passive":
@@ -560,7 +561,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			// if s.dtlsConn == nil {
 			// 	panic("No dtls connection")
 			// }
-			s.dtlsConn, err = dtlsClientConf(s.rtpConn, &s.Raddr, s.DTLSConf)
+			s.dtlsConn, err = dtls.Client(s.rtpConn, &s.Raddr, dtlsConf)
 			if err != nil {
 				return fmt.Errorf("failed to setup dlts client conn: %w", err)
 			}
@@ -568,7 +569,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 		case "active":
 			role = "server"
 			// we are server as remote wants to be client
-			s.dtlsConn, err = dtlsServerConf(s.rtpConn, &s.Raddr, s.DTLSConf)
+			s.dtlsConn, err = dtls.Server(s.rtpConn, &s.Raddr, dtlsConf)
 			if err != nil {
 				return fmt.Errorf("failed to setup dlts server conn: %w", err)
 			}
@@ -640,28 +641,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			}
 
 			DefaultLogger().Debug("DTLS SRTP setuped")
-
 			return nil
-			// // Issue here is that PeerCertificates are empty
-			// if err := state.UnmarshalBinary(make([]byte, 1500)); err != nil {
-			// 	return err
-			// }
-			remoteCert := state.PeerCertificates[0]
-
-			for _, fp := range fingerprints {
-				DefaultLogger().Debug("Checking fingerprint", "alg", fp.alg, "fg", fp.fingerprint)
-				if fp.alg == "SHA-256" {
-					remoteFP, err := dtlsSHA256CertificateFingerprint(remoteCert)
-					if err != nil {
-						return err
-					}
-
-					if fp.fingerprint == remoteFP {
-						return nil
-					}
-				}
-			}
-			return fmt.Errorf("no matched fingerprint")
 		}
 	}
 
