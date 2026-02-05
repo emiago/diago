@@ -127,6 +127,7 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 		r.mu.RUnlock()
 		if newReader != reader {
 			// Make sure read is enabled if this is rtp connection
+			// Reason is we SetDeadline on Update but media session may not change connection
 			// TODO we may need to expose this
 			if ms, ok := newReader.(*MediaSession); ok {
 				ms.rtpConn.SetReadDeadline(time.Time{})

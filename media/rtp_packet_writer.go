@@ -138,7 +138,7 @@ func (p *RTPPacketWriter) DelayTimestamp(ofsset uint32) {
 // It is not thread safe and order of payload frames is required
 func (p *RTPPacketWriter) Write(b []byte) (int, error) {
 	p.mu.RLock()
-	n, err := p.WriteSamples(b, p.sampleRateTimestamp, p.nextTimestamp == p.initTimestamp, p.payloadType)
+	n, err := p.writeSamplesUnsafe(p.writer, b, p.sampleRateTimestamp, p.nextTimestamp == p.initTimestamp, p.payloadType)
 	p.mu.RUnlock()
 	p.lastSampleTime = <-p.clockTicker.C
 	return n, err
@@ -147,7 +147,13 @@ func (p *RTPPacketWriter) Write(b []byte) (int, error) {
 // WriteSamples allows to skip default packet rate.
 // This is useful if you need to write different payload but keeping same SSRC
 func (p *RTPPacketWriter) WriteSamples(payload []byte, sampleRateTimestamp uint32, marker bool, payloadType uint8) (int, error) {
-	writer := p.writer
+	p.mu.RLock()
+	n, err := p.writeSamplesUnsafe(p.writer, payload, sampleRateTimestamp, marker, payloadType)
+	p.mu.RUnlock()
+	return n, err
+}
+
+func (p *RTPPacketWriter) writeSamplesUnsafe(writer RTPWriter, payload []byte, sampleRateTimestamp uint32, marker bool, payloadType uint8) (int, error) {
 	pkt := &p.packet
 	pkt.Header = rtp.Header{
 		Version:     2,

@@ -967,10 +967,6 @@ func (m *MediaSession) WriteRTP(p *rtp.Packet) error {
 	return nil
 }
 
-func (m *MediaSession) RTPSetDeadline(rw int, t time.Time) error {
-	return m.rtpConn.SetReadDeadline(t)
-}
-
 func (m *MediaSession) getWriteBuf() []byte {
 	if m.writeRTPBuf == nil {
 		m.writeRTPBuf = make([]byte, RTPBufSize)
