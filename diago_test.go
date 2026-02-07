@@ -93,7 +93,7 @@ func TestDiagoInviteCallerID(t *testing.T) {
 
 		assert.Equal(t, dg.ua.Name(), req.From().Address.User)
 		assert.Equal(t, dg.ua.Hostname(), req.From().Address.Host)
-		assert.NotEmpty(t, req.From().Params["tag"])
+		assert.NotEmpty(t, req.From().Params.GetOr("tag", ""))
 	})
 
 }

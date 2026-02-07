@@ -491,7 +491,7 @@ func TestDialogClientInviteFailed(t *testing.T) {
 		req := <-reqCh
 		assert.Equal(t, "Test", req.From().DisplayName)
 		assert.Equal(t, "123456", req.From().Address.User)
-		assert.NotEmpty(t, req.From().Params["tag"])
+		assert.NotEmpty(t, req.From().Params.GetOr("tag", ""))
 	})
 
 	t.Run("WithAnonymous", func(t *testing.T) {
@@ -503,7 +503,7 @@ func TestDialogClientInviteFailed(t *testing.T) {
 		req := <-reqCh
 		assert.Equal(t, "Anonymous", req.From().DisplayName)
 		assert.Equal(t, "anonymous", req.From().Address.User)
-		assert.NotEmpty(t, req.From().Params["tag"])
+		assert.NotEmpty(t, req.From().Params.GetOr("tag", ""))
 	})
 }
 

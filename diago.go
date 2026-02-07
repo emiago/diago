@@ -636,9 +636,9 @@ type NewDialogOptions struct {
 func (dg *Diago) NewDialog(recipient sip.Uri, opts NewDialogOptions) (d *DialogClientSession, err error) {
 	transport := opts.Transport
 	if transport == "" && recipient.UriParams != nil {
-		if t := recipient.UriParams["transport"]; t != "" {
+		if t, ok := recipient.UriParams.Get("transport"); t != "" && ok {
 			transport = t
-			delete(recipient.UriParams, "transport")
+			recipient.UriParams.Remove("transport")
 		}
 
 	}
@@ -824,8 +824,8 @@ func (dg *Diago) Register(ctx context.Context, recipient sip.Uri, opts RegisterO
 // Register transaction creates register transaction object that can be used for Register Unregister requests
 func (dg *Diago) RegisterTransaction(ctx context.Context, recipient sip.Uri, opts RegisterOptions) (*RegisterTransaction, error) {
 	// Make our client reuse address
-	transport := recipient.UriParams["transport"]
-	if transport == "" {
+	transport, exists := recipient.UriParams.Get("transport")
+	if !exists {
 		transport = "udp"
 	}
 	tran, exists := dg.getTransport(transport)
