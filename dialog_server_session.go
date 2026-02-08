@@ -18,6 +18,8 @@ import (
 	"github.com/emiago/sipgo/sip"
 )
 
+type OnReferDialogFunc func(referDialog *DialogClientSession) error
+
 // DialogServerSession represents inbound channel
 type DialogServerSession struct {
 	*sipgo.DialogServerSession
@@ -25,7 +27,7 @@ type DialogServerSession struct {
 	// MediaSession *media.MediaSession
 	DialogMedia
 
-	onReferDialog func(referDialog *DialogClientSession)
+	onReferDialog OnReferDialogFunc
 
 	mediaConf MediaConfig
 	closed    atomic.Uint32
@@ -148,7 +150,7 @@ func (d *DialogServerSession) Answer() error {
 type AnswerOptions struct {
 	// OnMediaUpdate triggers when media update happens. It is blocking func, so make sure you exit
 	OnMediaUpdate func(d *DialogMedia)
-	OnRefer       func(referDialog *DialogClientSession)
+	OnRefer       func(referDialog *DialogClientSession) error
 	// Codecs that will be used
 	Codecs []media.Codec
 

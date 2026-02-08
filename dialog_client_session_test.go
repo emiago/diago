@@ -601,8 +601,14 @@ func TestIntegrationDialogClientRefer(t *testing.T) {
 		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
 			t.Log("Call received")
 			d.AnswerOptions(AnswerOptions{
-				OnRefer: func(referDialog *DialogClientSession) {
-					referDialog.Hangup(referDialog.Context())
+				OnRefer: func(referDialog *DialogClientSession) error {
+					if err := referDialog.Invite(referDialog.Context(), InviteClientOptions{}); err != nil {
+						return err
+					}
+					if err := referDialog.Ack(ctx); err != nil {
+						return err
+					}
+					return referDialog.Hangup(referDialog.Context())
 				},
 			})
 			<-d.Context().Done()

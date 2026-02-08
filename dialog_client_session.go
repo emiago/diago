@@ -28,7 +28,7 @@ type DialogClientSession struct {
 
 	DialogMedia
 
-	onReferDialog func(referDialog *DialogClientSession)
+	onReferDialog OnReferDialogFunc
 
 	closed atomic.Uint32
 }
@@ -83,7 +83,7 @@ type InviteClientOptions struct {
 	// OnMediaUpdate called when media is changed.
 	// NOTE: you should not block this call as it blocks response processing.
 	OnMediaUpdate func(d *DialogMedia)
-	OnRefer       func(referDialog *DialogClientSession)
+	OnRefer       OnReferDialogFunc
 	// For digest authentication
 	Username string
 	Password string

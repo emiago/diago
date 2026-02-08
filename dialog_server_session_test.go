@@ -199,9 +199,16 @@ func TestIntegrationDialogServerRefer(t *testing.T) {
 
 		go func() {
 			err := dialog.Invite(ctx, InviteClientOptions{
-				OnRefer: func(referDialog *DialogClientSession) {
+				OnRefer: func(referDialog *DialogClientSession) error {
 					// referDialog.
-					referDialog.Hangup(ctx)
+					if err := referDialog.Invite(ctx, InviteClientOptions{}); err != nil {
+						return err
+					}
+					if err := referDialog.Ack(ctx); err != nil {
+						return err
+					}
+
+					return referDialog.Hangup(ctx)
 				},
 			})
 			require.NoError(t, err)
@@ -264,7 +271,7 @@ func TestIntegrationDialogServerRefer(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	t.Run("Succesfull", func(t *testing.T) {
+	t.Run("Successfull", func(t *testing.T) {
 		dialCall()
 		d := <-waitDialog
 		defer d.Hangup(ctx)

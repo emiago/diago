@@ -107,7 +107,7 @@ func dialogHandleReferNotify(d DialogSession, req *sip.Request, tx sip.ServerTra
 	}
 }
 
-func dialogHandleRefer(d DialogSession, dg *Diago, req *sip.Request, tx sip.ServerTransaction, onReferDialog func(referDialog *DialogClientSession)) error {
+func dialogHandleRefer(d DialogSession, dg *Diago, req *sip.Request, tx sip.ServerTransaction, onReferDialog OnReferDialogFunc) error {
 	// https://datatracker.ietf.org/doc/html/rfc3515#section-2.4.2
 	// 	An agent responding to a REFER method MUST return a 400 (Bad Request)
 	//    if the request contained zero or more than one Refer-To header field
@@ -145,7 +145,7 @@ func dialogHandleRefer(d DialogSession, dg *Diago, req *sip.Request, tx sip.Serv
 	return dialogReferInvite(d, dg, referToUri, contact.Address, onReferDialog, referredBy)
 }
 
-func dialogReferInvite(d DialogSession, dg *Diago, referToUri sip.Uri, remoteTarget sip.Uri, onReferDialog func(referDialog *DialogClientSession), referredBy sip.Header) error {
+func dialogReferInvite(d DialogSession, dg *Diago, referToUri sip.Uri, remoteTarget sip.Uri, onReferDialog OnReferDialogFunc, referredBy sip.Header) error {
 
 	// TODO after this we could get BYE immediately, but caller would not be able
 	// to take control over refer dialog
@@ -215,11 +215,6 @@ func dialogReferInvite(d DialogSession, dg *Diago, referToUri sip.Uri, remoteTar
 
 	// FROM, TO, CALLID must be same to make SUBSCRIBE working
 
-	if err := sendNotify(ctx, 100, "Trying", subState{state: "active", expires: 60}); err != nil {
-		// log.Info("REFER NOTIFY 100 failed to sent", "error", err)
-		return fmt.Errorf("refer NOTIFY 100 failed to sent : %w", err)
-	}
-
 	// onReferRequest(referToUri, )
 	opts := InviteOptions{}
 
@@ -229,10 +224,36 @@ func dialogReferInvite(d DialogSession, dg *Diago, referToUri sip.Uri, remoteTar
 		opts.Headers = append(opts.Headers, sip.HeaderClone(referredBy))
 	}
 
-	referDialog, err := dg.Invite(ctx, referToUri, InviteOptions{})
+	referDialog, err := dg.NewDialog(referToUri, NewDialogOptions{})
 	if err != nil {
+		return err
+	}
+	defer referDialog.Close()
+
+	// 	The final NOTIFY sent in response to a REFER MUST indicate
+	//    the subscription has been "terminated" with a reason of "noresource".
+	//    (The resource being subscribed to is the state of the referenced
+	//    request).
+	referDialog.OnState(func(s sip.DialogState) {
+		if s == sip.DialogStateConfirmed || s == sip.DialogStateEnded {
+			if err := sendNotify(ctx, 200, "OK", subState{
+				state:  "terminated",
+				reason: "noresource",
+			}); err != nil {
+				dg.log.Info("REFER Notify failed for 200", "error", err)
+			}
+		}
+	})
+
+	if err := sendNotify(ctx, 100, "Trying", subState{state: "active", expires: 60}); err != nil {
+		// log.Info("REFER NOTIFY 100 failed to sent", "error", err)
+		return fmt.Errorf("refer NOTIFY 100 failed to sent : %w", err)
+	}
+
+	// We send ref dialog to processing. After sending 200 OK this session will terminate
+	if err := onReferDialog(referDialog); err != nil {
 		// DO notify?
-		dg.log.Info("REFER dialog failed to dial", "error", err)
+		dg.log.Info("OnReferDialog failed with", "error", err)
 		var resErr *sipgo.ErrDialogResponse
 		if errors.As(err, &resErr) {
 			return sendNotify(ctx, resErr.Res.StatusCode, resErr.Res.Reason, subState{
@@ -241,28 +262,16 @@ func dialogReferInvite(d DialogSession, dg *Diago, referToUri sip.Uri, remoteTar
 			})
 		}
 
-		return sendNotify(ctx, 400, "Bad Request", subState{
-			state:  "terminated",
-			reason: "noresource",
-		})
-	}
-
-	if err := sendNotify(ctx, 200, "OK", subState{
-		state:  "terminated",
-		reason: "noresource",
-	}); err != nil {
+		// If call failed to be established but not yet confirmed
+		state := referDialog.LoadState()
+		if state == 0 || state == sip.DialogStateEstablished {
+			return sendNotify(ctx, 400, "Bad Request", subState{
+				state:  "terminated",
+				reason: "noresource",
+			})
+		}
 		return err
 	}
-
-	// We send ref dialog to processing. After sending 200 OK this session will terminate
-	// TODO this should be called before Invite started as caller needs to be notified before
-	onReferDialog(referDialog)
-
-	// 	The final NOTIFY sent in response to a REFER MUST indicate
-	//    the subscription has been "terminated" with a reason of "noresource".
-	//    (The resource being subscribed to is the state of the referenced
-	//    request).
-
 	// Now this dialog will receive BYE and it will terminate
 	// We need to send this referDialog to control of caller
 	return nil
