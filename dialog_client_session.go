@@ -83,7 +83,13 @@ type InviteClientOptions struct {
 	// OnMediaUpdate called when media is changed.
 	// NOTE: you should not block this call as it blocks response processing.
 	OnMediaUpdate func(d *DialogMedia)
-	OnRefer       OnReferDialogFunc
+	// OnRefer is called on successfull REFER handling
+	//
+	// It creates new dialog (NewDialog) on which you need to call Invite() and Ack()
+	// Any error from invite, ack or other processing should be returned for correct Notify handling
+	//
+	// NOTE: IT is SCOPED to handler and exiting handler will Close/Terminate this dialog!
+	OnRefer OnReferDialogFunc
 	// For digest authentication
 	Username string
 	Password string
