@@ -297,7 +297,6 @@ func (d *DialogMedia) mediaUpdateUnsafe(msess *media.MediaSession) error {
 	// })
 
 	// Make sure any current reader is not consuming old media session
-	fmt.Println("Updating started")
 	d.RTPPacketReader.UpdateRTPSession(rtpSess)
 	d.RTPPacketWriter.UpdateRTPSession(rtpSess)
 

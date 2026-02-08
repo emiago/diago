@@ -323,7 +323,6 @@ func (d *DialogServerSession) ReadAck(req *sip.Request, tx sip.ServerTransaction
 
 func (d *DialogServerSession) Hangup(ctx context.Context) error {
 	state := d.LoadState()
-	fmt.Println("Calling hangup", d.ID)
 	if state >= sip.DialogStateConfirmed {
 		return d.Bye(ctx)
 	}
