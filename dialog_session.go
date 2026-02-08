@@ -229,7 +229,6 @@ func dialogReferInvite(d DialogSession, dg *Diago, referToUri sip.Uri, remoteTar
 		return err
 	}
 	defer referDialog.Close()
-
 	// 	The final NOTIFY sent in response to a REFER MUST indicate
 	//    the subscription has been "terminated" with a reason of "noresource".
 	//    (The resource being subscribed to is the state of the referenced
@@ -253,7 +252,7 @@ func dialogReferInvite(d DialogSession, dg *Diago, referToUri sip.Uri, remoteTar
 	// We send ref dialog to processing. After sending 200 OK this session will terminate
 	if err := onReferDialog(referDialog); err != nil {
 		// DO notify?
-		dg.log.Info("OnReferDialog failed with", "error", err)
+		dg.log.Info("OnReferDialog handling failed with", "error", err)
 		var resErr *sipgo.ErrDialogResponse
 		if errors.As(err, &resErr) {
 			return sendNotify(ctx, resErr.Res.StatusCode, resErr.Res.Reason, subState{

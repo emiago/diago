@@ -150,7 +150,14 @@ func (d *DialogServerSession) Answer() error {
 type AnswerOptions struct {
 	// OnMediaUpdate triggers when media update happens. It is blocking func, so make sure you exit
 	OnMediaUpdate func(d *DialogMedia)
-	OnRefer       func(referDialog *DialogClientSession) error
+
+	// OnRefer is called on successfull REFER handling
+	//
+	// It creates new dialog (NewDialog) on which you need to call Invite() and Ack()
+	// Any error from invite, ack or other processing should be returned for correct Notify handling
+	//
+	// NOTE: IT is SCOPED to handler and exiting handler will Close/Terminate this dialog!
+	OnRefer func(referDialog *DialogClientSession) error
 	// Codecs that will be used
 	Codecs []media.Codec
 
