@@ -9,9 +9,11 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
+	"strings"
 	"sync"
 
 	"github.com/emiago/diago/media"
+	"github.com/emiago/sipgo/sip"
 	"github.com/pion/rtp"
 )
 
@@ -60,4 +62,12 @@ func (s *loggingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	slog.Debug(fmt.Sprintf("HTTP Debug:\n%s\n", bytes))
 
 	return resp, err
+}
+
+func uri2Header(uri sip.Uri) string {
+	buf := &strings.Builder{}
+	buf.WriteString("<")
+	uri.StringWrite(buf)
+	buf.WriteString(">")
+	return buf.String()
 }

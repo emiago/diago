@@ -314,7 +314,8 @@ func (d *DialogServerSession) ReadAck(req *sip.Request, tx sip.ServerTransaction
 
 func (d *DialogServerSession) Hangup(ctx context.Context) error {
 	state := d.LoadState()
-	if state == sip.DialogStateConfirmed {
+	fmt.Println("Calling hangup", d.ID)
+	if state >= sip.DialogStateConfirmed {
 		return d.Bye(ctx)
 	}
 	return d.Respond(sip.StatusTemporarilyUnavailable, "Temporarly unavailable", nil)
@@ -466,10 +467,30 @@ func (d *DialogServerSession) remoteContactUnsafe() *sip.ContactHeader {
 	return d.InviteRequest.Contact()
 }
 
-// Refer tries todo refer (blind transfer) on call
+// Refer tries todo refer (blind transfer) on call. For more control use ReferOptions
+//
+// NOTE: It is expected that after calling this you are hanguping call to send BYE
 func (d *DialogServerSession) Refer(ctx context.Context, referTo sip.Uri, headers ...sip.Header) error {
-	cont := d.InviteRequest.Contact()
-	return dialogRefer(ctx, d, cont.Address, referTo, headers...)
+	// cont := d.InviteRequest.Contact()
+	// return dialogRefer(ctx, d, cont.Address, referTo, headers...)
+	return d.ReferOptions(ctx, referTo, ReferServerOptions{
+		Headers: headers,
+	})
+}
+
+type ReferServerOptions struct {
+	Headers  []sip.Header
+	OnNotify func(statusCode int)
+}
+
+func (d *DialogServerSession) ReferOptions(ctx context.Context, referTo sip.Uri, opts ReferServerOptions) error {
+	d.mu.Lock()
+	cont := d.remoteContactUnsafe()
+	if opts.OnNotify != nil {
+		d.onReferNotify = opts.OnNotify
+	}
+	d.mu.Unlock()
+	return dialogRefer(ctx, d, cont.Address, referTo, d.InviteResponse.Contact().Address, opts.Headers...)
 }
 
 func (d *DialogServerSession) handleReferNotify(req *sip.Request, tx sip.ServerTransaction) {

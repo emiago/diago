@@ -580,3 +580,134 @@ func TestIntegrationDialogClientBadMediaNegotiation(t *testing.T) {
 	assert.EqualValues(t, "BYE", requests[2].(*sip.Request).Method)
 	assert.EqualValues(t, 200, responses[1].(*sip.Response).StatusCode)
 }
+
+func TestIntegrationDialogClientRefer(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	{
+		ua, _ := sipgo.NewUA(sipgo.WithUserAgent("server"))
+		defer ua.Close()
+
+		dg := NewDiago(ua, WithTransport(
+			Transport{
+				Transport: "udp",
+				BindHost:  "127.0.0.1",
+				BindPort:  15071,
+				ID:        "udp",
+			},
+		))
+
+		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+			t.Log("Call received")
+			d.AnswerOptions(AnswerOptions{
+				OnRefer: func(referDialog *DialogClientSession) {
+					referDialog.Hangup(referDialog.Context())
+				},
+			})
+			<-d.Context().Done()
+		})
+		require.NoError(t, err)
+	}
+
+	// UAS that accepts REFER
+	// waitReferDialog := make(chan *DialogServerSession)
+	{
+		ua, _ := sipgo.NewUA()
+		defer ua.Close()
+
+		dg := NewDiago(ua, WithTransport(
+			Transport{
+				Transport: "udp",
+				BindHost:  "127.0.0.1",
+				BindPort:  15072,
+			},
+		))
+
+		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+			t.Log("Call INVITE due to REFER received")
+			// waitReferDialog <- d
+			switch d.ToUser() {
+			case "busy":
+				d.Respond(sip.StatusBusyHere, "Busy Here", nil)
+				return
+			case "noanswer":
+				d.Ringing()
+				return
+			default:
+				d.Answer()
+			}
+
+			<-d.Context().Done()
+		})
+		require.NoError(t, err)
+	}
+
+	ua, _ := sipgo.NewUA()
+	defer ua.Close()
+
+	dg := NewDiago(ua, WithTransport(
+		Transport{
+			Transport: "udp",
+			BindHost:  "127.0.0.1",
+			BindPort:  15070,
+		},
+	))
+
+	err := dg.ServeBackground(ctx, nil)
+	require.NoError(t, err)
+
+	t.Run("Succesfull", func(t *testing.T) {
+		d, err := dg.Invite(ctx, sip.Uri{Host: "127.0.0.1", Port: 15071}, InviteOptions{})
+		require.NoError(t, err)
+		defer d.Close()
+		defer d.Hangup(d.Context())
+
+		referState := make(chan int)
+		err = d.ReferOptions(d.Context(), sip.Uri{Host: "127.0.0.1", Port: 15072}, ReferClientOptions{
+			OnNotify: func(statusCode int) {
+				referState <- statusCode
+			},
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, 100, <-referState)
+		assert.Equal(t, 200, <-referState)
+	})
+
+	t.Run("UnreachableRefer", func(t *testing.T) {
+		d, err := dg.Invite(ctx, sip.Uri{Host: "127.0.0.1", Port: 15071}, InviteOptions{})
+		require.NoError(t, err)
+		defer d.Close()
+		defer d.Hangup(d.Context())
+
+		referState := make(chan int)
+		err = d.ReferOptions(d.Context(), sip.Uri{User: "noanswer", Host: "127.0.0.1", Port: 15072}, ReferClientOptions{
+			OnNotify: func(statusCode int) {
+				referState <- statusCode
+			},
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, 100, <-referState)
+		assert.Equal(t, sip.StatusTemporarilyUnavailable, <-referState)
+	})
+
+	t.Run("BusyRefer", func(t *testing.T) {
+		d, err := dg.Invite(ctx, sip.Uri{Host: "127.0.0.1", Port: 15071}, InviteOptions{})
+		require.NoError(t, err)
+		defer d.Close()
+		defer d.Hangup(d.Context())
+
+		referState := make(chan int)
+		err = d.ReferOptions(d.Context(), sip.Uri{User: "busy", Host: "127.0.0.1", Port: 15072}, ReferClientOptions{
+			OnNotify: func(statusCode int) {
+				referState <- statusCode
+			},
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, 100, <-referState)
+		assert.Equal(t, sip.StatusBusyHere, <-referState)
+	})
+}

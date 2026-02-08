@@ -560,7 +560,7 @@ type InviteOptions struct {
 // - NewDialog
 // - dialog.Invite
 //
-// For more details and errors check those functions more
+// For better control more details use above functions instead.
 // If you want to bridge call then use helper InviteBridge
 func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts InviteOptions) (d *DialogClientSession, err error) {
 	d, err = dg.NewDialog(recipient, NewDialogOptions{Transport: opts.Transport})
@@ -868,10 +868,13 @@ func (dg *Diago) createClient(tran Transport) (client *sipgo.Client) {
 		// Forcing port here makes more problem when listener is not started
 		// ex register and then serve
 		// We check that user started to listen port
-		ports := ua.TransportLayer().ListenPorts("udp")
-		if len(ports) > 0 {
-			bindPort = tran.BindPort
-		}
+		// ports := ua.TransportLayer().ListenPorts("udp")
+		// if len(ports) > 0 {
+
+		// Checking ports with ListenPorts is racy with ListenAndServe
+		// In case UDP, we want to have this port reused.
+		bindPort = tran.BindPort
+		// }
 	}
 
 	opts := []sipgo.ClientOption{

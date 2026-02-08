@@ -169,6 +169,162 @@ func TestIntegrationDialogServerReinvite(t *testing.T) {
 	d.Hangup(context.TODO())
 }
 
+func TestIntegrationDialogServerRefer(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var dialer *Diago
+	{
+		ua, _ := sipgo.NewUA(sipgo.WithUserAgent("dialer"))
+		defer ua.Close()
+
+		dg := NewDiago(ua, WithTransport(
+			Transport{
+				Transport: "udp",
+				BindHost:  "127.0.0.1",
+				BindPort:  15071,
+				ID:        "udp",
+			},
+		))
+
+		// Run listener to accepte reinvites, but it should not receive any request
+		err := dg.ServeBackground(ctx, nil)
+		require.NoError(t, err)
+		dialer = dg
+	}
+
+	dialCall := func() {
+		dialog, err := dialer.NewDialog(sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15070}, NewDialogOptions{})
+		require.NoError(t, err)
+
+		go func() {
+			err := dialog.Invite(ctx, InviteClientOptions{
+				OnRefer: func(referDialog *DialogClientSession) {
+					// referDialog.
+					referDialog.Hangup(ctx)
+				},
+			})
+			require.NoError(t, err)
+
+			dialog.Ack(ctx)
+			<-dialog.Context().Done()
+			t.Log("Dialog done")
+		}()
+	}
+
+	// UAS that accepts REFER
+	// waitReferDialog := make(chan *DialogServerSession)
+	{
+		ua, _ := sipgo.NewUA()
+		defer ua.Close()
+
+		dg := NewDiago(ua, WithTransport(
+			Transport{
+				Transport: "udp",
+				BindHost:  "127.0.0.1",
+				BindPort:  15072,
+			},
+		))
+
+		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+			t.Log("Call INVITE due to REFER received")
+			// waitReferDialog <- d
+			switch d.ToUser() {
+			case "busy":
+				d.Respond(sip.StatusBusyHere, "Busy Here", nil)
+				return
+			case "noanswer":
+				d.Ringing()
+				return
+			default:
+				d.Answer()
+			}
+
+			<-d.Context().Done()
+		})
+		require.NoError(t, err)
+	}
+
+	ua, _ := sipgo.NewUA()
+	defer ua.Close()
+
+	dg := NewDiago(ua, WithTransport(
+		Transport{
+			Transport: "udp",
+			BindHost:  "127.0.0.1",
+			BindPort:  15070,
+		},
+	))
+
+	waitDialog := make(chan *DialogServerSession)
+	err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+		t.Log("Call received")
+		waitDialog <- d
+		<-d.Context().Done()
+	})
+	require.NoError(t, err)
+
+	t.Run("Succesfull", func(t *testing.T) {
+		dialCall()
+		d := <-waitDialog
+		defer d.Hangup(ctx)
+
+		err = d.Answer()
+		require.NoError(t, err)
+
+		referState := make(chan int)
+		err = d.ReferOptions(d.Context(), sip.Uri{Host: "127.0.0.1", Port: 15072}, ReferServerOptions{
+			OnNotify: func(statusCode int) {
+				referState <- statusCode
+			},
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, 100, <-referState)
+		assert.Equal(t, 200, <-referState)
+	})
+
+	t.Run("UnreachableRefer", func(t *testing.T) {
+		dialCall()
+		d := <-waitDialog
+		defer d.Hangup(ctx)
+
+		err = d.Answer()
+		require.NoError(t, err)
+
+		referState := make(chan int)
+		err = d.ReferOptions(d.Context(), sip.Uri{User: "noanswer", Host: "127.0.0.1", Port: 15072}, ReferServerOptions{
+			OnNotify: func(statusCode int) {
+				referState <- statusCode
+			},
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, 100, <-referState)
+		assert.Equal(t, sip.StatusTemporarilyUnavailable, <-referState)
+	})
+
+	t.Run("BusyRefer", func(t *testing.T) {
+		dialCall()
+		d := <-waitDialog
+		defer d.Hangup(ctx)
+
+		err = d.Answer()
+		require.NoError(t, err)
+
+		referState := make(chan int)
+		err = d.ReferOptions(d.Context(), sip.Uri{User: "busy", Host: "127.0.0.1", Port: 15072}, ReferServerOptions{
+			OnNotify: func(statusCode int) {
+				referState <- statusCode
+			},
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, 100, <-referState)
+		assert.Equal(t, sip.StatusBusyHere, <-referState)
+	})
+}
+
 func TestIntegrationDialogServerPlayback(t *testing.T) {
 	rtpBuf := newRTPWriterBuffer()
 	dialog := &DialogServerSession{

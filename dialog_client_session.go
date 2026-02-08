@@ -112,15 +112,15 @@ func (o *InviteClientOptions) WithCaller(displayName string, callerID string, ho
 	})
 }
 
-// Invite sends Invite request and establishes [early] media.
+// Invite sends Invite request and establishes [early] media. Normally you need to call Ack after.
+//
+// Normal Answer with 200 OK (SDP)
+// - You MUST call Ack() after to acknowledge session.
 //
 // Early Media Detect:
 // - It RETURNS ErrClientEarlyMedia if remote answers with 183 Session in Progress
 // - Media is negotiated and setuped
 // - You need to call WaitAnswer() if you want to proceed with answering call
-//
-// Normal Answer with 200 OK (SDP)
-// - You MUST call Ack() after to acknowledge session.
 //
 // Errors:
 // - sipgo.ErrDialogResponse
@@ -228,6 +228,7 @@ func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptio
 
 	// This only gets called after session established
 	d.onMediaUpdate = opts.OnMediaUpdate
+	d.onReferDialog = opts.OnRefer
 	// reuse UDP listener
 	// Problem if listener is unspecified IP sipgo will not map this to listener
 	// Code below only works if our bind host is specified
@@ -549,11 +550,30 @@ func (d *DialogClientSession) reInviteKeepAlive(ctx context.Context) error {
 	return nil
 }
 
-// Refer tries todo refer (blind transfer) on call
-// TODO: not complete
-func (d *DialogClientSession) Refer(ctx context.Context, referTo sip.Uri) error {
-	cont := d.InviteResponse.Contact()
-	return dialogRefer(ctx, d, cont.Address, referTo)
+// Refer tries todo refer (blind transfer) on call. For more control use ReferOptions
+//
+// NOTE: It is expected that after calling this you are hanguping call to send BYE
+func (d *DialogClientSession) Refer(ctx context.Context, referTo sip.Uri, headers ...sip.Header) error {
+	// cont := d.InviteRequest.Contact()
+	// return dialogRefer(ctx, d, cont.Address, referTo, headers...)
+	return d.ReferOptions(ctx, referTo, ReferClientOptions{
+		Headers: headers,
+	})
+}
+
+type ReferClientOptions struct {
+	Headers  []sip.Header
+	OnNotify func(statusCode int)
+}
+
+func (d *DialogClientSession) ReferOptions(ctx context.Context, referTo sip.Uri, opts ReferClientOptions) error {
+	d.mu.Lock()
+	cont := d.remoteContactUnsafe()
+	if opts.OnNotify != nil {
+		d.onReferNotify = opts.OnNotify
+	}
+	d.mu.Unlock()
+	return dialogRefer(ctx, d, cont.Address, referTo, d.InviteResponse.Contact().Address, opts.Headers...)
 }
 
 func (d *DialogClientSession) handleReferNotify(req *sip.Request, tx sip.ServerTransaction) {

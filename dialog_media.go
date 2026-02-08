@@ -72,6 +72,8 @@ type DialogMedia struct {
 	// We do not use sipgo as this needs mutex but also keeping original invite
 	remoteContactTarget *sip.ContactHeader
 
+	onReferNotify func(statusCode int)
+
 	onClose       func() error
 	onMediaUpdate func(*DialogMedia)
 
