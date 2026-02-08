@@ -601,13 +601,24 @@ func (d *DialogClientSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 }
 
 func (d *DialogClientSession) handleReInviteACK(req *sip.Request, tx sip.ServerTransaction) error {
-	// if err := d.ReadRequest(req, tx); err != nil {
-	// 	return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request - "+err.Error(), nil))
-	// }
-	return d.mediaSession.Finalize()
+	// Check do we need to handle Late Offer from ACK and update media
+	body := req.Body()
+	if body != nil {
+		// Update media session state under lock, but invoke the app callback after unlock to avoid deadlocks.
+		d.mu.Lock()
+		err := d.sdpUpdateUnsafe(body)
+		onMediaUpdate := d.onMediaUpdate
+		d.mu.Unlock()
+		if err != nil {
+			return err
+		}
 
-	// return d.handleMediaUpdate(req, tx, d.InviteRequest.Contact())
-	return nil
+		if onMediaUpdate != nil {
+			onMediaUpdate(d.Media())
+		}
+	}
+
+	return d.mediaSession.Finalize()
 }
 
 func (d *DialogClientSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTransaction) error {
