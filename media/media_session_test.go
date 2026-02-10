@@ -298,6 +298,70 @@ a=sendrecv`
 
 }
 
+func TestMediaDirectionNegotiation(t *testing.T) {
+	buildSDP := func(direction string) string {
+		return `v=0
+o=- 1 1 IN IP4 192.0.2.1
+s=Media Test
+c=IN IP4 192.0.2.1
+t=0 0
+m=audio 4000 RTP/AVP 0
+a=rtpmap:0 PCMU/8000
+a=` + direction
+	}
+
+	tests := []struct {
+		name      string
+		remoteDir string
+		localPref string
+		wantMode  string
+	}{
+		{
+			name:      "SendOnlyOffer",
+			remoteDir: sdp.ModeSendonly,
+			localPref: sdp.ModeSendrecv,
+			wantMode:  sdp.ModeRecvonly,
+		},
+		{
+			name:      "RecvOnlyOffer",
+			remoteDir: sdp.ModeRecvonly,
+			localPref: sdp.ModeSendrecv,
+			wantMode:  sdp.ModeSendonly,
+		},
+		{
+			name:      "InactiveOffer",
+			remoteDir: "inactive",
+			localPref: sdp.ModeSendrecv,
+			wantMode:  "inactive",
+		},
+		{
+			name:      "LocalInactivePref",
+			remoteDir: sdp.ModeSendrecv,
+			localPref: "inactive",
+			wantMode:  "inactive",
+		},
+		{
+			name:      "SendRecvKeepsLocalPref",
+			remoteDir: sdp.ModeSendrecv,
+			localPref: sdp.ModeSendonly,
+			wantMode:  sdp.ModeSendonly,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := MediaSession{
+				Codecs: []Codec{CodecAudioUlaw},
+				Laddr:  net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234},
+				Mode:   tt.localPref,
+			}
+
+			require.NoError(t, m.RemoteSDP([]byte(buildSDP(tt.remoteDir))))
+			assert.Equal(t, tt.wantMode, m.Mode)
+		})
+	}
+}
+
 func TestMediaSRTP(t *testing.T) {
 	m1 := MediaSession{
 		Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
