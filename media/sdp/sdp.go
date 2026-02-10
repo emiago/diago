@@ -192,9 +192,13 @@ func Unmarshal(data []byte, sdptr *SessionDescription) error {
 		line, err := nextLine(reader)
 		if err != nil {
 			if err == io.EOF {
-				return nil
+				// Process the final line even when the SDP is missing a trailing newline.
+				if len(strings.TrimSpace(line)) == 0 {
+					return nil
+				}
+			} else {
+				return err
 			}
-			return err
 		}
 
 		if len(line) < 2 {
@@ -209,6 +213,10 @@ func Unmarshal(data []byte, sdptr *SessionDescription) error {
 		value := line[ind+1:]
 
 		sd[key] = append(sd[key], value)
+
+		if err == io.EOF {
+			return nil
+		}
 	}
 
 }
