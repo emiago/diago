@@ -262,6 +262,7 @@ func (s *MediaSession) Fork() *MediaSession {
 		sessionID:      s.sessionID,
 		sessionVersion: s.sessionVersion,
 		DTLSConf:       s.DTLSConf,
+		ExternalIP:     s.ExternalIP,
 	}
 	return &cp
 }
@@ -297,11 +298,29 @@ func (s *MediaSession) LocalSDP() []byte {
 		return s.sdp
 	}
 
+	// Prefer a concrete IPv4 address when available so we don't emit IPv6 "::" in SDP.
 	ip := s.Laddr.IP
 	rtpPort := s.Laddr.Port
 	connIP := s.ExternalIP
-	if connIP == nil {
+
+	if ip == nil || ip.IsUnspecified() {
+		if s.ExternalIP != nil && !s.ExternalIP.IsUnspecified() {
+			ip = s.ExternalIP
+		} else {
+			ip = net.IPv4zero
+		}
+	}
+
+	if connIP == nil || connIP.IsUnspecified() {
 		connIP = ip
+	}
+
+	// If external IP is IPv4, force IPv4 formatting even when stored in 16-byte form.
+	if v4 := connIP.To4(); v4 != nil {
+		connIP = v4
+	}
+	if v4 := ip.To4(); v4 != nil {
+		ip = v4
 	}
 
 	// https://datatracker.ietf.org/doc/html/rfc3264#section-6.1
@@ -435,6 +454,9 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 		return err
 	}
 
+	attrs := sd.Values("a")
+	remoteMode := readSDPDirection(attrs)
+
 	// Confirm it is supported profile
 	secureRequest := false
 	switch md.Proto {
@@ -449,7 +471,6 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	}
 
 	codecs := make([]Codec, len(md.Formats))
-	attrs := sd.Values("a")
 	n, err := CodecsFromSDPRead(md.Formats, attrs, codecs)
 	if err != nil {
 		if n == 0 {
@@ -466,6 +487,10 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	if s.updateRemoteCodecs(codecs[:n]) == 0 {
 		return fmt.Errorf("no supported codecs found")
 	}
+
+	// RFC 3264 media direction negotiation
+	// Convert the remote direction into the locally correct answer/in-use mode.
+	s.Mode = negotiateDirection(remoteMode, s.Mode)
 
 	ci, err := sd.ConnectionInformation()
 	if err != nil {
@@ -1069,6 +1094,49 @@ func StringRTCP(p rtcp.Packet) string {
 		return s.String()
 	}
 	return "can not stringify"
+}
+
+func readSDPDirection(attrs []string) string {
+	mode := sdp.ModeSendrecv
+	for _, v := range attrs {
+		switch v {
+		case sdp.ModeSendrecv, sdp.ModeSendonly, sdp.ModeRecvonly, "inactive":
+			mode = v
+		}
+	}
+	return mode
+}
+
+// negotiateDirection computes our local direction based on the remote SDP offer/answer
+// and our current preference. Defaults to sendrecv when nothing explicit is provided.
+func negotiateDirection(remoteMode, localPref string) string {
+	if localPref == "" {
+		localPref = sdp.ModeSendrecv
+	}
+
+	switch remoteMode {
+	case "inactive":
+		return "inactive"
+	case sdp.ModeSendonly:
+		if localPref == "inactive" {
+			return "inactive"
+		}
+		// Offerer is sendonly, answer must be recvonly or inactive
+		return sdp.ModeRecvonly
+	case sdp.ModeRecvonly:
+		if localPref == "inactive" {
+			return "inactive"
+		}
+		// Offerer is recvonly, answer must be sendonly or inactive
+		return sdp.ModeSendonly
+	case sdp.ModeSendrecv:
+		if localPref == sdp.ModeSendrecv || localPref == sdp.ModeSendonly || localPref == sdp.ModeRecvonly || localPref == "inactive" {
+			return localPref
+		}
+		return sdp.ModeSendrecv
+	default:
+		return localPref
+	}
 }
 
 type sdesInline struct {
