@@ -367,8 +367,13 @@ func (s *MediaSession) LocalSDP() []byte {
 		}
 		if s.Raddr.IP != nil {
 			// We do have remote IP, so probably we are server
-			//  lets be then active roll
+			//  lets be then passive roll
 			dtlsSet.setup = "passive"
+		}
+
+		// Allow overriding
+		if s.DTLSConf.SDPSetupRole != nil {
+			dtlsSet.setup = s.DTLSConf.SDPSetupRole(s.Raddr.IP != nil)
 		}
 		// DTLS
 		// This is only needed for self signed certificates?

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/emiago/dtls/v3"
+	"github.com/emiago/dtls/v3/pkg/crypto/elliptic"
 	"github.com/pion/logging"
 )
 
@@ -23,6 +24,10 @@ var (
 const (
 	ServerClientAuthNoCert      = int(dtls.NoClientCert)
 	ServerClientAuthRequireCert = int(dtls.RequestClientCert)
+
+	EllipticCurveP256   uint16 = uint16(elliptic.P256)
+	EllipticCurveP384   uint16 = uint16(elliptic.P384)
+	EllipticCurveX25519 uint16 = uint16(elliptic.X25519)
 )
 
 type DTLSConfig struct {
@@ -37,13 +42,27 @@ type DTLSConfig struct {
 
 	// SRTPProfiles to use in exchange. Check constant vars with media.SRTPProfile...
 	SRTPProfiles []uint16
+
+	// SDP Setup Role force value.
+	// Values: active,passive,actpass
+	// Default: offer->active answer->passive
+	SDPSetupRole func(offer bool) string
+
+	// List of Elliptic Curves to use
+	//
+	// If an ECC ciphersuite is configured and EllipticCurves is empty
+	// it will default to X25519, P-256, P-384 in this specific order.
+	// Check values with media.Eliptic<name>
+	EllipticCurves []uint16
 }
 
 func (conf *DTLSConfig) ToLibConf(fingerprints []sdpFingerprints) *dtls.Config {
 
 	config := &dtls.Config{
 		// Use appropriate certificate or generate self-signed
-		Certificates: conf.Certificates,
+		Certificates:     conf.Certificates,
+		SignatureSchemes: []tls.SignatureScheme{},
+
 		// CipherSuites: []dtls.CipherSuiteID{
 		// 	dtls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 		// },
@@ -82,6 +101,13 @@ func (conf *DTLSConfig) ToLibConf(fingerprints []sdpFingerprints) *dtls.Config {
 			srtpProfs[i] = dtls.SRTPProtectionProfile(p)
 		}
 		config.SRTPProtectionProfiles = srtpProfs
+	}
+
+	if conf.EllipticCurves != nil {
+		config.EllipticCurves = make([]elliptic.Curve, len(conf.EllipticCurves))
+		for i, c := range conf.EllipticCurves {
+			config.EllipticCurves[i] = elliptic.Curve(c)
+		}
 	}
 
 	if DTLSDebug {
@@ -134,61 +160,6 @@ func dtlsVerifyConnection(state *dtls.State, fingerprints []sdpFingerprints) err
 	}
 
 	return nil
-}
-
-func dtlsSDPAttr(fingerprint string) []string {
-	// https://datatracker.ietf.org/doc/html/rfc8842#section-5.1
-	//	In order to negotiate a DTLS association, the following SDP attributes are used:
-	//
-	// The SDP "setup" attribute, defined in [RFC4145], is used to negotiate the DTLS roles;
-	// The SDP "fingerprint" attribute, defined in [RFC8122], is used to provide one or more fingerprint values; and The SDP "tls-id" attribute, defined in this specification, is used to identity the DTLS association.
-
-	// The certificate received during the DTLS handshake [RFC6347] MUST match a certificate fingerprint received in SDP "fingerprint"
-	return []string{
-		//  'active': The endpoint will initiate an outgoing connection.
-		// 'passive': The endpoint will accept an incoming connection.
-
-		// 'actpass': The endpoint is willing to accept an incoming
-		// connection or to initiate an outgoing connection.
-
-		// 'holdconn': The endpoint does not want the connection to be
-		// established for the time being.
-
-		// Unlike for TCP and TLS connections, endpoints MUST NOT use the SDP "setup" attribute "holdconn" value when negotiating a DTLS association.
-
-		// https://datatracker.ietf.org/doc/html/rfc8842#section-5.2
-		"a=setup: actpass",
-
-		// A certificate fingerprint is a secure one-way hash of the
-		//    Distinguished Encoding Rules (DER) form of the certificate.
-
-		// 		The hash value is represented as a sequence of
-		//    uppercase hexadecimal bytes, separated by colons.
-		// fingerprint-attribute  =  "fingerprint" ":" hash-func SP fingerprint
-
-		// hash-func              =  "sha-1" / "sha-224" / "sha-256" /
-		// 						  "sha-384" / "sha-512" /
-		// 						  "md5" / "md2" / token
-		// 						  ; Additional hash functions can only come
-		// 						  ; from updates to RFC 3279
-		// ex:
-		// 		a=fingerprint:SHA-256 \
-		//     12:DF:3E:5D:49:6B:19:E5:7C:AB:4A:AD:B9:B1:3F:82:18:3B:54:02:12:DF: \
-		//     3E:5D:49:6B:19:E5:7C:AB:4A:AD
-		//  a=fingerprint:SHA-1 \
-		//     4A:AD:B9:B1:3F:82:18:3B:54:02:12:DF:3E:5D:49:6B:19:E5:7C:AB
-		"a=fingerprint:SHA-256 " + fingerprint,
-
-		// 	BUNDLE makes tls-id redundant:
-
-		// In WebRTC, multiple media streams are multiplexed over a single DTLS session using the a=group:BUNDLE mechanism.
-
-		// Since all media share the same DTLS session, there's no ambiguity—only one DTLS association exists.
-
-		// tls-id is primarily useful when non-BUNDLE or multiple DTLS sessions might happen.
-		// "a=tls-id",
-	}
-
 }
 
 func dtlsSHA256Fingerprint(cert tls.Certificate) (string, error) {
