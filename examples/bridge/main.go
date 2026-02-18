@@ -66,7 +66,9 @@ func BridgeCall(d *diago.Diago, inDialog *diago.DialogServerSession, recipient s
 
 	bridge := diago.NewBridge()
 	// Now answer our in dialog
-	inDialog.Answer()
+	if err := inDialog.Answer(); err != nil {
+		return err
+	}
 	if err := bridge.AddDialogSession(inDialog); err != nil {
 		return err
 	}

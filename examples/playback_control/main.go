@@ -55,7 +55,9 @@ func Playback(inDialog *diago.DialogServerSession) error {
 
 	slog.Info("Playing a file", "file", "demo-echotest.wav")
 
-	inDialog.Answer() // Answer -> 200 Response
+	if err := inDialog.Answer(); err != nil {
+		return err
+	}
 
 	pb, err := inDialog.PlaybackControlCreate()
 	if err != nil {
