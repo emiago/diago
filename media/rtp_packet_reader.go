@@ -155,6 +155,10 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 	// if pt != pkt.PayloadType {
 	// 	return 0, fmt.Errorf("payload type does not match. expected=%d, actual=%d", pt, pkt.PayloadType)
 	// }
+	if payloadSize <= 0 {
+		r.log.Debug("Invalid payload size", "rtpN", rtpN, "headerSize", pkt.Header.MarshalSize(), "padding", pkt.PaddingSize)
+		return 0, nil
+	}
 
 	// If we are tracking this source, do check are we keep getting pkts in sequence
 	if r.lastSSRC == pkt.SSRC {
