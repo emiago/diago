@@ -61,8 +61,11 @@ func (m *MediaDescription) String() string {
 
 func (sd SessionDescription) MediaDescription(mediaType string) (MediaDescription, error) {
 	values := sd.Values("m")
-
 	md := MediaDescription{}
+	if len(values) > 1 {
+		return md, fmt.Errorf("more than 1 media line for type %q", mediaType)
+	}
+
 	var v string
 	for _, val := range values {
 		ind := strings.Index(val, " ")
