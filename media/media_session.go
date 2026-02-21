@@ -1210,3 +1210,35 @@ func sdpIP(ip net.IP) string {
 	}
 	return "IP4"
 }
+
+// negotiateMediaDirection computes our local direction based on the remote SDP offer/answer
+// and our current preference. Defaults to sendrecv when nothing explicit is provided.
+func negotiateMediaDirection(remoteMode, localPref string) string {
+	if localPref == "" {
+		localPref = sdp.ModeSendrecv
+	}
+
+	switch remoteMode {
+	case "inactive":
+		return "inactive"
+	case sdp.ModeSendonly:
+		if localPref == "inactive" {
+			return "inactive"
+		}
+		// Offerer is sendonly, answer must be recvonly or inactive
+		return sdp.ModeRecvonly
+	case sdp.ModeRecvonly:
+		if localPref == "inactive" {
+			return "inactive"
+		}
+		// Offerer is recvonly, answer must be sendonly or inactive
+		return sdp.ModeSendonly
+	case sdp.ModeSendrecv:
+		if localPref == sdp.ModeSendrecv || localPref == sdp.ModeSendonly || localPref == sdp.ModeRecvonly || localPref == "inactive" {
+			return localPref
+		}
+		return sdp.ModeSendrecv
+	default:
+		return localPref
+	}
+}
