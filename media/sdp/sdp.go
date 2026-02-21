@@ -22,6 +22,14 @@ var bufReader = sync.Pool{
 	},
 }
 
+const (
+	// https://datatracker.ietf.org/doc/html/rfc4566#section-6
+	ModeRecvonly string = "recvonly"
+	ModeSendrecv string = "sendrecv"
+	ModeSendonly string = "sendonly"
+	ModeInactive string = "inactive"
+)
+
 type SessionDescription map[string][]string
 
 func (sd SessionDescription) Values(key string) []string {
@@ -179,6 +187,22 @@ func (sd SessionDescription) SessionInformation() (i SessionInformation, err err
 	i.AddressType = fields[4]
 	i.Address = fields[5]
 	return i, nil
+}
+
+func (sd SessionDescription) MediaDirection() string {
+	attrs := sd.Values("a")
+	if attrs == nil {
+		// Assume default per
+		return ModeSendrecv
+	}
+	mode := ModeSendrecv
+	for _, v := range attrs {
+		switch v {
+		case ModeSendrecv, ModeSendonly, ModeRecvonly, ModeInactive:
+			mode = v
+		}
+	}
+	return mode
 }
 
 // Unmarshal is non validate version of sdp parsing

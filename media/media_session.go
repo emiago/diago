@@ -114,6 +114,9 @@ type MediaSession struct {
 	// DTLSConf used for DTLS
 	DTLSConf DTLSConfig
 
+	// mode set after negotiation
+	mode string
+
 	// filterCodecs is common list of codecs after negotiation
 	filterCodecs []Codec
 	rtpConn      net.PacketConn
@@ -159,7 +162,7 @@ func NewMediaSession(ip net.IP, port int) (s *MediaSession, e error) {
 // Init should be called if session is created manually
 // Use NewMediaSession for default building
 func (s *MediaSession) Init() error {
-	if s.Codecs == nil || len(s.Codecs) == 0 {
+	if len(s.Codecs) == 0 {
 		return fmt.Errorf("media session: formats can not be empty")
 	}
 
@@ -256,7 +259,7 @@ func (s *MediaSession) Fork() *MediaSession {
 		rtpConn:        s.rtpConn,
 		rtcpConn:       s.rtcpConn,
 		Codecs:         slices.Clone(s.Codecs),
-		Mode:           sdp.ModeSendrecv,
+		Mode:           s.Mode,
 		RTPNAT:         s.RTPNAT,
 		sdp:            slices.Clone(s.sdp),
 		sessionID:      s.sessionID,
@@ -405,7 +408,13 @@ func (s *MediaSession) LocalSDP() []byte {
 		s.sessionVersion++
 	}
 
-	return generateSDPForAudio(s.sessionID, s.sessionVersion, rtpProfile, ip, connIP, rtpPort, s.Mode, codecs, localSDES, dtlsSet)
+	// handle media direction mode
+	mode := s.mode
+	if mode == "" {
+		mode = s.Mode
+	}
+
+	return generateSDPForAudio(s.sessionID, s.sessionVersion, rtpProfile, ip, connIP, rtpPort, mode, codecs, localSDES, dtlsSet)
 }
 
 // RemoteSDP applies remote SDP.
@@ -477,6 +486,10 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 		return err
 	}
 	s.SetRemoteAddr(&net.UDPAddr{IP: ci.IP, Port: md.Port})
+
+	// Check mode for media direction
+	mode := sd.MediaDirection()
+	s.mode = negotiateMediaDirection(mode, s.Mode)
 
 	// Check for SDES
 	for _, v := range attrs {
