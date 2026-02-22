@@ -3,12 +3,6 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/emiago/dtls/v3 v3.0.0-20260122183559-8b8d23e359c0 h1:o4LxpUnZ1zxiQ+Qjc9kLwXcjz31NGAHmnZ7xoJto3VM=
 github.com/emiago/dtls/v3 v3.0.0-20260122183559-8b8d23e359c0/go.mod h1:ydcZ977eS1I6uOWodzMuw30BwvNAzT9su/xcNYSJqjA=
-github.com/emiago/sipgo v1.1.0 h1:ryr9DhoDercbyCmCtGiZD/uB1NY745DZpsUHfSbWWaI=
-github.com/emiago/sipgo v1.1.0/go.mod h1:DuwAxBZhKMqIzQFPGZb1MVAGU6Wuxj64oTOhd5dx/FY=
-github.com/emiago/sipgo v1.1.1 h1:egwB7o9b3QpeTbqRFT9ECOYcWT/rw2UVTWA1qYG1HBs=
-github.com/emiago/sipgo v1.1.1/go.mod h1:DuwAxBZhKMqIzQFPGZb1MVAGU6Wuxj64oTOhd5dx/FY=
-github.com/emiago/sipgo v1.1.2 h1:JvLqEvqNSQm2mBX40qZ7O0WC3Ee67Z0UrfmBI7y6Beo=
-github.com/emiago/sipgo v1.1.2/go.mod h1:DuwAxBZhKMqIzQFPGZb1MVAGU6Wuxj64oTOhd5dx/FY=
 github.com/emiago/sipgo v1.2.0 h1:rmHFdCu9zu2Cabfd8+/eC9HQWyooqk8x+ti550z5lBw=
 github.com/emiago/sipgo v1.2.0/go.mod h1:DuwAxBZhKMqIzQFPGZb1MVAGU6Wuxj64oTOhd5dx/FY=
 github.com/go-audio/riff v1.0.0 h1:d8iCGbDvox9BfLagY94fBynxSPHO80LmZCaOsmKxokA=
