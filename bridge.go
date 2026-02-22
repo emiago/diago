@@ -481,11 +481,11 @@ func (b *BridgeMix) mix() error {
 				return r
 			}
 
-			if rtr, ok := r.(*RTPRealTimeReader); ok {
+			if rtr, ok := r.(*rtpRealTimeReader); ok {
 				return rtr
 			}
 
-			rtr := &RTPRealTimeReader{}
+			rtr := &rtpRealTimeReader{}
 			rtr.Init(r, m.RTPPacketReader, p.Codec)
 			m.SetAudioReader(rtr)
 			return rtr
