@@ -263,6 +263,9 @@ func (b *Bridge) proxyMediaWithDTMF(m1 *DialogMedia, m2 *DialogMedia) error {
 	return err
 }
 
+// BridgeMix is mixing audio when having 2 or more parties.
+//
+// Experimental: not fully tested yet
 type BridgeMix struct {
 	// TODO: RTPpass. RTP pass means that RTP will be proxied.
 	// This gives high performance but you can not attach any pipeline in media processing
@@ -283,7 +286,9 @@ type BridgeMix struct {
 }
 
 func NewBridgeMix() *BridgeMix {
-	b := BridgeMix{}
+	b := BridgeMix{
+		WithRealtimeReader: true,
+	}
 	b.Init()
 	return &b
 }
@@ -679,10 +684,6 @@ func (b *BridgeMix) mix() error {
 			// b.log.Debug("Writing finished", "ssrc", w.id, "dur", time.Since(writeStart))
 		}
 	}
-	// We need buffering up to 80ms ?
-	// We need to read and decode frames from all streams
-	// If frame is missing or it is not aligned with timestamp it will not effect mix
-
 }
 
 // Wait waits that mixing is stopped
