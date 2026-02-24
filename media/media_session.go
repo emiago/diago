@@ -125,6 +125,7 @@ type MediaSession struct {
 	localCtxSRTP  *srtp.Context
 	remoteCtxSRTP *srtp.Context
 	srtpRemoteTag int
+	hasRemoteSDP  bool
 
 	// RTP NAT enables handling RTP behind NAT. Checkout also RTPSourceLock
 	RTPNAT          int // 0 - disabled, 1 - Learn source change (RTP Symetric)
@@ -319,42 +320,46 @@ func (s *MediaSession) LocalSDP() []byte {
 	var localSDES sdesInline
 	rtpProfile := "RTP/AVP"
 	if s.SecureRTP == 1 {
-		err := func() error {
-			// TODO detect algorithm
-			profile := srtp.ProtectionProfile(s.SRTPAlg)
-			keysalt, keyLen, err := generateMasterKeySalt(profile)
+		// RFC 4568/8643: only include crypto when offering (no remote SDP yet)
+		// or when the peer actually offered SRTP
+		if !s.hasRemoteSDP || s.remoteCtxSRTP != nil {
+			err := func() error {
+				// TODO detect algorithm
+				profile := srtp.ProtectionProfile(s.SRTPAlg)
+				keysalt, keyLen, err := generateMasterKeySalt(profile)
+				if err != nil {
+					return err
+				}
+				masterKey, masterSalt := keysalt[:keyLen], keysalt[keyLen:]
+
+				inline := base64.StdEncoding.EncodeToString(keysalt)
+				localSDES = sdesInline{
+					alg:    srtpProfileString(profile),
+					base64: inline,
+					tag:    1,
+				}
+
+				ctx, err := srtp.CreateContext(masterKey, masterSalt, profile)
+				if err != nil {
+					return fmt.Errorf("CreateContext failed: %v", err)
+				}
+
+				s.localCtxSRTP = ctx
+
+				if s.srtpRemoteTag > 0 {
+					// Match remote tag if exists
+					localSDES.tag = s.srtpRemoteTag
+				}
+
+				// NOTE: For some compatibility reasons (like asterisk) it would be required that this stays on RTP/AVP
+				if !RTPProfileSAVPDisable {
+					rtpProfile = "RTP/SAVP"
+				}
+				return nil
+			}()
 			if err != nil {
-				return err
+				DefaultLogger().Error("Failed to setup SRTP context", "error", err)
 			}
-			masterKey, masterSalt := keysalt[:keyLen], keysalt[keyLen:]
-
-			inline := base64.StdEncoding.EncodeToString(keysalt)
-			localSDES = sdesInline{
-				alg:    srtpProfileString(profile),
-				base64: inline,
-				tag:    1,
-			}
-
-			ctx, err := srtp.CreateContext(masterKey, masterSalt, profile)
-			if err != nil {
-				return fmt.Errorf("CreateContext failed: %v", err)
-			}
-
-			s.localCtxSRTP = ctx
-
-			if s.srtpRemoteTag > 0 {
-				// Match remote tag if exists
-				localSDES.tag = s.srtpRemoteTag
-			}
-
-			// NOTE: For some compatibility reasons (like asterisk) it would be required that this stays on RTP/AVP
-			if !RTPProfileSAVPDisable {
-				rtpProfile = "RTP/SAVP"
-			}
-			return nil
-		}()
-		if err != nil {
-			DefaultLogger().Error("Failed to setup SRTP context", "error", err)
 		}
 	}
 
@@ -412,6 +417,8 @@ func (s *MediaSession) LocalSDP() []byte {
 // NOTE: It must called ONCE or single thread while negotiation happening.
 // For multi negotiation Fork Must be called before
 func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
+	s.hasRemoteSDP = true
+
 	sd := sdp.SessionDescription{}
 	if err := sdp.Unmarshal(sdpReceived, &sd); err != nil {
 		return fmt.Errorf("fail to parse received SDP: %w", err)
@@ -486,7 +493,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 				return fmt.Errorf("sdp: bad crypto attribute attr=%q", v)
 			}
 			// Parse crypto tag
-			tagString := strings.TrimLeft(vals[0], "crypto:")
+			tagString := strings.TrimPrefix(vals[0], "crypto:")
 			if s.srtpRemoteTag, err = strconv.Atoi(tagString); err != nil {
 				return fmt.Errorf("bad crypto tag in %q", v)
 			}
@@ -648,6 +655,13 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			DefaultLogger().Debug("DTLS SRTP setuped")
 			return nil
 		}
+	}
+
+	// Offerer path: we called LocalSDP() before RemoteSDP(), so localCtxSRTP
+	// may already be set. If the remote answer has no crypto, clear it to
+	// avoid sending encrypted RTP to a peer expecting plaintext.
+	if s.localCtxSRTP != nil && s.remoteCtxSRTP == nil && !secureRequest {
+		s.localCtxSRTP = nil
 	}
 
 	if secureRequest && s.remoteCtxSRTP == nil {
