@@ -4,6 +4,7 @@
 package diago
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -282,14 +283,16 @@ type BridgeMix struct {
 
 	// WaitDialogsNum is just helper flag when to start proxy
 	WaitDialogsNum int
-	// WithRealtimeReader is almost always nesessary if you are delaying audio streaming(mixing) in bridge
-	WithRealtimeReader bool
-	log                *slog.Logger
+	// RealtimeReader is almost always nesessary if you are delaying audio streaming(mixing) in bridge
+	RealtimeReader bool
+	Poll           bool
+	log            *slog.Logger
 }
 
 func NewBridgeMix() *BridgeMix {
 	b := BridgeMix{
-		WithRealtimeReader: true,
+		RealtimeReader: true,
+		Poll:           true,
 	}
 	b.Init()
 	return &b
@@ -450,19 +453,25 @@ func (b *BridgeMix) mixStopWait() error {
 }
 
 func (b *BridgeMix) mix() error {
+	b.mu.Lock()
+	lenDialogs := len(b.dialogs)
+	b.mu.Unlock()
 
-	if len(b.dialogs) == 1 {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if lenDialogs == 1 {
 		b.log.Info("Only single stream in bridge, reading bufffers...")
 		// Just keep streaming
 		dialog := b.dialogs[0]
 		stream := &bridgePCMStream{}
-		b.addDialogStream(dialog, stream, &media.Codec{}, false)
+		b.addDialogStream(ctx, dialog, stream, &media.Codec{}, false)
 		_, err := media.ReadAll(stream.r, media.RTPBufSize)
 		return err
 	}
 
 	// We could decide and optimize here, poll vs deadlines
-	poll := true
+	poll := b.Poll
 	rwStreams, err := func() ([]*bridgePCMStream, error) {
 		// We need to lock here as b.dialogs can change
 		b.mu.Lock()
@@ -473,7 +482,7 @@ func (b *BridgeMix) mix() error {
 
 		for i, d := range b.dialogs {
 			rwStreams[i] = &bridgePCMStream{}
-			if err := b.addDialogStream(d, rwStreams[i], &firstDialogCodec, poll); err != nil {
+			if err := b.addDialogStream(ctx, d, rwStreams[i], &firstDialogCodec, poll); err != nil {
 				return nil, err
 			}
 		}
@@ -482,13 +491,6 @@ func (b *BridgeMix) mix() error {
 	if err != nil {
 		return err
 	}
-
-	// defer func() {
-	// 	// return buffers to pool
-	// 	for _, r := range rwStreams {
-	// 		bridgeReadPool.Put(r.buf)
-	// 	}
-	// }()
 
 	mixBuf := make([]byte, media.RTPBufSize)
 	// Currently we consider that sample clock is done by Audio Writers
@@ -505,47 +507,28 @@ func (b *BridgeMix) mix() error {
 
 	*/
 	for {
-		// First read all streams at this point of time and fill buffer
-		// total := 0
-		// if err := b.readAllStreams(rwStreams, &total, poll); err != nil {
-		// 	return err
-		// }
 		n, err := b.mixAllStreams(rwStreams, mixBuf, poll)
 		if err != nil {
 			return err
 		}
 		if n == 0 {
 			b.log.Debug("Nothing read, delaying read")
-			time.Sleep(40 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 			continue
 		}
-
-		// Mix all streams
-		// n, err := mixStreams(rwStreams, mixBuf)
-		// if err != nil {
-		// 	return err
-		// }
 
 		// broadcast to all
 		for i, w := range rwStreams {
 			streamBuf := mixBuf[:n]
 			if w.n > 0 {
-				readBuf := *w.buf
+				readBuf := w.buf
 				streamBuf = unmixStream(readBuf[:w.n], mixBuf[:n])
 			}
-			// writeStart := time.Now()
 
-			// Mark as stream read
-			w.n = 0
 			n, err := w.w.Write(streamBuf)
-
-			// LETS Not forget: Return buf into pool
-			bridgeReadPool.Put(w.buf)
-
 			b.log.Debug("Writing stream", "i", i, "stream", w.id, "n", n, "err", err)
 			if err != nil {
 				// Detect is this Deadline or EOF error caused by stream exiting
-				// fmt.Println("Writing stopped", err, "id", w.id, errors.Is(err, os.ErrDeadlineExceeded))
 				if errors.Is(err, os.ErrDeadlineExceeded) {
 					state := b.stateRead()
 					if state != 1 {
@@ -554,14 +537,12 @@ func (b *BridgeMix) mix() error {
 					}
 
 					// Mixing has been stopped or network problem
-					// Remove the stream
-					// rwStreams = append(rwStreams[:i], rwStreams[i+1:]...)
+					w.markGone = true
 					continue
 
 				}
 				return err
 			}
-			// b.log.Debug("Writing finished", "ssrc", w.id, "dur", time.Since(writeStart))
 		}
 	}
 }
@@ -572,20 +553,15 @@ type bridgePCMStream struct {
 	w            io.Writer
 	mediaSession *media.MediaSession
 	// read buf
-	buf *[]byte
+	buf []byte
 	n   int
 
-	poll     chan bridgeStreamPoll
-	markGone bool
+	pipeRead  chan int
+	pipeWrite chan []byte
+	markGone  bool
 }
 
-type bridgeStreamPoll struct {
-	err error
-	buf *[]byte
-	n   int
-}
-
-func (b *BridgeMix) addDialogStream(d DialogSession, stream *bridgePCMStream, firstDialogCodec *media.Codec, poll bool) error {
+func (b *BridgeMix) addDialogStream(ctx context.Context, d DialogSession, stream *bridgePCMStream, firstDialogCodec *media.Codec, poll bool) error {
 	m := d.Media()
 
 	p := MediaProps{}
@@ -603,7 +579,7 @@ func (b *BridgeMix) addDialogStream(d DialogSession, stream *bridgePCMStream, fi
 	}
 
 	rtr := func() io.Reader {
-		if !b.WithRealtimeReader {
+		if !b.RealtimeReader {
 			return r
 		}
 
@@ -640,44 +616,46 @@ func (b *BridgeMix) addDialogStream(d DialogSession, stream *bridgePCMStream, fi
 		w:            &pcmWriter,
 		mediaSession: m.mediaSession,
 		id:           m.RTPPacketWriter.SSRC,
-		buf:          bridgeReadPool.Get().(*[]byte),
+		buf:          make([]byte, media.RTPBufSize),
+		pipeRead:     make(chan int),
+		pipeWrite:    make(chan []byte),
 	}
 
 	if poll {
-		// We do buffering because initial packet can be read sooner than actual mixing has started
-		stream.poll = make(chan bridgeStreamPoll, 3)
+		// We do buffering because initial packet can be read oner than actual mixing has started
 		b.mixWG.Add(1)
+		b.log.Debug("poll: starting stream", "stream.id", stream.id)
 		go func(s *bridgePCMStream) {
 			defer b.mixWG.Done()
 
-			defer func() {
-				// Drain poll
-				close(s.poll)
-				for s := range s.poll {
-					bridgeReadPool.Put(s.buf)
-				}
-			}()
+			bufPtr := bridgeReadPool.Get().(*[]byte)
+			defer bridgeReadPool.Put(bufPtr)
 
+			defer close(s.pipeWrite)
+
+			buf := *bufPtr
 			for {
-				buf := *bridgeReadPool.Get().(*[]byte)
 				n, err := s.r.Read(buf)
-				// signal that buf is ready
-				select {
-				case s.poll <- bridgeStreamPoll{err: err, buf: &buf, n: n}:
-				default:
-					b.log.Warn("poll: packet not consumed", "stream.id", s.id, "ts", time.Now().Format(time.RFC3339Nano))
-					bridgeReadPool.Put(&buf)
+				if err != nil {
+					b.log.Debug("poll: stopped with error", "error", err, "stream.id", stream.id)
+					return
 				}
 
-				if err != nil {
-					b.log.Info("poll: stopped with error", "error", err)
+				select {
+				case s.pipeWrite <- buf[:n]:
+					nw := <-s.pipeRead
+					if nw != n {
+						// there is no reason this to happen, so lets panic
+						panic("reading from pipe was not full")
+					}
+				case <-ctx.Done():
+					b.log.Debug("poll: stream context canceled", "stream.id", stream.id)
 					return
 				}
 			}
 		}(stream)
 		return nil
 	}
-
 	return nil
 }
 
@@ -689,7 +667,6 @@ func (b *BridgeMix) mixAllStreams(rwStreams []*bridgePCMStream, mixedBuf []byte,
 		// binary.LittleEndian.PutUint16(mixedBuf[i:], uint16(0))
 	}
 
-	b.log.Info("Mixing...", "streams.len", len(rwStreams))
 	if !poll {
 		// If are not polling data then we need todo direct read
 		err := func() error {
@@ -698,7 +675,7 @@ func (b *BridgeMix) mixAllStreams(rwStreams []*bridgePCMStream, mixedBuf []byte,
 
 				// Mostly PCM sample size should be same or less our sampling
 				// but we should keep same sampling or deal this per writer?
-				n, err := r.r.Read(*r.buf)
+				n, err := r.r.Read(r.buf)
 				rwStreams[i].n = n
 				if err != nil {
 					if errors.Is(err, os.ErrDeadlineExceeded) {
@@ -722,86 +699,49 @@ func (b *BridgeMix) mixAllStreams(rwStreams []*bridgePCMStream, mixedBuf []byte,
 		handledStreams := len(rwStreams)
 		for _, r := range rwStreams {
 			if r.markGone {
-				// TODO: how do we avoid this looping into none
 				handledStreams--
 				continue
 			}
+			r.n = 0 // Make sure it is zero
 
 			select {
-			case poll, more := <-r.poll:
+			case bw, more := <-r.pipeWrite:
 				if !more {
 					r.markGone = true
 					continue
-					// return fmt.Errorf("stream is gone")
 				}
-				buf, err, n := poll.buf, poll.err, poll.n
-				// has data or read error
-				if err != nil {
-					if buf != nil {
-						// Return buf into pool
-						bridgeReadPool.Put(buf)
-					}
-
-					if errors.Is(err, os.ErrDeadlineExceeded) {
-						state := b.stateRead()
-						if state != 1 {
-							// We are stopped
-							return err
-						}
-						continue
-					}
-
-					// What if stream just got closed due to hangup?
-					return err
-				}
-				readBuf := *buf
-				mixN := audio.PCMMix(mixedBuf, mixedBuf, readBuf[:n])
-				r.buf = buf
+				n := copy(r.buf, bw)
 				r.n = n
+				r.pipeRead <- n
+
+				readBuf := r.buf[:n]
+				mixN := audio.PCMMix(mixedBuf, mixedBuf, readBuf)
 				maxN = max(maxN, mixN)
 
 			default:
 				// Do not block
-				b.log.Debug("poll: packet missed", "stream.id", r.id)
-				state := b.stateRead()
-				if state != 1 {
-					// We are stopped
-					return fmt.Errorf("reading is stopped")
-				}
-
+				b.log.Debug("poll: no packet on stream", "stream.id", r.id)
 			}
 		}
 
 		if handledStreams == 0 {
-			return fmt.Errorf("All streams are gones")
+			return fmt.Errorf("all streams are gones")
 		}
+
+		if handledStreams < len(rwStreams) || maxN == 0 {
+			state := b.stateRead()
+			if state != 1 {
+				// We are stopped
+				return fmt.Errorf("reading is stopped")
+			}
+
+		}
+
 		return nil
 	}()
-	b.log.Info("Mixing done", "streams.len", len(rwStreams), "maxN", maxN)
 
-	// Check always
-	state := b.stateRead()
-	if state != 1 {
-		// We are stopped
-		return 0, fmt.Errorf("reading is stopped")
-	}
-
+	b.log.Debug("Mixing done", "streams.len", len(rwStreams), "maxN", maxN)
 	return maxN, err
-}
-
-func mixStream(r *bridgePCMStream, mixedBuf []byte) int {
-	n := r.n
-	buf := *r.buf
-	readBuf := buf[:n]
-
-	if n == 0 {
-		// Skip any mixing if nothing has read
-		return 0
-	}
-
-	audio.PCMMix(mixedBuf, mixedBuf, readBuf)
-	bridgeReadPool.Put(r.buf)
-	return n
 }
 
 func unmixStream(buf []byte, mixedBuf []byte) []byte {
