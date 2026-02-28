@@ -326,6 +326,7 @@ func TestIntegrationBridgingMix(t *testing.T) {
 				t.Log("Sound received", "i", i, "buf", buf[:n], "ssrc", dialog.RTPPacketWriter.SSRC)
 
 				if i == 0 {
+
 					assert.Equal(t, []byte{34, 35, 36, 37, 38, 34}, buf[:n]) // For now As regression
 				} else if i == 1 {
 					assert.Equal(t, []byte{34, 35, 36, 37, 38, 34}, buf[:n]) // For now As regression
@@ -359,30 +360,32 @@ func TestIntegrationBridgingMix(t *testing.T) {
 
 		// Make number of calls that will have audio mixed in bridge
 		// wg := sync.WaitGroup{}
+		bridge = NewBridgeMix()
 		bridge.WaitDialogsNum = 2 // Do not start mixing until all 3 get joined, otherwise there will be no gurantee when something is mixed
 
 		dialog1, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
 		require.NoError(t, err)
-		defer dialog1.Hangup(ctx)
+		defer dialog1.Hangup(dialog1.Context())
 
 		dialog2, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
 		require.NoError(t, err)
-		defer dialog2.Hangup(ctx)
+		defer dialog2.Hangup(dialog2.Context())
 
 		// Write sound on dialog 1 and make sure it is read on dialog2
 		sound := []byte("123450")
 		go func(dialog *DialogClientSession) {
 			w, _ := dialog.AudioWriter()
-			for i := 0; i < 3; i++ {
+			for i := 0; i < 10; i++ {
 				w.Write(sound)
 			}
 
 		}(dialog1)
 
 		r, _ := dialog2.AudioReader()
+		dialog2.StopRTP(1, 1*time.Second)
 
 		buf := make([]byte, media.RTPBufSize)
-		for i := 0; i < 3; i++ {
+		for i := 0; i < 10; i++ {
 			n, err := r.Read(buf)
 			require.NoError(t, err)
 			assert.Equal(t, sound, buf[:n])

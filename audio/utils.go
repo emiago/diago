@@ -73,7 +73,7 @@ func FadeOut(pcmData []byte, props PCMProps, dur time.Duration) error {
 	return nil
 }
 
-func PCMMix(dstBuf []byte, mixedBuf []byte, readBuf []byte) {
+func PCMMix(dstBuf []byte, mixedBuf []byte, readBuf []byte) int {
 	n := len(readBuf)
 	for i := 0; i < n; i += 2 {
 		current := int16(binary.LittleEndian.Uint16(mixedBuf[i:]))
@@ -92,6 +92,7 @@ func PCMMix(dstBuf []byte, mixedBuf []byte, readBuf []byte) {
 
 		binary.LittleEndian.PutUint16(dstBuf[i:], uint16(mixed))
 	}
+	return n
 }
 
 func PCMUnmix(dstBuf []byte, mixedBuf []byte, readBuf []byte) {
