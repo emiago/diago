@@ -812,13 +812,13 @@ func (dg *Diago) Register(ctx context.Context, recipient sip.Uri, opts RegisterO
 				}
 			}
 		}
-
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err
 		}
 
 		t.expiry = retryAfter
 	}
+	return nil
 }
 
 // Register transaction creates register transaction object that can be used for Register Unregister requests
