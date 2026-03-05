@@ -3,8 +3,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/emiago/dtls/v3 v3.0.0-20260122183559-8b8d23e359c0 h1:o4LxpUnZ1zxiQ+Qjc9kLwXcjz31NGAHmnZ7xoJto3VM=
 github.com/emiago/dtls/v3 v3.0.0-20260122183559-8b8d23e359c0/go.mod h1:ydcZ977eS1I6uOWodzMuw30BwvNAzT9su/xcNYSJqjA=
-github.com/emiago/sipgo v1.2.0 h1:rmHFdCu9zu2Cabfd8+/eC9HQWyooqk8x+ti550z5lBw=
-github.com/emiago/sipgo v1.2.0/go.mod h1:DuwAxBZhKMqIzQFPGZb1MVAGU6Wuxj64oTOhd5dx/FY=
+github.com/emiago/sipgo v1.2.1 h1:5JTwogbe3yQFA3sjBVueN2Q4WTU350tGeBwPYT8HMv0=
+github.com/emiago/sipgo v1.2.1/go.mod h1:DuwAxBZhKMqIzQFPGZb1MVAGU6Wuxj64oTOhd5dx/FY=
 github.com/go-audio/riff v1.0.0 h1:d8iCGbDvox9BfLagY94fBynxSPHO80LmZCaOsmKxokA=
 github.com/go-audio/riff v1.0.0/go.mod h1:l3cQwc85y79NQFCRB7TiPoNiaijp6q8Z0Uv38rVG498=
 github.com/gobwas/httphead v0.1.0 h1:exrUm0f4YX0L7EBwZHuCF4GDp8aJfVeBrlLQrs6NqWU=
