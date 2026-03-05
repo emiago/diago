@@ -101,7 +101,9 @@ func (s *DigestAuthServer) AuthorizeRequest(req *sip.Request, auth DigestAuth) (
 		return sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil), err
 	}
 
+	s.mu.Lock()
 	e, exists := s.cache[cred.Nonce]
+	s.mu.Unlock()
 	if !exists {
 		return sip.NewResponseFromRequest(req, sip.StatusUnauthorized, "Unauthorized", nil), ErrDigestAuthNoChallenge
 	}
