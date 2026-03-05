@@ -278,7 +278,6 @@ type BridgeMix struct {
 	dialogs []DialogSession
 
 	mixWG    sync.WaitGroup
-	mixErr   error
 	mixState int
 
 	// WaitDialogsNum is just helper flag when to start proxy
@@ -355,6 +354,7 @@ func (b *BridgeMix) RemoveDialogSession(dialogID string) error {
 	}
 
 	b.log.Debug("Stoping mix", "dialog", dialog.Id())
+
 	if err := b.mixStopWait(); err != nil {
 		return fmt.Errorf("failed to stop current mixing: %w", err)
 	}
@@ -369,36 +369,6 @@ func (b *BridgeMix) RemoveDialogSession(dialogID string) error {
 
 	b.log.Debug("Removed dialog", "dialog", dialog.Id(), "total", len(b.dialogs))
 	return b.mixStart()
-}
-
-// Mix explicitely starts mixing. Make sure you have increased WaitDialogsNum
-func (b *BridgeMix) Mix() (err error) {
-	return b.mix()
-}
-
-func (b *BridgeMix) mixStart() error {
-	if len(b.dialogs) < 1 {
-		return nil
-	}
-	if len(b.dialogs) < b.WaitDialogsNum {
-		return nil
-	}
-
-	// Start new mix
-	b.mixWG.Add(1)
-	b.stateWriteUnsafe(1)
-	go func() {
-		defer b.mixWG.Done()
-		defer b.stateWrite(0)
-		b.log.Info("Starting mix")
-		if err := b.mix(); err != nil {
-			// b.mu.Lock()
-			b.log.Info("Mix stopped with error", "error", err)
-			b.mixErr = err
-			//
-		}
-	}()
-	return nil
 }
 
 func (b *BridgeMix) stateWrite(s int) {
@@ -417,28 +387,14 @@ func (b *BridgeMix) stateRead() int {
 	return b.mixState
 }
 
-func (b *BridgeMix) mixStop() (bool, error) {
-	if state := b.mixState; state != 1 {
-		// Only if state is running this goroutine can stop it
-		return false, nil
-	}
-	b.stateWriteUnsafe(2)
-	var allErros error
-	for _, d := range b.dialogs {
-		err := d.Media().StopRTP(1, 0) // Stop reading
-		errors.Join(allErros, err)
-	}
-	return true, allErros
-}
-
 func (b *BridgeMix) mixStopWait() error {
 	// DO NOT CALL THIS INSIDE LOOP of b.dialogs. This Unlocks
-	stopped, err := b.mixStop()
+	stopInProgress, err := b.mixStop()
 	if err != nil {
 		return fmt.Errorf("failed to stop current mixing: %w", err)
 	}
 
-	if stopped {
+	if stopInProgress {
 		b.mu.Unlock()
 		b.mixWG.Wait()
 		b.mu.Lock()
@@ -452,32 +408,38 @@ func (b *BridgeMix) mixStopWait() error {
 	return allErros
 }
 
-func (b *BridgeMix) mix() error {
-	b.mu.Lock()
-	lenDialogs := len(b.dialogs)
-	b.mu.Unlock()
+func (b *BridgeMix) mixStop() (bool, error) {
+	if state := b.mixState; state != 1 {
+		// Only if state is running this goroutine can stop it
+		return false, nil
+	}
+	b.mixState = 2 // Set it stoping in progress
+	var allErros error
+	for _, d := range b.dialogs {
+		err := d.Media().StopRTP(1, 0) // Stop reading
+		errors.Join(allErros, err)
+	}
+	return true, allErros
+}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	if lenDialogs == 1 {
-		b.log.Info("Only single stream in bridge, reading bufffers...")
-		// Just keep streaming
-		dialog := b.dialogs[0]
-		stream := &bridgePCMStream{}
-		b.addDialogStream(ctx, dialog, stream, &media.Codec{}, false)
-		_, err := media.ReadAll(stream.r, media.RTPBufSize)
-		return err
+func (b *BridgeMix) mixStart() error {
+	if b.mixState == 2 {
+		// A stop is in progress (another goroutine is in mixStopWait).
+		// Don't start a new mix to avoid WaitGroup Add/Wait race.
+		return nil
+	}
+	if len(b.dialogs) < 1 {
+		return nil
+	}
+	if len(b.dialogs) < b.WaitDialogsNum {
+		return nil
 	}
 
+	ctx, cancelPoll := context.WithCancel(context.Background())
 	// We could decide and optimize here, poll vs deadlines
 	poll := b.Poll
 	rwStreams, err := func() ([]*bridgePCMStream, error) {
-		// We need to lock here as b.dialogs can change
-		b.mu.Lock()
-		defer b.mu.Unlock()
 		rwStreams := make([]*bridgePCMStream, len(b.dialogs))
-
 		firstDialogCodec := media.Codec{}
 
 		for i, d := range b.dialogs {
@@ -489,23 +451,51 @@ func (b *BridgeMix) mix() error {
 		return rwStreams, nil
 	}()
 	if err != nil {
+		cancelPoll()
 		return err
 	}
 
+	// Start new mix
+	b.mixWG.Add(1)
+	b.stateWriteUnsafe(1)
+	go func(rwStreams []*bridgePCMStream) {
+		defer cancelPoll()
+		defer b.mixWG.Done()
+		defer b.stateWrite(0)
+		b.log.Info("Starting mix loop", "streams.len", len(rwStreams))
+		if err := b.mixLoop(rwStreams, poll); err != nil {
+			b.log.Info("Mix stopped with error", "error", err)
+		}
+	}(rwStreams)
+	return nil
+}
+
+func (b *BridgeMix) mixLoop(rwStreams []*bridgePCMStream, poll bool) error {
 	mixBuf := make([]byte, media.RTPBufSize)
+
+	if len(rwStreams) == 1 {
+		b.log.Info("Only single stream in bridge, reading bufffers...")
+		// Just keep streaming
+		r := rwStreams[0]
+		if !poll {
+			_, err := media.ReadAll(r.r, media.RTPBufSize)
+			return err
+		}
+
+		for {
+			bw, more := <-r.pipeWrite
+			if !more {
+				break
+			}
+			n := copy(r.buf, bw)
+			r.pipeRead <- n
+		}
+		return nil
+	}
+
 	// Currently we consider that sample clock is done by Audio Writers
-	/*
-
-				Fastest starts writing but rest will delay Reading
-				----x----y---z-----|x----y----z|---x------
-				    ^      20ms     ^              ^
-
-
-				Slowest determines ticking and adds initial jitter for X and Y  but after it will have no impact except IO delay
-				---x---y----z-------tx---ty--|z-x-y|-----tx---ty----|z
-		           		    ^      20ms       ^              ^
-
-	*/
+	// The slowest will cause jitter.
+	// TODO fix this with single ticker
 	for {
 		n, err := b.mixAllStreams(rwStreams, mixBuf, poll)
 		if err != nil {
@@ -734,7 +724,6 @@ func (b *BridgeMix) mixAllStreams(rwStreams []*bridgePCMStream, mixedBuf []byte,
 				// We are stopped
 				return fmt.Errorf("reading is stopped")
 			}
-
 		}
 
 		return nil

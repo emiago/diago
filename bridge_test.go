@@ -7,9 +7,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"slices"
-	"strconv"
-	"sync"
 	"testing"
 	"time"
 
@@ -213,6 +210,7 @@ func TestIntegrationBridging(t *testing.T) {
 }
 
 func TestIntegrationBridgingMix(t *testing.T) {
+	// NOTE: There are more tests executed but outside repo
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	// Create transaction users, as many as needed.
@@ -248,9 +246,6 @@ func TestIntegrationBridgingMix(t *testing.T) {
 			bridge.RemoveDialogSession(in.ID)
 		}()
 
-		// if err := bridge.Wait(); err != nil {
-		// 	t.Log("Bridge wait exit with error", "error", err, "id", in.ID)
-		// }
 		<-in.Context().Done()
 	})
 	assert.NoError(t, err)
@@ -292,57 +287,6 @@ func TestIntegrationBridgingMix(t *testing.T) {
 		audio.PCMMix(mixedBuf, mixedBuf, ulawDecode([]byte("123451")))
 		audio.PCMUnmix(mixedBuf, mixedBuf, ulawDecode([]byte("123451")))
 		t.Log("Mixed", ulawEncode(mixedBuf), string(ulawEncode(mixedBuf)))
-	})
-
-	t.Run("SoundMixed", func(t *testing.T) {
-		ua, _ := sipgo.NewUA()
-		defer ua.Close()
-
-		dg := newDialer(ua)
-
-		// Make number of calls that will have audio mixed in bridge
-		wg := sync.WaitGroup{}
-		bridge.WaitDialogsNum = 3 // Do not start mixing until all 3 get joined, otherwise there will be no gurantee when something is mixed
-		for i := range 3 {
-
-			wg.Add(1)
-			go func(i int) {
-				defer wg.Done()
-
-				dialog, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
-				require.NoError(t, err)
-
-				defer dialog.Close()
-				sound := []byte("12345" + strconv.Itoa(i))
-
-				w, _ := dialog.AudioWriter()
-				r, _ := dialog.AudioReader()
-				_, err = w.Write(sound)
-				require.NoError(t, err)
-
-				buf := make([]byte, media.RTPBufSize)
-				n, err := r.Read(buf)
-				require.NoError(t, err)
-				t.Log("Sound received", "i", i, "buf", buf[:n], "ssrc", dialog.RTPPacketWriter.SSRC)
-
-				if i == 0 {
-					assert.Equal(t, []byte{34, 35, 36, 37, 38, 34}, buf[:n]) // For now As regression
-				} else if i == 1 {
-					assert.Equal(t, []byte{34, 35, 36, 37, 38, 34}, buf[:n]) // For now As regression
-				} else if i == 2 {
-					assert.Equal(t, []byte{34, 35, 36, 37, 38, 33}, buf[:n]) // For now As regression
-				}
-				t.Log("Hanguping", "ssrc", dialog.RTPPacketWriter.SSRC)
-				dialog.Hangup(ctx)
-			}(i)
-
-		}
-		wg.Wait()
-
-		for range 3 {
-			<-dialogExit
-		}
-		assert.Equal(t, 0, len(bridge.DialogSessionsList()), bridge.String())
 	})
 
 	t.Run("SoundProxied", func(t *testing.T) {
@@ -389,203 +333,6 @@ func TestIntegrationBridgingMix(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, sound, buf[:n])
 			t.Log("Sound received", "buf", buf[:n])
-		}
-
-	})
-
-	t.Run("SoundMixingLong", func(t *testing.T) {
-		ua, _ := sipgo.NewUA()
-		defer ua.Close()
-
-		dg := newDialer(ua)
-
-		// Make number of calls that will have audio mixed in bridge
-		wg := sync.WaitGroup{}
-		bridge = NewBridgeMix()
-		bridge.RealtimeReader = false
-		bridge.WaitDialogsNum = 3 // Do not start mixing until all 3 get joined, otherwise there will be no gurantee when something is mixed
-		for i := range 3 {
-			// Create some jitter
-			time.Sleep(5 * time.Millisecond)
-			dialog, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
-			require.NoError(t, err)
-			wg.Add(1)
-			go func(i int) {
-				defer wg.Done()
-				defer dialog.Close()
-				sound := []byte("12345" + strconv.Itoa(i))
-
-				w, _ := dialog.AudioWriter()
-				r, _ := dialog.AudioReader()
-
-				for k := 0; k < 20; k++ {
-					echoTime := time.Now()
-					_, err = w.Write(sound)
-					require.NoError(t, err)
-
-					buf := make([]byte, media.RTPBufSize)
-					n, err := r.Read(buf)
-					require.NoError(t, err)
-
-					assert.Equal(t, 6, n)
-					// We expect that there will be some processing due to sample arriving
-					// Or there will be immediate result due to jitter
-					if k < 2 {
-						continue
-					}
-					assert.LessOrEqual(t, 15*time.Millisecond, time.Since(echoTime))
-				}
-				t.Log("Hanguping", "ssrc", dialog.RTPPacketWriter.SSRC)
-				// If we stop fast we will prevent mixing and lose some packets
-				// This currently is issue and maybe only buffering could solve IT
-				time.Sleep(200 * time.Millisecond)
-				dialog.Hangup(ctx)
-			}(i)
-
-		}
-		wg.Wait()
-
-		for range 3 {
-			<-dialogExit
-		}
-		assert.Equal(t, 0, len(bridge.dialogs))
-	})
-
-	t.Run("MixingWorksAfterLeaving", func(t *testing.T) {
-		// t.Skip("TODO this needs to be done better")
-		ua, _ := sipgo.NewUA()
-		defer ua.Close()
-
-		dg := newDialer(ua)
-
-		// Make number of calls that will have audio mixed in bridge
-		bridge = NewBridgeMix()
-		dialogs := make([]*DialogClientSession, 3)
-		for i := range 3 {
-			dialog, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
-			require.NoError(t, err)
-			dialogs[i] = dialog
-
-			sound := []byte("12345" + strconv.Itoa(i))
-
-			w, _ := dialog.AudioWriter()
-			_, err = w.Write(sound)
-			require.NoError(t, err)
-		}
-
-		require.Eventually(t, func() bool {
-			bridge.mu.Lock()
-			defer bridge.mu.Unlock()
-			t.Log("Bridge dialogs", len(bridge.dialogs))
-			return len(bridge.dialogs) == 3
-		}, 3*time.Second, 100*time.Millisecond)
-
-		// Lets have first leaving bridge
-		dialog := dialogs[0]
-		t.Log("Hanguping", dialog.ID)
-		dialog.Hangup(dialog.Context())
-		dialog.Close()
-		dialogs = dialogs[1:]
-
-		// We should wait that this complets somehow?
-		for range 1 {
-			<-dialogExit
-		}
-		wg := sync.WaitGroup{}
-		for i, dialog := range dialogs {
-			wg.Add(1)
-			go func(i int, dialog *DialogClientSession) {
-				defer wg.Done()
-				sound := []byte("12345" + strconv.Itoa(i))
-				w, _ := dialog.AudioWriter()
-				r, _ := dialog.AudioReader()
-				_, err := w.Write(sound)
-				require.NoError(t, err)
-				buf := make([]byte, media.RTPBufSize)
-				n, err := r.Read(buf)
-				require.NoError(t, err)
-				t.Log("Sound received", "i", i, "buf", buf[:n], "ssrc", dialog.RTPPacketWriter.SSRC)
-			}(i, dialog)
-		}
-		// Wait all to read
-		wg.Wait()
-
-		// Now hangup
-		for _, dialog := range dialogs {
-			dialog.Hangup(dialog.Context())
-			dialog.Close()
-		}
-
-		for range 2 {
-			<-dialogExit
-		}
-		assert.Equal(t, 0, len(bridge.dialogs))
-	})
-
-	t.Run("MixingWorksAfterRejoining", func(t *testing.T) {
-		// t.Skip("TODO this needs to be done better")
-		ua, _ := sipgo.NewUA()
-		defer ua.Close()
-
-		bridge = NewBridgeMix()
-		// bridge.WaitDialogsNum = 2
-		bridge.RealtimeReader = false
-		dg := newDialer(ua)
-		dialogs := make([]*DialogClientSession, 2)
-		for i := range 2 {
-			dialog, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
-			require.NoError(t, err)
-			dialogs[i] = dialog
-
-			sound := []byte("12345" + strconv.Itoa(i))
-
-			w, _ := dialog.AudioWriter()
-			// Buffer some more writes
-			for range 5 {
-				_, err = w.Write(sound)
-				require.NoError(t, err)
-			}
-		}
-
-		// Now hangup first
-		require.NoError(t, dialogs[0].Hangup(context.TODO()))
-		require.NoError(t, dialogs[0].Close())
-
-		<-dialogExit
-		// bridge.WaitDialogsNum = 2
-
-		// Dial again
-		dialog, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
-		require.NoError(t, err)
-		dialogs[0] = dialog
-		w, _ := dialog.AudioWriter()
-		for range 5 {
-			_, err = w.Write([]byte("987654"))
-			require.NoError(t, err)
-		}
-
-		r, _ := dialogs[1].AudioReader()
-		buf := make([]byte, media.RTPBufSize)
-
-		expectSound := append(slices.Repeat([]string{"123450"}, 5), slices.Repeat([]string{"987654"}, 5)...)
-		for _, sound := range expectSound {
-			n, err := r.Read(buf)
-			require.NoError(t, err)
-			// not alligned
-			if bytes.Equal([]byte{255, 255, 255, 255, 255, 255}, buf[:n]) {
-				continue
-			}
-			assert.Equal(t, sound, string(buf[:n]))
-		}
-
-		// Now hangup
-		for _, dialog := range dialogs {
-			dialog.Hangup(dialog.Context())
-			dialog.Close()
-		}
-
-		for range 2 {
-			<-dialogExit
 		}
 
 	})
