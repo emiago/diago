@@ -44,7 +44,7 @@ func TestRTPWriter(t *testing.T) {
 
 		pkt := rtpWriter.PacketHeader
 
-		require.Equal(t, rtpWriter.payloadType, pkt.PayloadType)
+		require.Equal(t, rtpWriter.codec.PayloadType, pkt.PayloadType)
 		require.Equal(t, rtpWriter.SSRC, pkt.SSRC)
 		require.Equal(t, rtpWriter.seqWriter.ReadExtendedSeq(), uint64(pkt.SequenceNumber))
 		require.Equal(t, rtpWriter.nextTimestamp, pkt.Timestamp+160, "%d vs %d", rtpWriter.nextTimestamp, pkt.Timestamp)

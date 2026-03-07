@@ -42,9 +42,7 @@ type RTPPacketWriter struct {
 	// SSRC is readOnly and it is not changed
 	SSRC uint32
 
-	payloadType uint8
-	sampleRate  uint32
-
+	codec Codec
 	// Internals
 	// clock rate is decided based on media
 	sampleRateTimestamp uint32
@@ -63,11 +61,10 @@ type RTPPacketWriter struct {
 // updateClockRate- Padding and encryyption
 func NewRTPPacketWriter(writer RTPWriter, codec Codec) *RTPPacketWriter {
 	w := RTPPacketWriter{
-		writer:      writer,
-		seqWriter:   NewRTPSequencer(),
-		payloadType: codec.PayloadType,
-		sampleRate:  codec.SampleRate,
-		SSRC:        rand.Uint32(),
+		writer:    writer,
+		seqWriter: NewRTPSequencer(),
+		SSRC:      rand.Uint32(),
+		codec:     codec,
 		// initTimestamp: rand.Uint32(), // TODO random start timestamp
 		// MTU:         1500,
 
@@ -76,7 +73,7 @@ func NewRTPPacketWriter(writer RTPWriter, codec Codec) *RTPPacketWriter {
 	}
 
 	w.nextTimestamp = w.initTimestamp
-	w.updateClockRate(codec)
+	w.clockReset()
 	return &w
 }
 
@@ -92,13 +89,30 @@ func NewRTPPacketWriterSession(sess *RTPSession) *RTPPacketWriter {
 	return w
 }
 
-func (w *RTPPacketWriter) updateClockRate(cod Codec) {
+func (w *RTPPacketWriter) clockReset() {
+	cod := w.codec
 	w.sampleRateTimestamp = cod.SampleTimestamp()
 	if w.clockTicker != nil {
 		w.clockTicker.Reset(cod.SampleDur)
 	} else {
 		w.clockTicker = time.NewTicker(cod.SampleDur)
 	}
+}
+
+func (w *RTPPacketWriter) ClockDisable() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.clockTicker == nil {
+		return
+	}
+	w.clockTicker.Stop()
+	w.clockTicker = nil
+}
+
+func (w *RTPPacketWriter) ClockEnable() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.clockReset()
 }
 
 // ResetTimestamp can mark new stream comming. If stream is continuous it will add timestamp difference
@@ -111,7 +125,7 @@ func (p *RTPPacketWriter) ResetTimestamp() {
 		// Detect delays in audio and update RTP timestamp
 		t := time.Now()
 		diff := t.Sub(p.lastSampleTime)
-		diffTimestamp := uint32(diff.Seconds() * float64(p.sampleRate))
+		diffTimestamp := uint32(diff.Seconds() * float64(p.codec.SampleRate))
 
 		p.nextTimestamp += diffTimestamp
 		p.initTimestamp = p.nextTimestamp // This will now make Marker true
@@ -138,7 +152,7 @@ func (p *RTPPacketWriter) DelayTimestamp(ofsset uint32) {
 // It is not thread safe and order of payload frames is required
 func (p *RTPPacketWriter) Write(b []byte) (int, error) {
 	p.mu.RLock()
-	n, err := p.writeSamplesUnsafe(p.writer, b, p.sampleRateTimestamp, p.nextTimestamp == p.initTimestamp, p.payloadType)
+	n, err := p.writeSamplesUnsafe(p.writer, b, p.sampleRateTimestamp, p.nextTimestamp == p.initTimestamp, p.codec.PayloadType)
 	p.mu.RUnlock()
 	p.lastSampleTime = <-p.clockTicker.C
 	return n, err
@@ -193,12 +207,12 @@ func (w *RTPPacketWriter) UpdateRTPSession(rtpSess *RTPSession) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	// In case of codec cha
 	codec := CodecAudioFromSession(rtpSess.Sess)
-	w.payloadType = codec.PayloadType
-	w.sampleRate = codec.SampleRate
-	w.updateClockRate(codec)
+	w.codec = codec
 	w.writer = rtpSess
+
+	// In case of codec cha
+	w.clockReset()
 	// rtpSess.writeStats.SSRC = w.SSRC
 	// rtpSess.writeStats.sampleRate = w.sampleRate
 }
