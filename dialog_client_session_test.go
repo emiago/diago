@@ -110,8 +110,8 @@ func TestIntegrationDialogClient(t *testing.T) {
 		ua, _ := sipgo.NewUA()
 		defer ua.Close()
 
-		// Has no listener just UAC. Contact will hold empheral port
 		phone := newDialer(ua)
+		// listening but stil with empheral port
 		err := phone.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
 		require.NoError(t, err)
 
@@ -121,7 +121,7 @@ func TestIntegrationDialogClient(t *testing.T) {
 		dialog, err := phone.Invite(context.TODO(), sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
 		require.NoError(t, err)
 		<-dialog.Context().Done()
-		assert.NotEqual(t, dialog.InviteRequest.Via().Port, dialog.InviteRequest.Contact().Address.Port)
+		assert.Equal(t, dialog.InviteRequest.Via().Port, dialog.InviteRequest.Contact().Address.Port)
 	})
 
 	t.Run("Dialer", func(t *testing.T) {
