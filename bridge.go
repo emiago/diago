@@ -573,12 +573,11 @@ func (b *BridgeMix) addDialogStream(ctx context.Context, d DialogSession, stream
 			return r
 		}
 
-		if rtr, ok := r.(*rtpRealTimeReader); ok {
+		if rtr, ok := r.(*media.RTPRealTimeReader); ok {
 			return rtr
 		}
 
-		rtr := &rtpRealTimeReader{}
-		rtr.Init(r, m.RTPPacketReader, p.Codec)
+		rtr := media.NewRTPRealTimeReader(r, m.RTPPacketReader, p.Codec)
 		m.SetAudioReader(rtr)
 		return rtr
 	}()
