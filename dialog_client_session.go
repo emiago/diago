@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/emiago/diago/media"
+	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 )
@@ -629,4 +630,22 @@ func (d *DialogClientSession) handleReInviteACK(req *sip.Request, tx sip.ServerT
 
 func (d *DialogClientSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTransaction) error {
 	return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
+}
+
+func (d *DialogClientSession) Hold(ctx context.Context) error {
+	m := d.MediaSession().Fork()
+	m.Mode = sdp.ModeSendonly
+	if err := d.reInviteMediaSession(ctx, m); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *DialogClientSession) Unhold(ctx context.Context) error {
+	m := d.MediaSession().Fork()
+	m.Mode = sdp.ModeSendrecv
+	if err := d.reInviteMediaSession(ctx, m); err != nil {
+		return err
+	}
+	return nil
 }

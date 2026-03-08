@@ -270,6 +270,7 @@ func (s *MediaSession) Fork() *MediaSession {
 }
 
 func (s *MediaSession) Close() error {
+	// panic("calling close")
 	var e1, e2 error
 	if s.rtcpConn != nil {
 		e1 = s.rtcpConn.Close()
@@ -836,6 +837,12 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 			}
 		}()
 	}
+
+	if m.mode == sdp.ModeSendonly {
+		// We allow parsing of pkt but we indicate that this pkt should not be consumed
+		return 0, nil
+	}
+
 	return n, err
 }
 
@@ -947,6 +954,11 @@ func (m *MediaSession) ReadRTCPRawDeadline(buf []byte, t time.Time) (int, error)
 }
 
 func (m *MediaSession) WriteRTP(p *rtp.Packet) error {
+	if m.mode == sdp.ModeRecvonly {
+		// We block here as we would violate our media direction
+		return nil
+	}
+
 	logRTPWrite(m, p)
 
 	writeBuf := m.getWriteBuf()

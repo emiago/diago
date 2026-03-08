@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/emiago/diago/media"
+	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 )
@@ -562,4 +563,22 @@ func (d *DialogServerSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTra
 	// for {
 
 	// }
+}
+
+func (d *DialogServerSession) Hold(ctx context.Context) error {
+	m := d.MediaSession().Fork()
+	m.Mode = sdp.ModeSendonly
+	if err := d.reInviteMediaSession(ctx, m); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *DialogServerSession) Unhold(ctx context.Context) error {
+	m := d.MediaSession().Fork()
+	m.Mode = sdp.ModeSendrecv
+	if err := d.reInviteMediaSession(ctx, m); err != nil {
+		return err
+	}
+	return nil
 }

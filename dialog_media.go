@@ -208,6 +208,12 @@ func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransacti
 		if err := d.sdpReInviteUnsafe(req.Body()); err != nil {
 			return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestTerminated, "Request Terminated - "+err.Error(), nil))
 		}
+
+		if d.onMediaUpdate != nil {
+			d.mu.Unlock()
+			d.onMediaUpdate(d)
+			d.mu.Lock()
+		}
 	}
 
 	// Reply with updated SDP
@@ -227,11 +233,6 @@ func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 	if err := d.sdpUpdateUnsafe(sdp); err != nil {
 		return err
 	}
-
-	if d.onMediaUpdate != nil {
-		d.onMediaUpdate(d)
-	}
-
 	return nil
 }
 

@@ -194,6 +194,8 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 			return n, err
 		}
 
+		// NOTE: n can be 0 if there is session mode changed but pkt will be still parsed
+
 		// Validate pkt. Check is it keep alive
 		if readPkt.Version == 0 {
 			DefaultLogger().Debug("Received RTP with invalid version. Skipping", "pkt.ssrc", readPkt.SSRC, "pkt.seq", readPkt.SequenceNumber)
@@ -317,8 +319,6 @@ func (s *RTPSession) ReadRTPRaw(buf []byte) (int, error) {
 }
 
 func (s *RTPSession) WriteRTP(pkt *rtp.Packet) error {
-	// Do not write if we are creating RTCP packet
-
 	if err := s.Sess.WriteRTP(pkt); err != nil {
 		return err
 	}

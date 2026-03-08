@@ -145,7 +145,7 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 		return 0, err
 	}
 	if rtpN == 0 {
-		// ZERO Payload?
+		// Call on hold or keep alive
 		r.log.Debug("ZERO Payload on RTP", "header", pkt.Header)
 		return 0, nil
 	}
