@@ -14,9 +14,11 @@ type RTPDtmfReader struct {
 	reader       io.Reader
 	packetReader *RTPPacketReader
 
+	lastTimestamp uint32
+
 	lastEv  DTMFEvent
 	dtmf    rune
-	dtmfSet bool
+	dtmfEnd bool
 }
 
 // RTP DTMF writer is midleware for reading DTMF events
@@ -50,17 +52,20 @@ func (w *RTPDtmfReader) Read(b []byte) (int, error) {
 	if err := DTMFDecode(b, &ev); err != nil {
 		slog.Error("Failed to decode DTMF event", "error", err)
 	}
-	w.processDTMFEvent(ev)
+	w.processDTMFEvent(ev, hdr.Marker || w.lastTimestamp != hdr.Timestamp)
+	w.lastTimestamp = hdr.Timestamp
 	return n, nil
 }
 
-func (w *RTPDtmfReader) processDTMFEvent(ev DTMFEvent) {
+func (w *RTPDtmfReader) processDTMFEvent(ev DTMFEvent, mbit bool) {
 	if DefaultLogger().Handler().Enabled(context.Background(), slog.LevelDebug) {
 		// Expensive call on logger
-		DefaultLogger().Debug("Processing DTMF event", "ev", ev)
+		DefaultLogger().Debug("Processing DTMF event", "ev", ev, "mbit", mbit)
 	}
 	if ev.EndOfEvent {
 		if w.lastEv.Duration == 0 {
+			// Ignore this packet if we had no lastEv set
+			// This can be also due to EndEvent retransmission
 			return
 		}
 		// Does this match to our last ev
@@ -69,26 +74,36 @@ func (w *RTPDtmfReader) processDTMFEvent(ev DTMFEvent) {
 			return
 		}
 
-		dur := ev.Duration - w.lastEv.Duration
-		if dur <= 3*160 { // Expect at least ~50ms duration
-			DefaultLogger().Debug("Received DTMF packet but short duration", "dur", dur)
-			return
-		}
+		// More for PSTN check
+		// dur := ev.Duration - w.lastEv.Duration
+		// if dur <= 3*160 { // Expect at least ~50ms duration
+		// 	DefaultLogger().Debug("Received DTMF packet but short duration", "dur", dur)
+		// 	return
+		// }
 
 		w.dtmf = DTMFToRune(ev.Event)
-		w.dtmfSet = true
+		w.dtmfEnd = true
 		w.lastEv = DTMFEvent{}
 		return
 	}
-	if w.lastEv.Duration > 0 && w.lastEv.Event == ev.Event {
+
+	// if ev.Duration == 0 {
+	// 	// Should be ignored
+	// 	return
+	// }
+
+	// Keep playing until new marker is set
+	if !mbit {
 		return
 	}
+
+	// New packet
 	w.lastEv = ev
 }
 
 func (w *RTPDtmfReader) ReadDTMF() (rune, bool) {
-	defer func() { w.dtmfSet = false }()
-	return w.dtmf, w.dtmfSet
+	defer func() { w.dtmfEnd = false }()
+	return w.dtmf, w.dtmfEnd
 	// dtmf, ok := <-w.dtmfCh
 	// return DTMFToRune(dtmf), ok
 }
