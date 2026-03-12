@@ -104,6 +104,8 @@ func dialogHandleReferNotify(d DialogSession, req *sip.Request, tx sip.ServerTra
 
 	if onNot != nil {
 		onNot(code)
+	} else if code >= 200 {
+		d.Hangup(context.TODO())
 	}
 }
 
@@ -140,12 +142,11 @@ func dialogHandleRefer(d DialogSession, dg *Diago, req *sip.Request, tx sip.Serv
 		return fmt.Errorf("failed to send 202 Accepted")
 	}
 
-	referredBy := req.GetHeader("Referred-By")
 	// This transcation can now terminate?
-	return dialogReferInvite(d, dg, referToUri, contact.Address, onReferDialog, referredBy)
+	return dialogReferInvite(d, dg, referToUri, contact.Address, onReferDialog, req)
 }
 
-func dialogReferInvite(d DialogSession, dg *Diago, referToUri sip.Uri, remoteTarget sip.Uri, onReferDialog OnReferDialogFunc, referredBy sip.Header) error {
+func dialogReferInvite(d DialogSession, dg *Diago, referToUri sip.Uri, remoteTarget sip.Uri, onReferDialog OnReferDialogFunc, referReq *sip.Request) error {
 
 	// TODO after this we could get BYE immediately, but caller would not be able
 	// to take control over refer dialog
@@ -216,19 +217,26 @@ func dialogReferInvite(d DialogSession, dg *Diago, referToUri sip.Uri, remoteTar
 	// FROM, TO, CALLID must be same to make SUBSCRIBE working
 
 	// onReferRequest(referToUri, )
-	opts := InviteOptions{}
 
 	// Check is this REFER RFC 3892 compatible
 	// https://datatracker.ietf.org/doc/html/rfc3892#autoid-3
-	if referredBy != nil {
-		opts.Headers = append(opts.Headers, sip.HeaderClone(referredBy))
-	}
+	// if referredBy != nil {
+	// 	opts.Headers = append(opts.Headers, sip.HeaderClone(referredBy))
+	// }
 
 	referDialog, err := dg.NewDialog(referToUri, NewDialogOptions{})
 	if err != nil {
 		return err
 	}
 	defer referDialog.Close()
+
+	if h := referReq.GetHeader("referred-by"); h != nil {
+		referDialog.InviteRequest.AppendHeader(sip.HeaderClone(h))
+	}
+	if h := referReq.GetHeader("replaces"); h != nil {
+		referDialog.InviteRequest.AppendHeader(sip.HeaderClone(h))
+	}
+
 	// 	The final NOTIFY sent in response to a REFER MUST indicate
 	//    the subscription has been "terminated" with a reason of "noresource".
 	//    (The resource being subscribed to is the state of the referenced
@@ -274,4 +282,164 @@ func dialogReferInvite(d DialogSession, dg *Diago, referToUri sip.Uri, remoteTar
 	// Now this dialog will receive BYE and it will terminate
 	// We need to send this referDialog to control of caller
 	return nil
+}
+
+type OnReferTransactionFunc func(referTransaction ReferTransaction) error
+
+type ReferTransaction struct {
+	d            DialogSession
+	Refer        *sip.Request
+	referTo      sip.Uri
+	tx           sip.ServerTransaction
+	dg           *Diago
+	remoteTarget sip.Uri
+}
+
+func (r *ReferTransaction) Accept(ctx context.Context, opts InviteClientOptions) (*DialogClientSession, error) {
+	dg := r.dg
+	req := r.Refer
+	referToUri := r.referTo
+
+	log := dg.log
+	log.Info("Accepting refer")
+	if err := r.tx.Respond(sip.NewResponseFromRequest(req, 202, "Accepted", nil)); err != nil {
+		return nil, fmt.Errorf("failed to send 202 Accepted")
+	}
+
+	referDialog, err := dg.NewDialog(referToUri, NewDialogOptions{})
+	if err != nil {
+		return nil, err
+	}
+	// defer referDialog.Close()
+
+	// 	The final NOTIFY sent in response to a REFER MUST indicate
+	//    the subscription has been "terminated" with a reason of "noresource".
+	//    (The resource being subscribed to is the state of the referenced
+	//    request).
+
+	err = func() error {
+		if h := req.GetHeader("refered-by"); h != nil {
+			opts.Headers = append(opts.Headers, sip.HeaderClone(h))
+		}
+		if h := req.GetHeader("replaces"); h != nil {
+			opts.Headers = append(opts.Headers, sip.HeaderClone(h))
+		}
+
+		if err := referDialog.Invite(ctx, opts); err != nil {
+			return err
+		}
+
+		dg.log.Info("OnReferDialog handling failed with", "error", err)
+		var resErr *sipgo.ErrDialogResponse
+		if errors.As(err, &resErr) {
+			return r.sendNotify(ctx, resErr.Res.StatusCode, resErr.Res.Reason, subState{
+				state:  "terminated",
+				reason: "noresource",
+			})
+		}
+
+		// If call failed to be established but not yet confirmed
+		state := referDialog.LoadState()
+		if state == 0 || state == sip.DialogStateEstablished {
+			return r.sendNotify(ctx, 400, "Bad Request", subState{
+				state:  "terminated",
+				reason: "noresource",
+			})
+		}
+		return r.sendNotify(ctx, 200, "OK", subState{
+			state:  "terminated",
+			reason: "noresource",
+		})
+	}()
+	if err != nil {
+		r.sendNotify(ctx, 200, "OK", subState{
+			state:  "terminated",
+			reason: "noresource",
+		})
+
+		referDialog.Close()
+		return nil, err
+	}
+	return referDialog, nil
+}
+
+type subState struct {
+	state      string
+	reason     string
+	expires    int
+	retryAfter int
+}
+
+func (r *ReferTransaction) sendNotify(ctx context.Context, statusCode int, reason string, sub subState) error {
+	req := sip.NewRequest(sip.NOTIFY, r.remoteTarget)
+
+	referParams := sip.NewParams()
+	referParams.Add("refer", "")
+
+	// TODO: Multiple Refers require having ID
+	referID := ""
+	if referID != "" {
+		referParams.Add("id", referID)
+	}
+
+	stateParams := sip.NewParams()
+	stateParams.Add(sub.state, "")
+	if sub.reason != "" {
+		stateParams.Add("reason", sub.reason)
+	}
+	if sub.retryAfter > 0 {
+		stateParams.Add("retry-after", strconv.Itoa(sub.retryAfter))
+	}
+
+	if sub.expires > 0 {
+		stateParams.Add("expires", strconv.Itoa(sub.expires))
+	}
+
+	req.AppendHeader(sip.NewHeader("Event", referParams.ToString(';')))
+	req.AppendHeader(sip.NewHeader("Subscription-State", stateParams.ToString(';')))
+	req.AppendHeader(sip.NewHeader("Content-Type", "message/sipfrag;version=2.0"))
+	frag := fmt.Sprintf("SIP/2.0 %d %s", statusCode, reason)
+	req.SetBody([]byte(frag))
+
+	res, err := r.d.Do(ctx, req)
+	if err != nil {
+		return err
+	}
+	if res.StatusCode != 200 {
+		return fmt.Errorf("notify received non 200 response. code=%d", res.StatusCode)
+	}
+	return nil
+}
+
+func dialogHandleReferTransaction(d DialogSession, dg *Diago, req *sip.Request, tx sip.ServerTransaction, onReferDialog OnReferTransactionFunc) error {
+	log := dg.log
+	referTo := req.GetHeader("Refer-To")
+	if referTo == nil {
+		log.Info("Received REFER without Refer-To header")
+		return tx.Respond(sip.NewResponseFromRequest(req, 400, "Bad Request", nil))
+	}
+
+	referToUri := sip.Uri{}
+	headerParams := sip.NewParams()
+
+	_, err := sip.ParseAddressValue(referTo.Value(), &referToUri, &headerParams)
+	if err != nil {
+		log.Info("Received REFER but failed to parse Refer-To uri", "error", err)
+		return tx.Respond(sip.NewResponseFromRequest(req, 400, "Bad Request", nil))
+	}
+
+	contact := req.Contact()
+	if contact == nil {
+		log.Info("Received REFER but no Contact Header present")
+		return tx.Respond(sip.NewResponseFromRequest(req, 400, "Bad Request", []byte("No Contact Header")))
+	}
+
+	rtx := ReferTransaction{
+		dg:           dg,
+		tx:           tx,
+		referTo:      referToUri,
+		remoteTarget: contact.Address,
+		Refer:        req,
+	}
+	return onReferDialog(rtx)
 }

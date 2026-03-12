@@ -125,6 +125,7 @@ func (o *InviteClientOptions) WithCaller(displayName string, callerID string, ho
 // - You MUST call Ack() after to acknowledge session.
 //
 // Early Media Detect:
+// - EarlyMediaDetect=true must be set as part of options otherwise it ignores early media
 // - It RETURNS ErrClientEarlyMedia if remote answers with 183 Session in Progress
 // - Media is negotiated and setuped
 // - You need to call WaitAnswer() if you want to proceed with answering call
@@ -135,8 +136,6 @@ func (o *InviteClientOptions) WithCaller(displayName string, callerID string, ho
 //
 // NOTE: It updates internal invite request so NOT THREAD SAFE.
 // If you pass originator it will use originator to set correct from header and avoid media transcoding
-//
-// Experimental: Note API may have changes
 func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptions) error {
 	sess := d.mediaSession
 	inviteReq := d.InviteRequest

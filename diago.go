@@ -333,7 +333,9 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 
 		sd, cd, err := dg.cache.MatchDialog(req)
 		if err != nil {
-			return handleNoDialog(req, tx, err)
+			// We should not do responses for ACK
+			return err
+			// return handleNoDialog(req, tx, err)
 		}
 
 		if cd != nil {
