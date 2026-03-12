@@ -1,7 +1,7 @@
 ---
 # title: Diago
 ---
-<img src="diago-text-no-icon.png" width="300" alt="DIAGO">
+<img src="diago-icon-text.svg" width="300" alt="DIAGO">
 
 **Diago** is short of **dialog + GO**.  
 Library for building comunication (VOIP) solutions in *GO*.

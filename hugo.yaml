@@ -8,8 +8,8 @@ params:
     displayTitle: true
     displayLogo: true
     logo:
-      path: logo/logo.svg
-      dark: logo/logo-dark.svg
+      path: diago-icon.svg
+      dark: diago-icon.svg
       link: /diago
       width: 30
       height: 20
