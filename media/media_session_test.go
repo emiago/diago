@@ -298,6 +298,70 @@ a=sendrecv`
 
 }
 
+func TestRemoteSDP_SAVPOfferMirroredWhenSAVPDisabled(t *testing.T) {
+	// When RTPProfileSAVPDisable is true (opportunistic mode) and the remote
+	// offers RTP/SAVP, the answer must still use RTP/SAVP per RFC 3264.
+	old := RTPProfileSAVPDisable
+	RTPProfileSAVPDisable = true
+	t.Cleanup(func() { RTPProfileSAVPDisable = old })
+
+	offer := `v=0
+o=- 3948988145 3948988145 IN IP4 192.168.178.54
+s=Sip Go Media
+c=IN IP4 192.168.178.54
+t=0 0
+m=audio 25380 RTP/SAVP 0 8
+a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:8Dlz/SyzlAKCZwH49w5DX8S4pDa7Lw0n3LTI4t6Z
+a=sendrecv`
+
+	m := MediaSession{
+		Codecs:    []Codec{CodecAudioAlaw, CodecAudioUlaw},
+		Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
+		Mode:      "sendrecv",
+		SecureRTP: 1,
+		SRTPAlg:   SRTPProfileAes128CmHmacSha1_80,
+	}
+	require.NoError(t, m.Init())
+
+	err := m.RemoteSDP([]byte(offer))
+	require.NoError(t, err)
+
+	answer := string(m.LocalSDP())
+	assert.Contains(t, answer, "RTP/SAVP", "answer must mirror RTP/SAVP from offer when RTPProfileSAVPDisable is true")
+	assert.NotRegexp(t, `m=audio \d+ RTP/AVP `, answer, "answer must not downgrade to RTP/AVP when offer is RTP/SAVP")
+}
+
+func TestRemoteSDP_AVPOfferStaysAVPWhenSAVPDisabled(t *testing.T) {
+	// When RTPProfileSAVPDisable is true and the remote offers RTP/AVP,
+	// the answer should use RTP/AVP (opportunistic: don't require SRTP).
+	old := RTPProfileSAVPDisable
+	RTPProfileSAVPDisable = true
+	t.Cleanup(func() { RTPProfileSAVPDisable = old })
+
+	offer := `v=0
+o=- 3948988145 3948988145 IN IP4 192.168.178.54
+s=Sip Go Media
+c=IN IP4 192.168.178.54
+t=0 0
+m=audio 25380 RTP/AVP 0 8
+a=sendrecv`
+
+	m := MediaSession{
+		Codecs:    []Codec{CodecAudioAlaw, CodecAudioUlaw},
+		Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
+		Mode:      "sendrecv",
+		SecureRTP: 1,
+		SRTPAlg:   SRTPProfileAes128CmHmacSha1_80,
+	}
+	require.NoError(t, m.Init())
+
+	err := m.RemoteSDP([]byte(offer))
+	require.NoError(t, err)
+
+	answer := string(m.LocalSDP())
+	assert.Regexp(t, `m=audio \d+ RTP/AVP `, answer, "answer should stay RTP/AVP when offer is RTP/AVP and SAVP is disabled")
+}
+
 func TestMediaSRTP(t *testing.T) {
 	m1 := MediaSession{
 		Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
