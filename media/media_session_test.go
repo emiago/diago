@@ -126,7 +126,7 @@ func TestMediaSessionUpdateCodec(t *testing.T) {
 
 	m := newM()
 	m.updateRemoteCodecs([]Codec{CodecAudioAlaw, CodecAudioUlaw})
-	assert.Equal(t, []Codec{CodecAudioAlaw, CodecAudioUlaw}, m.filterCodecs)
+	assert.Equal(t, []Codec{CodecAudioUlaw, CodecAudioAlaw}, m.filterCodecs)
 
 	m = newM()
 	m.updateRemoteCodecs([]Codec{CodecAudioAlaw})
@@ -169,8 +169,8 @@ a=sendrecv`
 	require.NoError(t, err)
 
 	require.Len(t, m.filterCodecs, 4)
-	assert.Equal(t, CodecAudioUlaw, m.filterCodecs[0])
-	assert.Equal(t, CodecAudioAlaw, m.filterCodecs[1])
+	assert.Equal(t, CodecAudioAlaw, m.filterCodecs[0])
+	assert.Equal(t, CodecAudioUlaw, m.filterCodecs[1])
 	assert.Equal(t, CodecAudioOpus, m.filterCodecs[2])
 	assert.Equal(t, CodecTelephoneEvent8000, m.filterCodecs[3])
 
@@ -178,8 +178,8 @@ a=sendrecv`
 	lsd := sdp.SessionDescription{}
 	sdp.Unmarshal(lsdp, &lsd)
 
-	// Check that order is preserved from offerrer
-	assert.Equal(t, "audio 1234 RTP/AVP 0 8 96 101", lsd.Value("m"))
+	// Check that order reflects answerer's (local) preference
+	assert.Equal(t, "audio 1234 RTP/AVP 8 0 96 101", lsd.Value("m"))
 
 	// Test forking
 	{
