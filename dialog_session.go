@@ -69,7 +69,7 @@ func dialogHandleReferNotify(d DialogSession, req *sip.Request, tx sip.ServerTra
 	// TODO how to know this is refer
 	contentType := req.ContentType().Value()
 	// For now very basic check
-	if !strings.HasPrefix(contentType, "message/sipfrag;version=2.0") {
+	if !strings.HasPrefix(contentType, "message/sipfrag") {
 		tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil))
 		return
 	}
