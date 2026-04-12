@@ -289,6 +289,17 @@ type BridgeMix struct {
 	log            *slog.Logger
 }
 
+var (
+	// BridgeDebug enables some traces
+	BridgeDebug bool
+
+	bridgeTrace = func(args ...any) {
+		if BridgeDebug {
+			fmt.Fprintln(os.Stderr, args...)
+		}
+	}
+)
+
 func NewBridgeMix() *BridgeMix {
 	b := BridgeMix{
 		RealtimeReader: true,
@@ -510,7 +521,7 @@ func (b *BridgeMix) mixLoop(rwStreams []*bridgePCMStream, poll bool) error {
 			return err
 		}
 		if n == 0 {
-			b.log.Debug("Nothing read, delaying read")
+			bridgeTrace("Nothing read, delaying read")
 			time.Sleep(50 * time.Millisecond)
 			continue
 		}
@@ -524,7 +535,7 @@ func (b *BridgeMix) mixLoop(rwStreams []*bridgePCMStream, poll bool) error {
 			}
 
 			n, err := w.w.Write(streamBuf)
-			b.log.Debug("Writing stream", "i", i, "stream", w.id, "n", n, "err", err)
+			bridgeTrace("Writing stream", "i", i, "stream", w.id, "n", n, "err", err)
 			if err != nil {
 				// Detect is this Deadline or EOF error caused by stream exiting
 				if errors.Is(err, os.ErrDeadlineExceeded) {
@@ -621,7 +632,7 @@ func (b *BridgeMix) addDialogStream(ctx context.Context, d DialogSession, stream
 	if poll {
 		// We do buffering because initial packet can be read oner than actual mixing has started
 		b.mixWG.Add(1)
-		b.log.Debug("poll: starting stream", "stream.id", stream.id)
+		bridgeTrace("poll: starting stream", "stream.id", stream.id)
 		go func(s *bridgePCMStream) {
 			defer b.mixWG.Done()
 
@@ -634,7 +645,7 @@ func (b *BridgeMix) addDialogStream(ctx context.Context, d DialogSession, stream
 			for {
 				n, err := s.r.Read(buf)
 				if err != nil {
-					b.log.Debug("poll: stopped with error", "error", err, "stream.id", stream.id)
+					bridgeTrace("poll: stopped with error", "error", err, "stream.id", stream.id)
 					return
 				}
 
@@ -646,7 +657,7 @@ func (b *BridgeMix) addDialogStream(ctx context.Context, d DialogSession, stream
 						panic("reading from pipe was not full")
 					}
 				case <-ctx.Done():
-					b.log.Debug("poll: stream context canceled", "stream.id", stream.id)
+					bridgeTrace("poll: stream context canceled", "stream.id", stream.id)
 					return
 				}
 			}
