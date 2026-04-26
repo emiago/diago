@@ -92,7 +92,12 @@ func (d *DialogServerSession) ProgressMediaOptions(opt ProgressMediaOptions) err
 		return err
 	}
 	rtpSess := media.NewRTPSession(d.mediaSession)
-	if err := d.setupRTPSession(rtpSess); err != nil {
+	sdp := d.InviteRequest.Body()
+	if sdp == nil {
+		return fmt.Errorf("no sdp present in INVITE")
+	}
+
+	if err := d.DialogMedia.setupRTPSession(sdp, rtpSess); err != nil {
 		return err
 	}
 
@@ -238,27 +243,6 @@ func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
 
 	// Must be called after media and reader writer is setup
 	return rtpSess.MonitorBackground()
-}
-
-func (d *DialogServerSession) setupRTPSession(rtpSess *media.RTPSession) error {
-	sess := rtpSess.Sess
-	sdp := d.InviteRequest.Body()
-	if sdp == nil {
-		return fmt.Errorf("no sdp present in INVITE")
-	}
-
-	if err := sess.RemoteSDP(sdp); err != nil {
-		return err
-	}
-
-	d.mu.Lock()
-	d.initRTPSessionUnsafe(sess, rtpSess)
-	// Close RTP session
-	// d.onCloseUnsafe(func() error {
-	// 	return rtpSess.Close()
-	// })
-	d.mu.Unlock()
-	return nil
 }
 
 // AnswerLate does answer with Late offer.
