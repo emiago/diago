@@ -197,6 +197,23 @@ func (d *DialogMedia) MediaSession() *media.MediaSession {
 	return d.mediaSession
 }
 
+func (d *DialogMedia) setupRTPSession(sdp []byte, rtpSess *media.RTPSession) error {
+	sess := rtpSess.Sess
+
+	if err := sess.RemoteSDP(sdp); err != nil {
+		return err
+	}
+
+	d.mu.Lock()
+	d.initRTPSessionUnsafe(sess, rtpSess)
+	// Close RTP session
+	// d.onCloseUnsafe(func() error {
+	// 	return rtpSess.Close()
+	// })
+	d.mu.Unlock()
+	return nil
+}
+
 func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransaction, contactHDR sip.Header) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
