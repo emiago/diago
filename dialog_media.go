@@ -357,7 +357,7 @@ func WithAudioReaderRTPStats(hook media.OnRTPReadStats) AudioReaderOption {
 func WithAudioReaderDTMF(r *DTMFReader) AudioReaderOption {
 	return func(d *DialogMedia) error {
 		r.dtmfReader = media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, d.RTPPacketReader, d.getAudioReader())
-		r.mediaSession = d.mediaSession
+		r.rtpDeadline = d.mediaSession
 
 		d.audioReader = r
 		return nil
@@ -446,7 +446,6 @@ func WithAudioWriterRTPStats(hook media.OnRTPWriteStats) AudioWriterOption {
 func WithAudioWriterDTMF(r *DTMFWriter) AudioWriterOption {
 	return func(d *DialogMedia) error {
 		r.dtmfWriter = media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, d.RTPPacketWriter, d.getAudioWriter())
-		r.mediaSession = d.mediaSession
 		d.audioWriter = r
 		return nil
 	}
@@ -714,10 +713,15 @@ func (d *DialogMedia) StartRTP(rw int8, dur time.Duration) error {
 	return d.mediaSession.StartRTP(rw)
 }
 
+type rtpDTMFDeadline interface {
+	StopRTP(rw int8, dur time.Duration) error
+	StartRTP(rw int8) error
+}
+
 type DTMFReader struct {
-	mediaSession *media.MediaSession
-	dtmfReader   *media.RTPDtmfReader
-	onDTMF       func(dtmf rune) error
+	rtpDeadline rtpDTMFDeadline
+	dtmfReader  *media.RTPDtmfReader
+	onDTMF      func(dtmf rune) error
 }
 
 // AudioReaderDTMF is DTMF over RTP. It reads audio and provides hook for dtmf while listening for audio
@@ -728,8 +732,8 @@ func (m *DialogMedia) AudioReaderDTMF() (*DTMFReader, error) {
 		return nil, err
 	}
 	return &DTMFReader{
-		dtmfReader:   media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, m.RTPPacketReader, ar),
-		mediaSession: m.mediaSession,
+		dtmfReader:  media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, m.RTPPacketReader, ar),
+		rtpDeadline: m.mediaSession,
 	}, nil
 }
 
@@ -748,7 +752,7 @@ func (d *DTMFReader) Listen(onDTMF func(dtmf rune) error, dur time.Duration) err
 
 // readDeadline(reads RTP until
 func (d *DTMFReader) readDeadline(buf []byte, dur time.Duration) (n int, err error) {
-	mediaSession := d.mediaSession
+	mediaSession := d.rtpDeadline
 	if dur > 0 {
 		// Stop RTP
 		mediaSession.StopRTP(1, dur)
@@ -780,8 +784,7 @@ func (d *DTMFReader) Read(buf []byte) (n int, err error) {
 }
 
 type DTMFWriter struct {
-	mediaSession *media.MediaSession
-	dtmfWriter   *media.RTPDtmfWriter
+	dtmfWriter *media.RTPDtmfWriter
 }
 
 func (m *DialogMedia) AudioWriterDTMF() (*DTMFWriter, error) {
@@ -791,8 +794,7 @@ func (m *DialogMedia) AudioWriterDTMF() (*DTMFWriter, error) {
 	}
 
 	return &DTMFWriter{
-		dtmfWriter:   media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, m.RTPPacketWriter, aw),
-		mediaSession: m.mediaSession,
+		dtmfWriter: media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, m.RTPPacketWriter, aw),
 	}, nil
 }
 
