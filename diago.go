@@ -154,6 +154,13 @@ type MediaConfig struct {
 	// RTPPortEnd   int
 }
 
+func (conf *MediaConfig) update(codecs []media.Codec, rtpNAT int) {
+	if codecs != nil {
+		conf.Codecs = codecs
+	}
+	conf.rtpNAT = rtpNAT
+}
+
 func WithMediaConfig(conf MediaConfig) DiagoOption {
 	return func(dg *Diago) {
 		dg.mediaConf = conf
@@ -648,8 +655,12 @@ func (dg *Diago) NewDialog(recipient sip.Uri, opts NewDialogOptions) (d *DialogC
 	if !exists {
 		return nil, fmt.Errorf("transport %s does not exists", transport)
 	}
-	// set now found transport
-	transport = tran.Transport
+
+	return dg.newSipDialog(recipient, tran, opts)
+}
+
+func (dg *Diago) newSipDialog(recipient sip.Uri, tran *Transport, opts NewDialogOptions) (d *DialogClientSession, err error) {
+	transport := tran.Transport
 
 	// TODO: remove this alloc of UA each time
 	client := dg.getClient(tran)
@@ -672,22 +683,12 @@ func (dg *Diago) NewDialog(recipient sip.Uri, opts NewDialogOptions) (d *DialogC
 	}
 	d.Init()
 
-	// Create media
-	// TODO explicit media format passing
-	mediaConf := MediaConfig{
+	d.mediaConfig = MediaConfig{
 		Codecs:     dg.mediaConf.Codecs,
 		secureRTP:  tran.MediaSRTP,
 		bindIP:     tran.mediaBindIP,
 		externalIP: tran.MediaExternalIP,
 		dtlsConf:   tran.MediaDTLSConf,
-	}
-
-	// if opts.Codecs != nil {
-	// 	mediaConf.Codecs = opts.Codecs
-	// }
-
-	if err := d.initMediaSessionFromConf(mediaConf); err != nil {
-		return nil, err
 	}
 
 	// This should be run on ACK

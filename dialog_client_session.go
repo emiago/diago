@@ -30,6 +30,7 @@ type DialogClientSession struct {
 	DialogMedia
 
 	onReferDialog OnReferDialogFunc
+	mediaConfig   MediaConfig
 
 	closed atomic.Uint32
 }
@@ -137,6 +138,13 @@ func (o *InviteClientOptions) WithCaller(displayName string, callerID string, ho
 // NOTE: It updates internal invite request so NOT THREAD SAFE.
 // If you pass originator it will use originator to set correct from header and avoid media transcoding
 func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptions) error {
+	if err := d.initMediaSessionFromConf(d.mediaConfig); err != nil {
+		return err
+	}
+	return d.invite(ctx, opts)
+}
+
+func (d *DialogClientSession) invite(ctx context.Context, opts InviteClientOptions) error {
 	sess := d.mediaSession
 	inviteReq := d.InviteRequest
 	originator := opts.Originator
@@ -386,8 +394,10 @@ func (d *DialogClientSession) Ack(ctx context.Context) error {
 
 	// NOTE it generally advisable todo this after successfull ACK:
 	// Server may not even listen yet as it is waiting for ACK
-	if err := d.mediaSession.Finalize(); err != nil {
-		return err
+	if d.mediaSession != nil {
+		if err := d.mediaSession.Finalize(); err != nil {
+			return err
+		}
 	}
 
 	return nil
