@@ -42,7 +42,12 @@ func (d *DialogServerSession) Close() error {
 	if !d.closed.CompareAndSwap(0, 1) {
 		return nil
 	}
-	e1 := d.DialogMedia.Close()
+
+	// TODO: remove this closing
+	var e1 error
+	if d.DialogMedia.mediaSession != nil {
+		e1 = d.DialogMedia.Close()
+	}
 	e2 := d.DialogServerSession.Close()
 	return errors.Join(e1, e2)
 }
