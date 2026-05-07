@@ -126,7 +126,7 @@ func (d *DialogServerSession) answerWebrtc(m *DialogWebrtc, sdpBody []byte, opts
 
 	// Set the handler for ICE connection state
 	// This will notify you when the peer has connected/disconnected
-	iceConnectedCtx, iceConnectedCancel := context.WithCancel(context.TODO())
+	// iceConnectedCtx, iceConnectedCancel := context.WithCancel(context.TODO())
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		log.Debug(fmt.Sprintf("Connection State has changed %s \n", connectionState.String()))
 
@@ -136,8 +136,15 @@ func (d *DialogServerSession) answerWebrtc(m *DialogWebrtc, sdpBody []byte, opts
 			}
 		}
 
-		if connectionState == webrtc.ICEConnectionStateConnected || connectionState == webrtc.ICEConnectionStateCompleted {
-			iceConnectedCancel()
+		// if connectionState == webrtc.ICEConnectionStateConnected || connectionState == webrtc.ICEConnectionStateCompleted {
+		// 	iceConnectedCancel()
+		// }
+	})
+	peerConnectedCtx, peerConnectedCancel := context.WithCancel(context.TODO())
+	peerConnection.OnConnectionStateChange(func(connectionState webrtc.PeerConnectionState) {
+		log.Debug("Peer Connection State has changed", "state", connectionState.String())
+		if connectionState == webrtc.PeerConnectionStateConnected {
+			peerConnectedCancel()
 		}
 	})
 
@@ -389,11 +396,18 @@ func (d *DialogServerSession) answerWebrtc(m *DialogWebrtc, sdpBody []byte, opts
 		}
 	}()
 
-	log.Debug("Waiting for ICE connected")
+	// log.Debug("Waiting for ICE connected")
+	// select {
+	// case <-ctx.Done():
+	// 	return fmt.Errorf("waiting ICE connected failed: %w", ctx.Err())
+	// case <-iceConnectedCtx.Done():
+	// }
+
+	log.Debug("Waiting for peer connection connected")
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("waiting ICE connected failed: %w", ctx.Err())
-	case <-iceConnectedCtx.Done():
+		return fmt.Errorf("waiting peer connection connected failed: %w", ctx.Err())
+	case <-peerConnectedCtx.Done():
 	}
 
 	logICECandidatePairs(log, rtpSender)
