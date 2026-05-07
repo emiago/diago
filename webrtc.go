@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"slices"
-	"time"
 
 	"github.com/emiago/diago/media"
 	"github.com/pion/interceptor"
@@ -49,6 +48,10 @@ var (
 
 func init() {
 	webrtcInit([]net.IP{})
+}
+
+func SetWebrtcAPI(a *webrtc.API) {
+	defaultWebrtcAPI = a
 }
 
 func webrtcInit(iceIPs []net.IP) error {
@@ -126,11 +129,11 @@ func newWebrtcAPI(iceIPs []net.IP) (*webrtc.API, error) {
 		}
 		settEng.DisableActiveTCP(true)
 		// settEng.SetICETimeouts()
-		settEng.DisableSRTPReplayProtection(true)
-		settEng.DisableSRTCPReplayProtection(true)
-		settEng.SetRelayAcceptanceMinWait(1 * time.Millisecond)
-		settEng.SetSrflxAcceptanceMinWait(1 * time.Millisecond)
-		settEng.SetPrflxAcceptanceMinWait(1 * time.Millisecond)
+		// settEng.DisableSRTPReplayProtection(true)
+		// settEng.DisableSRTCPReplayProtection(true)
+		// settEng.SetRelayAcceptanceMinWait(1 * time.Millisecond)
+		// settEng.SetSrflxAcceptanceMinWait(1 * time.Millisecond)
+		// settEng.SetPrflxAcceptanceMinWait(1 * time.Millisecond)
 
 		// // defaultSrflxAcceptanceMinWait is the wait time before nominating a srflx candidate
 		// defaultSrflxAcceptanceMinWait = 500 * time.Millisecond
