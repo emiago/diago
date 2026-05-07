@@ -67,7 +67,7 @@ func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc,
 
 	// Set the handler for ICE connection state
 	// This will notify you when the peer has connected/disconnected
-	iceConnectedCtx, iceConnectedCancel := context.WithCancel(context.TODO())
+	// iceConnectedCtx, iceConnectedCancel := context.WithCancel(context.TODO())
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		log.Debug("Connection State has changed", "state", connectionState.String())
 
@@ -77,8 +77,16 @@ func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc,
 			}
 		}
 
-		if connectionState == webrtc.ICEConnectionStateConnected {
-			iceConnectedCancel()
+		// if connectionState == webrtc.ICEConnectionStateConnected {
+		// 	iceConnectedCancel()
+		// }
+	})
+
+	peerConnectedCtx, peerConnectedCancel := context.WithCancel(context.TODO())
+	peerConnection.OnConnectionStateChange(func(connectionState webrtc.PeerConnectionState) {
+		log.Debug("Peer Connection State has changed", "state", connectionState.String())
+		if connectionState == webrtc.PeerConnectionStateConnected {
+			peerConnectedCancel()
 		}
 	})
 
@@ -217,11 +225,19 @@ func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc,
 		return err
 	}
 
-	log.Debug("Waiting for ICE connected")
+	// log.Debug("Waiting for ICE connected")
+	// select {
+	// case <-ctx.Done():
+	// 	return fmt.Errorf("waiting ICE connected failed: %w", ctx.Err())
+	// case <-iceConnectedCtx.Done():
+	// }
+
+	// This is more required
+	log.Debug("Waiting for peer connection connected")
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("waiting ICE connected failed: %w", ctx.Err())
-	case <-iceConnectedCtx.Done():
+		return fmt.Errorf("waiting peer connection connected failed: %w", ctx.Err())
+	case <-peerConnectedCtx.Done():
 	}
 
 	// connStats, _ := peerConnection.GetStats().GetConnectionStats(peerConnection)

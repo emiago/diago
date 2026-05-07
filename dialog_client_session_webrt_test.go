@@ -3,7 +3,6 @@ package diago
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
@@ -149,14 +148,7 @@ func TestDialogClientSessionWebrtc(t *testing.T) {
 		audioW, err := med.AudioWriter()
 		require.NoError(t, err)
 
-		time.Sleep(300)
 		writeN, _ := audioW.Write([]byte("my audio"))
-		// time.Sleep(20 * time.Millisecond)
-		// audioW.Write([]byte("my audio"))
-		// time.Sleep(20 * time.Millisecond)
-		// audioW.Write([]byte("my audio"))
-		// time.Sleep(500 * time.Millisecond)
-		// audioW.Write([]byte("my audio"))
 		readN, _ := audioR.Read(make([]byte, 100))
 		assert.Equal(t, writeN, readN, "media echo failed")
 		dialog.Hangup(ctx)
