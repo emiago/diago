@@ -1,0 +1,81 @@
+package diago
+
+import (
+	"fmt"
+	"log/slog"
+	"os"
+
+	"github.com/emiago/diago/media"
+	"github.com/pion/rtcp"
+	"github.com/pion/rtp"
+	"github.com/pion/webrtc/v3"
+)
+
+type WebrtcTrackRTPReader struct {
+	track    *webrtc.TrackRemote
+	receiver *webrtc.RTPReceiver
+}
+
+func (r *WebrtcTrackRTPReader) ReadRTP(buf []byte, p *rtp.Packet) (int, error) {
+	n, _, err := r.track.Read(buf)
+	if err != nil {
+		return n, err
+	}
+
+	err = p.Unmarshal(buf[:n])
+	if media.RTPDebug {
+		fmt.Fprintf(os.Stderr, "=== Recv RTP ===\n%s", p.String())
+	}
+	return n, err
+}
+
+func (r *WebrtcTrackRTPReader) ReadRTPRaw(buf []byte) (int, error) {
+	n, _, err := r.track.Read(buf)
+	if media.RTPDebug {
+		slog.Debug(fmt.Sprintf("Recv RTP Raw len=%d\n", n))
+	}
+	return n, err
+}
+
+func (r *WebrtcTrackRTPReader) ReadRTCP(buf []byte, rtcpBuf []rtcp.Packet) (int, error) {
+	n, _, rtcpErr := r.receiver.Read(buf)
+	if rtcpErr != nil {
+		return n, rtcpErr
+	}
+
+	return media.RTCPUnmarshal(buf[:n], rtcpBuf)
+}
+
+func (r *WebrtcTrackRTPReader) ReadRTCPRaw(buf []byte) (int, error) {
+	n, _, rtcpErr := r.receiver.Read(buf)
+	return n, rtcpErr
+}
+
+type WebrtcTrackRTPWriter struct {
+	track  *webrtc.TrackLocalStaticRTP
+	sender *webrtc.RTPSender
+}
+
+func (r *WebrtcTrackRTPWriter) WriteRTP(p *rtp.Packet) error {
+	if media.RTPDebug {
+		fmt.Fprintf(os.Stderr, "=== Sent RTP ===\n%s\n", p.String())
+	}
+	return r.track.WriteRTP(p)
+}
+
+func (r *WebrtcTrackRTPWriter) WriteRTPRaw(buf []byte) (int, error) {
+	if media.RTPDebug {
+		slog.Debug(fmt.Sprintf("Recv RTP Raw len=%d\n", len(buf)))
+	}
+	return r.track.Write(buf)
+}
+
+func (r *WebrtcTrackRTPWriter) WriteRTCP(p rtcp.Packet) error {
+	// By default pion does RTCP sending by default
+	return nil
+}
+
+func (r *WebrtcTrackRTPWriter) WriteRTCPRaw(buf []byte) (int, error) {
+	// By default pion does RTCP sending by default
+	return 0, nil
+}
