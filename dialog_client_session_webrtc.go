@@ -45,6 +45,10 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 		m.Close()
 		return nil, err
 	}
+
+	if m.mediaSession.Codec.SampleRate == 0 {
+		panic("no codec")
+	}
 	return m, nil
 }
 
@@ -141,6 +145,7 @@ func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc,
 	m.mediaSession = &webrtcSession{
 		Codec: codec,
 	}
+	log.Info("Setting rtp packet reader", "codec", m.mediaSession.Codec)
 
 	peerConnection.OnTrack(func(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) { //nolint: revive
 		ioReader := &WebrtcTrackRTPReader{
@@ -202,7 +207,11 @@ func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc,
 	}
 	log = log.With("call_id", d.InviteRequest.CallID().Value())
 
-	if err := d.DialogClientSession.WaitAnswer(ctx, sipgo.AnswerOptions{}); err != nil {
+	if err := d.DialogClientSession.WaitAnswer(ctx, sipgo.AnswerOptions{
+		OnResponse: opts.OnResponse,
+		Username:   opts.Username,
+		Password:   opts.Password,
+	}); err != nil {
 		return err
 	}
 
