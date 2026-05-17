@@ -102,7 +102,7 @@ func newWebrtcAPI(iceIPs []net.IP) (*webrtc.API, error) {
 
 		// // // Create an InterceptorRegistry
 		i := &interceptor.Registry{}
-		if rtpDebug || rtcpDebug {
+		if (rtpDebug || rtcpDebug) && false {
 			si, _ := packetdump.NewSenderInterceptor(
 				packetdump.RTPFilter(func(pkt *rtp.Packet) bool {
 					return rtpDebug
