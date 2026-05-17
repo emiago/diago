@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/pion/webrtc/v3"
@@ -29,7 +30,7 @@ func TestDialogClientSessionWebrtc(t *testing.T) {
 			Transport{
 				Transport: "tcp",
 				BindHost:  "127.0.0.1",
-				BindPort:  5060,
+				BindPort:  15060,
 			},
 		),
 	)
@@ -84,7 +85,7 @@ func TestDialogClientSessionWebrtc(t *testing.T) {
 		// Has no listener just UAC. Contact will hold empheral port
 		phone := newWebrtcDialer(ua)
 
-		dialog, err := phone.NewDialog(sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 5060}, NewDialogOptions{
+		dialog, err := phone.NewDialog(sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 15060}, NewDialogOptions{
 			Transport: "tcp",
 		})
 		require.NoError(t, err)
@@ -131,7 +132,7 @@ func TestDialogClientSessionWebrtc(t *testing.T) {
 		<-dialog.Context().Done() */
 
 		// Answered call
-		dialog, err := phone.NewDialog(sip.Uri{User: "echo", Host: "127.0.0.1", Port: 5060}, NewDialogOptions{
+		dialog, err := phone.NewDialog(sip.Uri{User: "echo", Host: "127.0.0.1", Port: 15060}, NewDialogOptions{
 			Transport: "tcp",
 		})
 		require.NoError(t, err)
@@ -141,13 +142,17 @@ func TestDialogClientSessionWebrtc(t *testing.T) {
 		require.NoError(t, err)
 		defer med.Close()
 
+		audioReaderProps := MediaProps{}
+		audioR, err := med.AudioReader(WithAudioReaderWebrtcProps(&audioReaderProps))
+		require.NoError(t, err)
+		assert.Equal(t, media.CodecAudioUlaw, audioReaderProps.Codec)
+
+		audioWriterProps := MediaProps{}
+		audioW, err := med.AudioWriter(WithAudioWriterWebrtcProps(&audioWriterProps))
+		require.NoError(t, err)
+		assert.Equal(t, media.CodecAudioUlaw, audioWriterProps.Codec)
+
 		// Confirm media traveling
-		audioR, err := med.AudioReader()
-		require.NoError(t, err)
-
-		audioW, err := med.AudioWriter()
-		require.NoError(t, err)
-
 		writeN, _ := audioW.Write([]byte("my audio"))
 		readN, _ := audioR.Read(make([]byte, 100))
 		assert.Equal(t, writeN, readN, "media echo failed")

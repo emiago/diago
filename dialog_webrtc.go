@@ -97,7 +97,15 @@ func WithAudioReaderWebrtcProps(p *MediaProps) AudioReaderWebrtcOption {
 	}
 }
 
-func (d *DialogWebrtc) AudioReader(...AudioReaderWebrtcOption) (io.Reader, error) {
+func (d *DialogWebrtc) AudioReader(opts ...AudioReaderWebrtcOption) (io.Reader, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	for _, o := range opts {
+		if err := o(d); err != nil {
+			return nil, err
+		}
+	}
 	return d.RTPPacketReader, nil
 }
 
@@ -112,7 +120,15 @@ func WithAudioWriterWebrtcProps(p *MediaProps) AudioWriterWebrtcOption {
 	}
 }
 
-func (d *DialogWebrtc) AudioWriter(...AudioWriterWebrtcOption) (io.Writer, error) {
+func (d *DialogWebrtc) AudioWriter(opts ...AudioWriterWebrtcOption) (io.Writer, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	for _, o := range opts {
+		if err := o(d); err != nil {
+			return nil, err
+		}
+	}
 	return d.RTPPacketWriter, nil
 }
 
@@ -158,4 +174,29 @@ func (m *DialogWebrtc) Echo() error {
 		return err
 	}
 	return nil
+}
+
+// PlaybackCreate creates playback for audio
+func (d *DialogWebrtc) PlaybackCreate() (AudioPlayback, error) {
+	mprops := MediaProps{}
+	w := d.audioWriterProps(&mprops)
+	if w == nil {
+		return AudioPlayback{}, fmt.Errorf("no media setup")
+	}
+
+	if mprops.Codec.SampleRate == 0 {
+		return AudioPlayback{}, fmt.Errorf("no codec defined")
+	}
+	p := NewAudioPlayback(w, mprops.Codec)
+	// On each play it needs reset RTP timestamp
+	p.onPlay = d.RTPPacketWriter.ResetTimestamp
+	return p, nil
+}
+
+func (d *DialogWebrtc) audioWriterProps(p *MediaProps) io.Writer {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	WithAudioWriterWebrtcProps(p)(d)
+	return d.RTPPacketWriter
 }
