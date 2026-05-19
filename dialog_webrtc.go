@@ -82,7 +82,11 @@ func (d *DialogWebrtc) onCloseUnsafe(f func() error) {
 func (d *DialogWebrtc) Close() error {
 	d.mu.Lock()
 	onClose := d.onClose
+	d.onClose = nil
 	d.mu.Unlock()
+	if onClose == nil {
+		return nil
+	}
 	return onClose()
 }
 
