@@ -41,6 +41,13 @@ type InviteWebrtcOptions struct {
 func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrtcOptions) (*DialogWebrtc, error) {
 	m := &DialogWebrtc{}
 
+	// TODO this can be racy
+	d.Dialog.OnState(func(s sip.DialogState) {
+		if s == sip.DialogStateEnded {
+			m.Close()
+		}
+	})
+
 	if err := d.inviteWebrtc(ctx, m, opts); err != nil {
 		m.Close()
 		return nil, err
@@ -49,6 +56,7 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 	if m.mediaSession.Codec.SampleRate == 0 {
 		panic("no codec")
 	}
+
 	return m, nil
 }
 
