@@ -151,6 +151,7 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 	}
 
 	payloadSize := rtpN - pkt.Header.MarshalSize() - int(pkt.PaddingSize)
+	// payloadSize := len(pkt.Payload)
 	// In case of DTMF we can receive different payload types
 	// if pt != pkt.PayloadType {
 	// 	return 0, fmt.Errorf("payload type does not match. expected=%d, actual=%d", pt, pkt.PayloadType)
@@ -185,7 +186,8 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 		return n, nil
 
 	}
-	return payloadSize, nil
+
+	return r.readPayload(b, pkt.Payload), nil
 }
 
 func (r *RTPPacketReader) readPayload(b []byte, payload []byte) int {
