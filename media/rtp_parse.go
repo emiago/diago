@@ -16,19 +16,9 @@ var (
 	errRTCPFailedToUnmarshal = errors.New("rtcp: failed to unmarshal")
 )
 
-// Experimental
-//
-// RTPUnmarshal temporarly solution to provide more optimized unmarshal version based on pion/rtp
-// it does not preserve any buffer reference which allows reusage
-//
-// TODO build RTP header unmarshaller for VOIP needs
+// RTPUnmarshal wrapper for now used for optimizing unmarshal
 func RTPUnmarshal(buf []byte, p *rtp.Packet) error {
-	n, err := p.Header.Unmarshal(buf)
-	if err != nil {
-		return err
-	}
-
-	return rtpUnmarshalPayload(n, buf, p)
+	return p.Unmarshal(buf)
 }
 
 func rtpUnmarshalPayload(n int, buf []byte, p *rtp.Packet) error {

@@ -86,7 +86,7 @@ func NewRTPPacketReader(reader RTPReader, codec Codec) *RTPPacketReader {
 
 // Read Implements io.Reader and extracts Payload from RTP packet
 // has no input queue or sorting control of packets
-// Buffer is used for reading headers and Headers are stored in PacketHeader
+// Buffer is used for reading headers and after parsing Headers are stored in PacketHeader
 //
 // NOTE: Consider that if you are passsing smaller buffer than RTP header+payload, io.ErrShortBuffer is returned
 func (r *RTPPacketReader) Read(b []byte) (int, error) {
@@ -97,7 +97,7 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 
 	var n int
 
-	// For io.ReadAll buffer size is constantly changing and starts small. Normally user should set buf > RTPBufSize
+	// For io.ReadAll buffer size is constantly changing and starts small. Normally user should set buf > rtp Packet size
 	// Use unread buffer and still avoid alloc
 	buf := b
 	unreadPayload := b
@@ -112,12 +112,13 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 	}
 
 	pkt := &r.packet
-	pkt.Payload = unreadPayload
 
 	r.mu.RLock()
 	reader := r.reader
 	r.mu.RUnlock()
 
+	// NOTE: Packet Payload can or will reference this buffer as payload. To return only payload copy is required
+	// DO NOT EXPOSE Payload from this point
 	rtpN, err := reader.ReadRTP(buf, pkt)
 	if err != nil {
 		// In case we error while new reader update happen, then retry again
@@ -136,7 +137,7 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 		}
 	}
 	if err != nil {
-		// For now underhood IO should only net closed
+		// For now underhood IO should only have net closed
 		// Here we are returning EOF to be io package compatilble
 		// like with func io.ReadAll
 		if errors.Is(err, net.ErrClosed) {
@@ -150,7 +151,13 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 		return 0, nil
 	}
 
-	payloadSize := rtpN - pkt.Header.MarshalSize() - int(pkt.PaddingSize)
+	// payloadSize := rtpN - pkt.Header.MarshalSize() - int(pkt.PaddingSize)
+	payloadSize := len(pkt.Payload)
+
+	// Keeping this for double check
+	if rtpN-pkt.Header.MarshalSize()-int(pkt.PaddingSize) != payloadSize {
+		panic("payload calc do not match")
+	}
 	// payloadSize := len(pkt.Payload)
 	// In case of DTMF we can receive different payload types
 	// if pt != pkt.PayloadType {
@@ -178,16 +185,18 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 
 	r.lastSSRC = pkt.SSRC
 	r.PacketHeader = pkt.Header
-	// Is there better way to compare this?
-	if len(b) != len(unreadPayload) {
-		// We are not using passed buffer. We need to copy payload
-		pkt.Payload = pkt.Payload[:payloadSize]
+
+	// Do we use larger buffer, then copy and save unread
+	if len(b) < len(unreadPayload) {
 		n = r.readPayload(b, pkt.Payload)
 		return n, nil
-
 	}
 
-	return r.readPayload(b, pkt.Payload), nil
+	n = copy(b, pkt.Payload)
+	if n < payloadSize {
+		return n, io.ErrShortBuffer
+	}
+	return n, nil
 }
 
 func (r *RTPPacketReader) readPayload(b []byte, payload []byte) int {
