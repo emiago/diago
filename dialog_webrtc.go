@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 
@@ -203,4 +204,20 @@ func (d *DialogWebrtc) audioWriterProps(p *MediaProps) io.Writer {
 
 	WithAudioWriterWebrtcProps(p)(d)
 	return d.RTPPacketWriter
+}
+
+// AudioStereoRecordingCreate creates wav recording.
+// MUST call Close for correct storing
+func (d *DialogWebrtc) AudioStereoRecordingCreate(wawFile *os.File) (AudioStereoRecordingWav, error) {
+	arProps, awProps := MediaProps{}, MediaProps{}
+	ar, err := d.AudioReader(WithAudioReaderWebrtcProps(&arProps))
+	if err != nil {
+		return AudioStereoRecordingWav{}, err
+	}
+
+	aw, err := d.AudioWriter(WithAudioWriterWebrtcProps(&awProps))
+	if err != nil {
+		return AudioStereoRecordingWav{}, err
+	}
+	return newDialogRecordingWav(wawFile, ar, arProps, aw, awProps)
 }
