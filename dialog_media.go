@@ -560,7 +560,7 @@ func (d *DialogMedia) PlaybackRingtoneCreate() (AudioRingtone, error) {
 // If you want to make permanent in audio pipeline use SetAudioReader, SetAudioWriter
 //
 // NOTE: API WILL change
-func (d *DialogMedia) AudioStereoRecordingCreate(wawFile *os.File) (AudioStereoRecordingWav, error) {
+func (d *DialogMedia) AudioStereoRecordingCreate(wavFile *os.File) (AudioStereoRecordingWav, error) {
 	mpropsW := MediaProps{}
 	aw := d.audioWriterProps(&mpropsW)
 	if aw == nil {
@@ -572,25 +572,8 @@ func (d *DialogMedia) AudioStereoRecordingCreate(wawFile *os.File) (AudioStereoR
 	if ar == nil {
 		return AudioStereoRecordingWav{}, fmt.Errorf("no media setup")
 	}
-	codec := mpropsW.Codec
-	if mpropsR.Codec != mpropsW.Codec {
-		return AudioStereoRecordingWav{}, fmt.Errorf("codecs of reader and writer need to match for stereo")
-	}
-	// Create wav file to store recording
-	// Now create WavWriter to have Wav Container written
-	wavWriter := audio.NewWavWriter(wawFile)
 
-	mon := audio.MonitorPCMStereo{}
-	if err := mon.Init(wavWriter, codec, ar, aw); err != nil {
-		wavWriter.Close()
-		return AudioStereoRecordingWav{}, err
-	}
-
-	r := AudioStereoRecordingWav{
-		wawWriter: wavWriter,
-		mon:       mon,
-	}
-	return r, nil
+	return newDialogRecordingWav(wavFile, ar, mpropsR, aw, mpropsW)
 }
 
 // Listen keeps reading stream until it gets closed or deadlined
