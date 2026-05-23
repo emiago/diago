@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -61,15 +62,17 @@ func logRTPRead(m *MediaSession, raddr net.Addr, p *rtp.Packet) {
 
 func logRTPWrite(m *MediaSession, p *rtp.Packet) {
 	if RTPDebug {
-		DefaultLogger().Debug(fmt.Sprintf("RTP write %s > %s:\n%s", m.Laddr.String(), m.Raddr.String(), p.String()))
+		raddr := m.RemoteAddr()
+		DefaultLogger().Debug(fmt.Sprintf("RTP write %s > %s:\n%s", m.Laddr.String(), raddr.String(), p.String()))
 	}
 }
 
 func logRTCPRead(m *MediaSession, pkts []rtcp.Packet) {
 	if RTCPDebug {
 		laddr := m.rtcpConn.LocalAddr()
+		rtcpRaddr := m.RemoteRTCPAddr()
 		for _, p := range pkts {
-			DefaultLogger().Debug(fmt.Sprintf("RTCP read %s < %s:\n%s", laddr.String(), m.rtcpRaddr.String(), StringRTCP(p)))
+			DefaultLogger().Debug(fmt.Sprintf("RTCP read %s < %s:\n%s", laddr.String(), rtcpRaddr.String(), StringRTCP(p)))
 		}
 	}
 }
@@ -77,7 +80,8 @@ func logRTCPRead(m *MediaSession, pkts []rtcp.Packet) {
 func logRTCPWrite(m *MediaSession, p rtcp.Packet) {
 	if RTCPDebug {
 		laddr := m.rtcpConn.LocalAddr()
-		DefaultLogger().Debug(fmt.Sprintf("RTCP write %s > %s:\n%s", laddr.String(), m.rtcpRaddr.String(), StringRTCP(p)))
+		rtcpRaddr := m.RemoteRTCPAddr()
+		DefaultLogger().Debug(fmt.Sprintf("RTCP write %s > %s:\n%s", laddr.String(), rtcpRaddr.String(), StringRTCP(p)))
 	}
 }
 
@@ -118,6 +122,10 @@ type MediaSession struct {
 
 	// DTLSConf used for DTLS
 	DTLSConf DTLSConfig
+
+	// runtimeMu guards re-INVITE renegotiable state: Raddr,
+	// rtcpRaddr, mode, localCtxSRTP, remoteCtxSRTP.
+	runtimeMu sync.RWMutex
 
 	// mode set after negotiation
 	mode string
@@ -290,15 +298,37 @@ func (s *MediaSession) Close() error {
 	return errors.Join(e1, e2)
 }
 
-// SetRemoteAddr is helper to set Raddr and rtcp address.
-// It is not thread safe
+// SetRemoteAddr sets Raddr and rtcp address under runtimeMu.
 func (s *MediaSession) SetRemoteAddr(raddr *net.UDPAddr) {
+	s.runtimeMu.Lock()
+	defer s.runtimeMu.Unlock()
 	s.Raddr = *raddr
 	s.rtcpRaddr = net.UDPAddr{
 		IP:   raddr.IP,
 		Port: raddr.Port + 1,
 		Zone: raddr.Zone,
 	}
+}
+
+// RemoteAddr returns a snapshot of the remote RTP address.
+func (s *MediaSession) RemoteAddr() net.UDPAddr {
+	s.runtimeMu.RLock()
+	defer s.runtimeMu.RUnlock()
+	return s.Raddr
+}
+
+// RemoteRTCPAddr returns a snapshot of the remote RTCP address.
+func (s *MediaSession) RemoteRTCPAddr() net.UDPAddr {
+	s.runtimeMu.RLock()
+	defer s.runtimeMu.RUnlock()
+	return s.rtcpRaddr
+}
+
+// snapshot returns a coherent copy of all runtime-negotiated state.
+func (s *MediaSession) snapshot() (raddr, rtcpRaddr net.UDPAddr, mode string, localCtx, remoteCtx *srtp.Context) {
+	s.runtimeMu.RLock()
+	defer s.runtimeMu.RUnlock()
+	return s.Raddr, s.rtcpRaddr, s.mode, s.localCtxSRTP, s.remoteCtxSRTP
 }
 
 // LocalSDP generates SDP based on local settings and remote SDP
@@ -348,7 +378,9 @@ func (s *MediaSession) LocalSDP() []byte {
 					return fmt.Errorf("CreateContext failed: %v", err)
 				}
 
+				s.runtimeMu.Lock()
 				s.localCtxSRTP = ctx
+				s.runtimeMu.Unlock()
 
 				if s.srtpRemoteTag > 0 {
 					// Match remote tag if exists
@@ -506,9 +538,11 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	}
 	s.SetRemoteAddr(&net.UDPAddr{IP: ci.IP, Port: md.Port})
 
-	// Check mode for media direction
+	// Check mode for media direction.
 	mode := sd.MediaDirection()
+	s.runtimeMu.Lock()
 	s.mode = negotiateMediaDirection(mode, s.Mode)
+	s.runtimeMu.Unlock()
 
 	// Check for SDES
 	for _, v := range attrs {
@@ -552,7 +586,9 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			if err != nil {
 				return fmt.Errorf("CreateContext failed: %v", err)
 			}
+			s.runtimeMu.Lock()
 			s.remoteCtxSRTP = ctx
+			s.runtimeMu.Unlock()
 
 			break
 		}
@@ -662,20 +698,25 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 				clientSalt, serverSalt = serverSalt, clientSalt
 			}
 
-			s.localCtxSRTP, err = srtp.CreateContext(clientKey, clientSalt, p)
+			localCtx, err := srtp.CreateContext(clientKey, clientSalt, p)
 			if err != nil {
 				return fmt.Errorf("failed to create SRTP context: %w", err)
 			}
 
 			// s.localCtxSRTP, err = srtp.CreateContext(serverKey, serverSalt, p)
-			s.remoteCtxSRTP, err = srtp.CreateContext(serverKey, serverSalt, p)
+			remoteCtx, err := srtp.CreateContext(serverKey, serverSalt, p)
 			if err != nil {
 				return fmt.Errorf("failed to create SRTP context: %w", err)
 			}
 
-			if s.localCtxSRTP == nil && s.remoteCtxSRTP == nil {
+			if localCtx == nil && remoteCtx == nil {
 				panic("no context setup")
 			}
+
+			s.runtimeMu.Lock()
+			s.localCtxSRTP = localCtx
+			s.remoteCtxSRTP = remoteCtx
+			s.runtimeMu.Unlock()
 
 			DefaultLogger().Debug("DTLS SRTP setuped")
 			return nil
@@ -685,9 +726,11 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	// Offerer path: we called LocalSDP() before RemoteSDP(), so localCtxSRTP
 	// may already be set. If the remote answer has no crypto, clear it to
 	// avoid sending encrypted RTP to a peer expecting plaintext.
+	s.runtimeMu.Lock()
 	if s.localCtxSRTP != nil && s.remoteCtxSRTP == nil && !secureRequest {
 		s.localCtxSRTP = nil
 	}
+	s.runtimeMu.Unlock()
 
 	if secureRequest && s.remoteCtxSRTP == nil {
 		return fmt.Errorf("remote requested secure RTP, but no context is created proto=%s", md.Proto)
@@ -821,8 +864,10 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 		return 0, err
 	}
 
-	if m.remoteCtxSRTP != nil {
-		decrypted, err := m.remoteCtxSRTP.DecryptRTP(buf, buf[:n], &pkt.Header)
+	raddr, _, mode, _, remoteCtx := m.snapshot()
+
+	if remoteCtx != nil {
+		decrypted, err := remoteCtx.DecryptRTP(buf, buf[:n], &pkt.Header)
 		if err != nil {
 			return n, fmt.Errorf("Read SRTP Decrypt error: %w", err)
 		}
@@ -848,7 +893,7 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	m.ReadRTPFromAddr = from
 
 	// Handle NAT
-	if m.RTPNAT == 1 && from.String() != m.Raddr.String() {
+	if m.RTPNAT == 1 && from.String() != raddr.String() {
 		// Moving this to RTP session could have simplify validation (sequence tracking), but for now here is more easier to maintain
 		func() {
 			// Make sure it is valid pkt
@@ -868,7 +913,7 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 		}()
 	}
 
-	if m.mode == sdp.ModeSendonly {
+	if mode == sdp.ModeSendonly {
 		// We allow parsing of pkt but we indicate that this pkt should not be consumed
 		return 0, nil
 	}
@@ -891,7 +936,8 @@ func (m *MediaSession) readRTPParsed() (rtp.Packet, error) {
 		return p, err
 	}
 
-	logRTPRead(m, &m.Raddr, &p)
+	raddr := m.RemoteAddr()
+	logRTPRead(m, &raddr, &p)
 	return p, err
 }
 
@@ -926,8 +972,9 @@ func (m *MediaSession) ReadRTCP(buf []byte, pkts []rtcp.Packet) (n int, err erro
 	}
 	data := buf[:nn]
 
-	if m.remoteCtxSRTP != nil {
-		data, err = m.remoteCtxSRTP.DecryptRTCP(data, data, nil)
+	_, rtcpRaddr, _, _, remoteCtx := m.snapshot()
+	if remoteCtx != nil {
+		data, err = remoteCtx.DecryptRTCP(data, data, nil)
 		if err != nil && false {
 			// For some unknown cases Decryption could fail
 			return 0, errors.Join(errRTCPFailedToUnmarshal, err)
@@ -939,7 +986,7 @@ func (m *MediaSession) ReadRTCP(buf []byte, pkts []rtcp.Packet) (n int, err erro
 		return 0, err
 	}
 
-	if m.RTPNAT == 1 && from.String() != m.rtcpRaddr.String() {
+	if m.RTPNAT == 1 && from.String() != rtcpRaddr.String() {
 		func() {
 			fromAddr, ok := from.(*net.UDPAddr)
 			if !ok {
@@ -984,7 +1031,8 @@ func (m *MediaSession) ReadRTCPRawDeadline(buf []byte, t time.Time) (int, error)
 }
 
 func (m *MediaSession) WriteRTP(p *rtp.Packet) error {
-	if m.mode == sdp.ModeRecvonly {
+	_, _, mode, localCtx, _ := m.snapshot()
+	if mode == sdp.ModeRecvonly {
 		// We block here as we would violate our media direction
 		return nil
 	}
@@ -1000,8 +1048,8 @@ func (m *MediaSession) WriteRTP(p *rtp.Packet) error {
 	data := writeBuf[:n]
 	// data, err := p.Marshal()
 
-	if m.localCtxSRTP != nil {
-		data, err = m.localCtxSRTP.EncryptRTP(writeBuf, data, &p.Header)
+	if localCtx != nil {
+		data, err = localCtx.EncryptRTP(writeBuf, data, &p.Header)
 		if err != nil {
 			return fmt.Errorf("failed to encrypt written RTP: %w", err)
 		}
@@ -1026,7 +1074,8 @@ func (m *MediaSession) getWriteBuf() []byte {
 }
 
 func (m *MediaSession) WriteRTPRaw(data []byte) (n int, err error) {
-	addr := &m.Raddr
+	raddr := m.RemoteAddr()
+	addr := &raddr
 	if m.RTPNAT == 1 {
 		if a := m.learnedRTPFrom.Load(); a != nil {
 			addr = a
@@ -1047,7 +1096,8 @@ func (m *MediaSession) WriteRTCP(p rtcp.Packet) error {
 		return err
 	}
 
-	if m.localCtxSRTP != nil {
+	_, _, _, localCtx, _ := m.snapshot()
+	if localCtx != nil {
 		// sync pool may not be best option and needs benchmarks.
 		// but as RTCP is not realtime this can reduce allocations
 		// TODO: should be reusable with above marshaling
@@ -1055,7 +1105,7 @@ func (m *MediaSession) WriteRTCP(p rtcp.Packet) error {
 		defer rtpBufPool.Put(wbuf)
 		writeBuf := wbuf.([]byte)
 
-		data, err = m.localCtxSRTP.EncryptRTCP(writeBuf, data, nil)
+		data, err = localCtx.EncryptRTCP(writeBuf, data, nil)
 		if err != nil {
 			return err
 		}
@@ -1096,7 +1146,8 @@ func (m *MediaSession) WriteRTCPs(pkts []rtcp.Packet) error {
 }
 
 func (m *MediaSession) WriteRTCPRaw(data []byte) (int, error) {
-	addr := &m.rtcpRaddr
+	rtcpRaddr := m.RemoteRTCPAddr()
+	addr := &rtcpRaddr
 	if m.RTPNAT == 1 {
 		if a := m.learnedRTCPFrom.Load(); a != nil {
 			addr = a

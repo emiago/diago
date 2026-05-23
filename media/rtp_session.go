@@ -369,7 +369,8 @@ func (s *RTPSession) WriteStats() RTPWriteStats {
 
 // Monitor starts reading RTCP and monitoring media quality
 func (s *RTPSession) Monitor() error {
-	if s.Sess.Raddr.IP == nil || s.Sess.rtcpRaddr.IP == nil {
+	raddr, rtcpRaddr, _, _, _ := s.Sess.snapshot()
+	if raddr.IP == nil || rtcpRaddr.IP == nil {
 		return fmt.Errorf("raddr of RTP is not present. You must call this after RemoteSDP is parsed")
 	}
 
@@ -397,7 +398,8 @@ func (s *RTPSession) Monitor() error {
 // MonitorBackground is helper to keep monitoring in background
 // MUST Be called after session REMOTE SDP is parsed
 func (s *RTPSession) MonitorBackground() error {
-	if s.Sess.Raddr.IP == nil || s.Sess.rtcpRaddr.IP == nil {
+	raddr, rtcpRaddr, _, _, _ := s.Sess.snapshot()
+	if raddr.IP == nil || rtcpRaddr.IP == nil {
 		return fmt.Errorf("raddr of RTP is not present. Is RemoteSDP called. Monitor RTP Session failed")
 	}
 
@@ -423,7 +425,8 @@ func (s *RTPSession) MonitorBackground() error {
 
 	go func() {
 		sess := s.Sess
-		log.Debug("RTCP writer started", "raddr", sess.rtcpRaddr.String())
+		_, rtcpRaddr, _, _, _ := sess.snapshot()
+		log.Debug("RTCP writer started", "raddr", rtcpRaddr.String())
 		for {
 			var now time.Time
 			select {
