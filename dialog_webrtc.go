@@ -61,6 +61,9 @@ type DialogWebrtc struct {
 
 	// webrtc stuff to access
 	peerConnection *webrtc.PeerConnection
+
+	audioReader io.Reader
+	audioWriter io.Writer
 }
 
 func (d *DialogWebrtc) OnClose(f func() error) {
@@ -111,7 +114,18 @@ func (d *DialogWebrtc) AudioReader(opts ...AudioReaderWebrtcOption) (io.Reader, 
 			return nil, err
 		}
 	}
+
+	if d.audioReader != nil {
+		return d.audioReader, nil
+	}
+
 	return d.RTPPacketReader, nil
+}
+
+func (d *DialogWebrtc) SetAudioReader(r io.Reader) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.audioReader = r
 }
 
 type AudioWriterWebrtcOption func(d *DialogWebrtc) error
@@ -134,7 +148,18 @@ func (d *DialogWebrtc) AudioWriter(opts ...AudioWriterWebrtcOption) (io.Writer, 
 			return nil, err
 		}
 	}
+
+	if d.audioWriter != nil {
+		return d.audioWriter, nil
+	}
+
 	return d.RTPPacketWriter, nil
+}
+
+func (d *DialogWebrtc) SetAudioWriter(w io.Writer) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.audioWriter = w
 }
 
 // TODO: This would normally be exposed by RTP Session
