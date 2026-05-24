@@ -430,6 +430,7 @@ func (d *DialogServerSession) answerWebrtc(m *DialogWebrtc, sdpBody []byte, opts
 	m.mediaSession.Laddr = sdReadAddress(answersdp)
 	m.mediaSession.Raddr = sdReadAddress(remotesdp)
 	m.mediaSession.writer = writer
+	m.peerConnection = peerConnection
 
 	return nil
 }
