@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/emiago/diago/media"
+	mediasdp "github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/google/uuid"
@@ -18,7 +19,7 @@ type InviteWebrtcOptions struct {
 	OnResponse func(res *sip.Response) error
 	// OnMediaUpdate called when media is changed.
 	// NOTE: you should not block this call as it blocks response processing.
-	// OnMediaUpdate func(d *DialogWebrtc)
+	OnMediaUpdate func(d *DialogWebrtc)
 	// OnRefer is called on successfull REFER handling
 	//
 	// It creates new dialog (NewDialog) on which you need to call Invite() and Ack()
@@ -48,6 +49,71 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 		}
 	})
 
+	d.onReInvite = func(req *sip.Request) (*sip.Response, error) {
+		// Handle media reinvite
+		if req.IsAck() {
+			// This should be on our reinvite handling
+			// For now just handle without error
+			return nil, nil
+		}
+
+		res := sip.NewResponseFromRequest(req, 200, "OK", nil)
+		remoteDirection := webrtcSDPMediaDirection(req.Body())
+
+		err := func(sdp []byte) error {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+
+			if m.peerConnection == nil {
+				return fmt.Errorf("reinvite called on non initialized media")
+			}
+			if m.mediaSession == nil || m.mediaSession.writer == nil {
+				return fmt.Errorf("reinvite called before webrtc media writer is initialized")
+			}
+
+			err := m.peerConnection.SetRemoteDescription(webrtc.SessionDescription{
+				Type: webrtc.SDPTypeOffer,
+				SDP:  string(sdp),
+			})
+			if err != nil {
+				return err
+			}
+
+			if err := applyWebrtcRemoteCodec(m.mediaSession, m.RTPPacketWriter, sdp); err != nil {
+				return err
+			}
+
+			if err := applyWebrtcRemoteDirection(m.mediaSession.writer, remoteDirection); err != nil {
+				return err
+			}
+
+			answer, err := m.peerConnection.CreateAnswer(nil)
+			if err != nil {
+				return err
+			}
+
+			gatherComplete := webrtc.GatheringCompletePromise(m.peerConnection)
+			if err := m.peerConnection.SetLocalDescription(answer); err != nil {
+				return err
+			}
+			<-gatherComplete
+
+			ld := m.peerConnection.LocalDescription()
+			res = sip.NewResponseFromRequest(req, 200, "OK", []byte(ld.SDP))
+			res.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
+			return nil
+		}(req.Body())
+
+		if err != nil {
+			return nil, err
+		}
+
+		if opts.OnMediaUpdate != nil {
+			opts.OnMediaUpdate(m)
+		}
+		return res, nil
+	}
+
 	if err := d.inviteWebrtc(ctx, m, opts); err != nil {
 		m.Close()
 		return nil, err
@@ -58,6 +124,91 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 	}
 
 	return m, nil
+}
+
+func webrtcSDPMediaDirection(body []byte) string {
+	sd := mediasdp.SessionDescription{}
+	if err := mediasdp.Unmarshal(body, &sd); err != nil {
+		return mediasdp.ModeSendrecv
+	}
+
+	direction := sd.MediaDirection()
+	if direction == "" {
+		return mediasdp.ModeSendrecv
+	}
+	return direction
+}
+
+func webrtcSDPAudioCodec(body []byte, current media.Codec) (media.Codec, error) {
+	sd := mediasdp.SessionDescription{}
+	if err := mediasdp.Unmarshal(body, &sd); err != nil {
+		return current, err
+	}
+
+	md, err := sd.MediaDescription("audio")
+	if err != nil {
+		return current, err
+	}
+
+	remoteCodecs := make([]media.Codec, len(md.Formats))
+	n, err := media.CodecsFromSDPRead(md.Formats, sd.Values("a"), remoteCodecs)
+	if err != nil {
+		return current, err
+	}
+	remoteCodecs = remoteCodecs[:n]
+
+	for _, c := range remoteCodecs {
+		switch c.PayloadType {
+		case media.CodecAudioUlaw.PayloadType, media.CodecAudioAlaw.PayloadType:
+			return c, nil
+		}
+	}
+
+	return current, fmt.Errorf("reinvite has no supported webrtc audio codec: remote=%v", remoteCodecs)
+}
+
+func applyWebrtcRemoteCodec(sess *webrtcSession, rtpWriter *media.RTPPacketWriter, body []byte) error {
+	if sess == nil || sess.writer == nil {
+		return fmt.Errorf("webrtc media session is not initialized")
+	}
+	if rtpWriter == nil {
+		return fmt.Errorf("webrtc rtp packet writer is not initialized")
+	}
+
+	codec, err := webrtcSDPAudioCodec(body, sess.Codec)
+	if err != nil {
+		return err
+	}
+	if codec == sess.Codec {
+		return nil
+	}
+
+	mimeType, err := parseCodecMimeType(codec.PayloadType)
+	if err != nil {
+		return err
+	}
+
+	track, err := webrtc.NewTrackLocalStaticRTP(
+		webrtc.RTPCodecCapability{MimeType: mimeType},
+		"audio",
+		"diago",
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := sess.writer.ReplaceTrack(track); err != nil {
+		return err
+	}
+
+	sess.Codec = codec
+	rtpWriter.UpdateWriter(sess.writer, codec)
+	return nil
+}
+
+func applyWebrtcRemoteDirection(writer *WebrtcTrackRTPWriter, remoteDirection string) error {
+	shouldSend := remoteDirection == mediasdp.ModeSendrecv || remoteDirection == mediasdp.ModeRecvonly || remoteDirection == ""
+	return writer.UpdateDirection(shouldSend)
 }
 
 func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc, opts InviteWebrtcOptions) error {
@@ -175,8 +326,9 @@ func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc,
 	})
 
 	writer := &WebrtcTrackRTPWriter{
-		track:  writeAudioTrack,
-		sender: rtpSender,
+		track:   writeAudioTrack,
+		sender:  rtpSender,
+		enabled: true,
 	}
 
 	log.Info("Invite media session setup", "codec", codec.String())
