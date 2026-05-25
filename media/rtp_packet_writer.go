@@ -212,3 +212,12 @@ func (w *RTPPacketWriter) UpdateRTPSession(rtpSess *RTPSession) {
 	// rtpSess.writeStats.SSRC = w.SSRC
 	// rtpSess.writeStats.sampleRate = w.sampleRate
 }
+
+func (w *RTPPacketWriter) UpdateWriter(writer RTPWriter, codec Codec) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.codec = codec
+	w.writer = writer
+	w.clockReset()
+}
