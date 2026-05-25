@@ -379,6 +379,23 @@ func (d *DialogServerSession) reInviteMediaSession(ctx context.Context, ms *medi
 	}()
 }
 
+func (d *DialogServerSession) reInviteSDP(ctx context.Context, sdp []byte) ([]byte, error) {
+	// NOTE: we do not change original invite request
+	d.mu.Lock()
+	contact := d.remoteContactUnsafe()
+	d.mu.Unlock()
+
+	req := sip.NewRequest(sip.INVITE, contact.Address)
+	req.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
+	req.SetBody(sdp)
+
+	res, err := d.reInviteDo(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return res.Body(), nil
+}
+
 func (d *DialogServerSession) reInviteDo(ctx context.Context, req *sip.Request) (*sip.Response, error) {
 
 	for {
@@ -413,8 +430,17 @@ func (d *DialogServerSession) reInviteDo(ctx context.Context, req *sip.Request) 
 			}
 		}
 
+		contact := res.Contact()
+		// TODO: Is it regular that contact header is not present
+		if contact == nil {
+			contact = d.RemoteContact()
+			if contact == nil {
+				return res, fmt.Errorf("not sure where to send ack")
+			}
+		}
+
 		// Now do ACK on new Contact
-		if err := d.ack(ctx, res.Contact().Address, nil); err != nil {
+		if err := d.ack(ctx, contact.Address, nil); err != nil {
 			return res, err
 		}
 
