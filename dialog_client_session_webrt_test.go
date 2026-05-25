@@ -1,9 +1,13 @@
 package diago
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
+	"github.com/emiago/diago/audio"
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
@@ -159,4 +163,102 @@ func TestDialogClientSessionWebrtc(t *testing.T) {
 		dialog.Hangup(ctx)
 	})
 
+}
+
+func TestIntegrationDialogWebrtcClientReinviteMedia(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	beep, _ := audio.BeepLoadPCM(media.CodecAudioUlaw)
+	numPkts := len(beep) / media.CodecAudioUlaw.Samples16()
+
+	t.Log("Size beep", len(beep), numPkts)
+	audioReceived := make(chan []byte)
+	{
+		ua, _ := sipgo.NewUA(sipgo.WithUserAgent("server"))
+		defer ua.Close()
+
+		dg := NewDiago(ua, WithTransport(
+			Transport{
+				Transport: "tcp",
+				BindHost:  "127.0.0.1",
+				BindPort:  15079,
+			},
+		))
+		digServer := NewDigestServer()
+		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+			t.Log("New INVITE")
+			if err := digServer.AuthorizeDialog(d, DigestAuth{
+				Username: "test",
+				Password: "test",
+			}); err != nil {
+				return
+			}
+
+			med, err := d.AnswerWebrtc(AnswerWebrtcOptions{})
+			if err != nil {
+				t.Log("Failed to answer webrtc", "error", err)
+				return
+			}
+			defer med.Close()
+
+			// ar, _ := d.AudioReader()
+			ar := med.RTPPacketReader
+			ctx, cancel := context.WithCancel(context.Background())
+			go func() {
+				defer cancel()
+				beepEncoded, _ := media.ReadAll(ar, 160)
+				audioReceived <- beepEncoded
+			}()
+
+			time.Sleep(60 * time.Millisecond)
+			require.NotNil(t, med.peerConnection)
+			require.NotNil(t, med.peerConnection.CurrentLocalDescription())
+			ld := med.peerConnection.CurrentLocalDescription()
+			lsdp, err := ld.Unmarshal()
+			require.NoError(t, err)
+			lsdp.MediaDescriptions[0].ConnectionInformation.Address.Address = "127.0.0.2"
+			newSDP, _ := lsdp.Marshal()
+
+			// we do not care for now with peer connection and media
+			_, err = d.reInviteSDP(d.Context(), newSDP)
+			require.NoError(t, err)
+
+			<-ctx.Done()
+		})
+		require.NoError(t, err)
+	}
+
+	ua, _ := sipgo.NewUA()
+	defer ua.Close()
+
+	dg := newWebrtcDialer(ua)
+	// err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
+	// require.NoError(t, err)
+	dialog, err := dg.NewDialog(sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15079}, NewDialogOptions{Transport: "tcp"})
+	require.NoError(t, err)
+	defer dialog.Close()
+
+	med, err := dialog.InviteWebrtc(ctx, InviteWebrtcOptions{
+		OnMediaUpdate: func(d *DialogWebrtc) {
+			fmt.Println("Media update", d.peerConnection.RemoteDescription().SDP)
+		},
+		Username: "test",
+		Password: "test",
+	})
+	defer med.Close()
+	require.NoError(t, err)
+	err = dialog.Ack(ctx)
+	require.NoError(t, err)
+
+	require.NoError(t, err)
+	pb, _ := med.PlaybackCreate()
+	_, err = pb.Play(bytes.NewBuffer(beep), "audio/pcm")
+	require.NoError(t, err)
+
+	err = dialog.Hangup(ctx)
+	require.NoError(t, err)
+	// remoteAudio := <-audioReceived
+
+	// 1 packet will not be consumed due to update of RTP packets
+	// assert.GreaterOrEqual(t, len(remoteAudio)/160, numPkts-1)
 }
