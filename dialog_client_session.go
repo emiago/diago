@@ -29,6 +29,9 @@ type DialogClientSession struct {
 
 	DialogMedia
 
+	// onReInvite replaces need for DialogMedia reference and it is required by media stack that listens on this update and handle SDP changes
+	onReInvite func(invite *sip.Request) (*sip.Response, error)
+
 	onReferDialog OnReferDialogFunc
 	mediaConfig   MediaConfig
 
@@ -615,10 +618,26 @@ func (d *DialogClientSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request - "+err.Error(), nil))
 	}
 
+	if d.onReInvite != nil {
+		res, err := d.onReInvite(req)
+		if err != nil {
+			return errors.Join(
+				err,
+				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil)),
+			)
+		}
+		return tx.Respond(res)
+	}
+
 	return d.handleMediaUpdate(req, tx, d.InviteRequest.Contact())
 }
 
 func (d *DialogClientSession) handleReInviteACK(req *sip.Request, tx sip.ServerTransaction) error {
+	if d.onReInvite != nil {
+		_, err := d.onReInvite(req)
+		return err
+	}
+
 	// Check do we need to handle Late Offer from ACK and update media
 	body := req.Body()
 	if body != nil {
@@ -635,7 +654,6 @@ func (d *DialogClientSession) handleReInviteACK(req *sip.Request, tx sip.ServerT
 			onMediaUpdate(d.Media())
 		}
 	}
-
 	return d.mediaSession.Finalize()
 }
 
