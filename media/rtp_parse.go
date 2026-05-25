@@ -17,7 +17,7 @@ var (
 )
 
 // RTPUnmarshal wrapper for now used for optimizing unmarshal
-// NOTE: payload is referenced in packet buffer
+// NOTE: payload is referencing on packet buffer
 func RTPUnmarshal(buf []byte, p *rtp.Packet) error {
 	return p.Unmarshal(buf)
 }

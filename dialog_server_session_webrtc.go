@@ -413,8 +413,9 @@ func (d *DialogServerSession) answerWebrtc(m *DialogWebrtc, sdpBody []byte, opts
 	logICECandidatePairs(log, rtpSender)
 
 	writer := &WebrtcTrackRTPWriter{
-		track:  writeAudioTrack,
-		sender: rtpSender,
+		track:   writeAudioTrack,
+		sender:  rtpSender,
+		enabled: true,
 	}
 	rtpWriter := media.NewRTPPacketWriter(writer, codec)
 
