@@ -490,7 +490,7 @@ func (dg *Diago) serve(ctx context.Context, f ServeDialogFunc, readyCh func()) e
 
 		go func(i int, tran Transport) {
 			// Update transport
-			ctx = context.WithValue(ctx, sipgo.ListenReadyCtxKey, sipgo.ListenReadyFuncCtxValue(func(network, addr string) {
+			ctx := context.WithValue(ctx, sipgo.ListenReadyCtxKey, sipgo.ListenReadyFuncCtxValue(func(network, addr string) {
 				// This now fixes port for empheral binding
 				// Alternative to use is tp.GetListenPort but it squashes networks
 				_, port, _ := sip.ParseAddr(addr)
