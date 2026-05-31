@@ -46,7 +46,7 @@ type DTLSConfig struct {
 	// SDP Setup Role force value.
 	// Values: active,passive,actpass
 	// Default: offer->active answer->passive
-	SDPSetupRole func(offer bool) string
+	SDPSetupRole func(offer bool) string `json:"-"`
 
 	// List of Elliptic Curves to use
 	//
