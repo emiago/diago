@@ -505,7 +505,7 @@ func (dg *Diago) serve(ctx context.Context, f ServeDialogFunc, readyCh func()) e
 				dg.log.Info("Listening on transport", "addr", addr, "protocol", tran.network)
 			}))
 
-			if tran.TLSConf != nil {
+			if tran.TLSConf != nil || tran.Transport == "tls" || tran.Transport == "wss" {
 				errCh <- server.ListenAndServeTLS(ctx, tran.network, hostport, tran.TLSConf)
 				return
 			}
