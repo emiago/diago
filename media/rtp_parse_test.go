@@ -12,6 +12,63 @@ import (
 	"github.com/pion/rtp"
 )
 
+// TestRTPUnmarshalPayload_PaddingSizeReset verifies that when a reused *rtp.Packet
+// previously had padding, rtpUnmarshalPayload resets PaddingSize to 0 for the next
+// packet that does not carry the Padding flag. Without the fix, PaddingSize persists
+// and causes the payload of subsequent non-padded packets to be truncated.
+func TestRTPUnmarshalPayload_PaddingSizeReset(t *testing.T) {
+	payload := []byte("hello world RTP payload data")
+
+	// Build a padded packet: append 4 bytes of padding (last byte = padding length).
+	paddingLen := byte(4)
+	paddedPayload := make([]byte, len(payload)+int(paddingLen))
+	copy(paddedPayload, payload)
+	paddedPayload[len(paddedPayload)-1] = paddingLen
+
+	paddedPkt := rtp.Packet{}
+	paddedPkt.Header.Padding = true
+	marshaledPadded, err := rtp.Packet{
+		Header:  rtp.Header{Padding: true, Version: 2},
+		Payload: paddedPayload,
+	}.Marshal()
+	if err != nil {
+		t.Fatal("marshal padded packet:", err)
+	}
+
+	// Parse the padded packet — this sets PaddingSize on reusedPkt.
+	reusedPkt := &rtp.Packet{Payload: make([]byte, 1500)}
+	if err := reusedPkt.Unmarshal(marshaledPadded); err != nil {
+		t.Fatal("unmarshal padded:", err)
+	}
+	if reusedPkt.PaddingSize == 0 {
+		t.Skip("pion/rtp version does not expose PaddingSize — skipping")
+	}
+
+	// Now build a plain packet with no padding carrying the same payload.
+	plainPkt := rtp.Packet{
+		Header:  rtp.Header{Version: 2},
+		Payload: payload,
+	}
+	marshaledPlain, err := plainPkt.Marshal()
+	if err != nil {
+		t.Fatal("marshal plain packet:", err)
+	}
+
+	// Unmarshal the plain packet into the same reused struct.
+	// Before the fix, PaddingSize from the padded parse still lingers and
+	// truncates the payload by paddingLen bytes.
+	if err := reusedPkt.Unmarshal(marshaledPlain); err != nil {
+		t.Fatal("unmarshal plain:", err)
+	}
+
+	if reusedPkt.PaddingSize != 0 {
+		t.Errorf("PaddingSize not reset: got %d, want 0", reusedPkt.PaddingSize)
+	}
+	if string(reusedPkt.Payload) != string(payload) {
+		t.Errorf("payload truncated: got %q, want %q", reusedPkt.Payload, payload)
+	}
+}
+
 func BenchmarkRTCPUnmarshal(b *testing.B) {
 	reader, writer := io.Pipe()
 	go func() {
