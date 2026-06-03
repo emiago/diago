@@ -141,11 +141,11 @@ func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptio
 	if err := d.initMediaSessionFromConf(d.mediaConfig); err != nil {
 		return err
 	}
-	return d.invite(ctx, opts)
+	return d.invite(ctx, &d.DialogMedia, opts)
 }
 
-func (d *DialogClientSession) invite(ctx context.Context, opts InviteClientOptions) error {
-	sess := d.mediaSession
+func (d *DialogClientSession) invite(ctx context.Context, med *DialogMedia, opts InviteClientOptions) error {
+	sess := med.mediaSession
 	inviteReq := d.InviteRequest
 	originator := opts.Originator
 
@@ -241,7 +241,7 @@ func (d *DialogClientSession) invite(ctx context.Context, opts InviteClientOptio
 	}
 
 	// This only gets called after session established
-	d.onMediaUpdate = opts.OnMediaUpdate
+	med.onMediaUpdate = opts.OnMediaUpdate
 	d.onReferDialog = opts.OnRefer
 	// reuse UDP listener
 	// Problem if listener is unspecified IP sipgo will not map this to listener
@@ -265,20 +265,20 @@ func (d *DialogClientSession) invite(ctx context.Context, opts InviteClientOptio
 	}
 
 	if opts.EarlyMediaDetect {
-		return d.waitAnswerEarly(ctx, ansOpts)
+		return d.waitAnswerEarly(ctx, &d.DialogMedia, ansOpts)
 	}
 
-	return d.waitAnswer(ctx, ansOpts)
+	return d.waitAnswer(ctx, &d.DialogMedia, ansOpts)
 }
 
 // WaitAnswer waits dialog on answer. It should only be used if you have error Invite but still want to continue
 // ex. ErrClientEarlyMedia was returned but you want to proceed with answering
 func (d *DialogClientSession) WaitAnswer(ctx context.Context, opts sipgo.AnswerOptions) error {
-	return d.waitAnswer(ctx, opts)
+	return d.waitAnswer(ctx, &d.DialogMedia, opts)
 }
 
-func (d *DialogClientSession) waitAnswerEarly(ctx context.Context, opts sipgo.AnswerOptions) error {
-	sess := d.mediaSession
+func (d *DialogClientSession) waitAnswerEarly(ctx context.Context, med *DialogMedia, opts sipgo.AnswerOptions) error {
+	sess := med.mediaSession
 	onResps := opts.OnResponse
 
 	// Add early media check
@@ -316,12 +316,12 @@ func (d *DialogClientSession) waitAnswerEarly(ctx context.Context, opts sipgo.An
 		}
 
 		rtpSess := media.NewRTPSession(sess)
-		d.mu.Lock()
-		d.initRTPSessionUnsafe(sess, rtpSess)
-		d.onCloseUnsafe(func() error {
+		med.mu.Lock()
+		med.initRTPSessionUnsafe(sess, rtpSess)
+		med.onCloseUnsafe(func() error {
 			return rtpSess.Close()
 		})
-		d.mu.Unlock()
+		med.mu.Unlock()
 
 		// Must be called after reader and writer setup due to race
 		if err := rtpSess.MonitorBackground(); err != nil {
@@ -330,10 +330,10 @@ func (d *DialogClientSession) waitAnswerEarly(ctx context.Context, opts sipgo.An
 
 		return ErrClientEarlyMedia
 	}
-	return d.waitAnswer(ctx, opts)
+	return d.waitAnswer(ctx, med, opts)
 }
 
-func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerOptions) error {
+func (d *DialogClientSession) waitAnswer(ctx context.Context, med *DialogMedia, opts sipgo.AnswerOptions) error {
 	if err := d.DialogClientSession.WaitAnswer(ctx, opts); err != nil {
 		return err
 	}
@@ -343,7 +343,7 @@ func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerO
 		return fmt.Errorf("no SDP in response")
 	}
 
-	if err := d.applyRemoteSDP(remoteSDP); err != nil {
+	if err := d.applyRemoteSDP(med, remoteSDP); err != nil {
 		// Terminate call. Call must be ACK before doing BYE
 		if err := d.Ack(ctx); err != nil {
 			return errors.Join(err, d.Ack(ctx))
@@ -354,11 +354,11 @@ func (d *DialogClientSession) waitAnswer(ctx context.Context, opts sipgo.AnswerO
 	return nil
 }
 
-func (d *DialogClientSession) applyRemoteSDP(remoteSDP []byte) error {
-	sess := d.mediaSession
+func (d *DialogClientSession) applyRemoteSDP(med *DialogMedia, remoteSDP []byte) error {
+	sess := med.mediaSession
 
 	// Apply SDP on existing (Early) media if it exists
-	if err := d.checkEarlyMedia(remoteSDP); err != errNoRTPSession {
+	if err := med.checkEarlyMedia(remoteSDP); err != errNoRTPSession {
 		return err
 	}
 
@@ -368,12 +368,12 @@ func (d *DialogClientSession) applyRemoteSDP(remoteSDP []byte) error {
 
 	// Create RTP session. After this no media session configuration should be changed
 	rtpSess := media.NewRTPSession(sess)
-	d.mu.Lock()
-	d.initRTPSessionUnsafe(sess, rtpSess)
+	med.mu.Lock()
+	med.initRTPSessionUnsafe(sess, rtpSess)
 	// d.onCloseUnsafe(func() error {
 	// 	return rtpSess.Close()
 	// })
-	d.mu.Unlock()
+	med.mu.Unlock()
 
 	// Must be called after reader and writer setup due to race
 	return rtpSess.MonitorBackground()
