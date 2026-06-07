@@ -2,6 +2,7 @@ package diago
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -13,6 +14,36 @@ import (
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 )
+
+// InviteV2 does SIP invite and return media stack.
+// If early media detection is enabled you will get error and media stack with error = ErrClientEarlyMedia
+func (d *DialogClientSession) InviteV2(ctx context.Context, opts InviteClientOptions) (*DialogMedia, error) {
+	med := &DialogMedia{}
+	if err := med.initMediaSessionFromConf(d.mediaConfig); err != nil {
+		return nil, err
+	}
+
+	// NOTE: this can be racy
+	d.Dialog.OnState(func(s sip.DialogState) {
+		if s == sip.DialogStateEnded {
+			med.Close()
+		}
+
+		if s == sip.DialogStateConfirmed {
+			// Do some finalize on ACK?
+		}
+	})
+
+	if err := d.invite(ctx, med, opts); err != nil {
+		if errors.Is(err, ErrClientEarlyMedia) {
+			return med, err
+		}
+		med.Close()
+		return nil, err
+	}
+
+	return med, nil
+}
 
 type InviteWebrtcOptions struct {
 	Originator DialogSession
@@ -46,6 +77,11 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 	d.Dialog.OnState(func(s sip.DialogState) {
 		if s == sip.DialogStateEnded {
 			m.Close()
+		}
+
+		if s == sip.DialogStateConfirmed {
+			// Do some finalize on ACK?
+
 		}
 	})
 
