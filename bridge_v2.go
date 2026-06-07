@@ -13,9 +13,16 @@ import (
 	"github.com/emiago/diago/media"
 )
 
+type BridgeAudioMedia struct {
+	Reader      io.Reader
+	ReaderProps MediaProps
+	Writer      io.Writer
+	WriterProps MediaProps
+}
+
 type BridgeV2 struct {
-	// Originator is dialog session that created bridge
-	Originator *DialogMedia
+	// originator is dialog session that created bridge
+	originator *BridgeAudioMedia
 	// DTMFpass is also dtmf pipeline and proxy. By default only audio media is proxied
 	// NOTE: this may not work if you are already processing DTMF with AudioReaderDTMF
 	DTMFpass bool
@@ -25,7 +32,7 @@ type BridgeV2 struct {
 	// This gives high performance but you can not attach any pipeline in media processing
 	// RTPpass bool
 
-	dialogs []*DialogMedia
+	dialogs []*BridgeAudioMedia
 	// minDialogs is just helper flag when to start proxy
 	WaitDialogsNum int
 }
@@ -48,20 +55,91 @@ func (b *BridgeV2) Init(log *slog.Logger) {
 	}
 }
 
-func (b *BridgeV2) GetDialogs() []*DialogMedia {
+func (b *BridgeV2) GetDialogs() []*BridgeAudioMedia {
 	return b.dialogs
 }
 
 func (b *BridgeV2) AddDialogMedia(m *DialogMedia) error {
-	// Check can this dialog be added to bridge. NO TRANSCODING
-	if b.Originator != nil {
-		// This may look ugly but it is safe way of reading
-		origM := b.Originator.Media()
-		origProps := MediaProps{}
-		_ = origM.audioWriterProps(&origProps)
+	med := BridgeAudioMedia{}
+	var err error
+	med.Reader, err = m.AudioReader(WithAudioReaderMediaProps(&med.ReaderProps))
+	if err != nil {
+		return err
+	}
 
-		mprops := MediaProps{}
-		_ = m.audioWriterProps(&mprops)
+	med.Writer, err = m.AudioWriter(WithAudioWriterMediaProps(&med.WriterProps))
+	if err != nil {
+		return err
+	}
+
+	if b.DTMFpass {
+		dtmfReader := DTMFReader{}
+		med.Reader, err = m.AudioReader(WithAudioReaderMediaProps(&med.ReaderProps), WithAudioReaderDTMF(&dtmfReader))
+		if err != nil {
+			return err
+		}
+		dtmfWriter := DTMFWriter{}
+		med.Writer, err = m.AudioWriter(WithAudioWriterMediaProps(&med.WriterProps), WithAudioWriterDTMF(&dtmfWriter))
+		if err != nil {
+			return err
+		}
+
+		dtmfReader.OnDTMF(func(dtmf rune) error {
+			return dtmfWriter.WriteDTMF(dtmf)
+		})
+	}
+
+	return b.AddAudioMedia(&med)
+}
+
+func (b *BridgeV2) AddMedia(m any) error {
+	switch t := m.(type) {
+	case *DialogMedia:
+		return b.AddDialogMedia(t)
+	case *DialogWebrtc:
+		return b.AddDialogWebrtc(t)
+	default:
+		return fmt.Errorf("unsupporte media stack for bridge. Use AddAudioMedia")
+	}
+}
+
+func (b *BridgeV2) AddDialogWebrtc(m *DialogWebrtc) error {
+	med := BridgeAudioMedia{}
+	var err error
+	med.Reader, err = m.AudioReader(WithAudioReaderWebrtcProps(&med.ReaderProps))
+	if err != nil {
+		return err
+	}
+	med.Writer, err = m.AudioWriter(WithAudioWriterWebrtcProps(&med.WriterProps))
+	if err != nil {
+		return err
+	}
+
+	if b.DTMFpass {
+		dtmfReader := DTMFReader{}
+		med.Reader, err = m.AudioReader(WithAudioReaderWebrtcProps(&med.ReaderProps), WithAudioReaderWebrtcDTMF(&dtmfReader))
+		if err != nil {
+			return err
+		}
+		dtmfWriter := DTMFWriter{}
+		med.Writer, err = m.AudioWriter(WithAudioWriterWebrtcProps(&med.WriterProps), WithAudioWriterWebrtcDTMF(&dtmfWriter))
+		if err != nil {
+			return err
+		}
+
+		dtmfReader.OnDTMF(func(dtmf rune) error {
+			return dtmfWriter.WriteDTMF(dtmf)
+		})
+	}
+	return b.AddAudioMedia(&med)
+}
+
+func (b *BridgeV2) AddAudioMedia(m *BridgeAudioMedia) error {
+	// Check can this dialog be added to bridge. NO TRANSCODING
+	if b.originator != nil {
+		// This may look ugly but it is safe way of reading
+		origProps := b.originator.ReaderProps
+		mprops := m.ReaderProps
 
 		err := func() error {
 			if origProps.Codec != mprops.Codec {
@@ -76,7 +154,7 @@ func (b *BridgeV2) AddDialogMedia(m *DialogMedia) error {
 
 	b.dialogs = append(b.dialogs, m)
 	if len(b.dialogs) == 1 {
-		b.Originator = m
+		b.originator = m
 	}
 
 	if len(b.dialogs) < b.WaitDialogsNum {
@@ -89,7 +167,7 @@ func (b *BridgeV2) AddDialogMedia(m *DialogMedia) error {
 	// Check are both answered
 	for _, m := range b.dialogs {
 		// TODO remove this double locking. Read once
-		if m.RTPPacketReader == nil || m.RTPPacketWriter == nil {
+		if m.Reader == nil || m.Writer == nil {
 			return fmt.Errorf("dialog session not answered?")
 		}
 	}
@@ -111,88 +189,16 @@ func (b *BridgeV2) AddDialogMedia(m *DialogMedia) error {
 	return nil
 }
 
-// ProxyMedia is explicit starting proxy media.
-// In some cases you want to control and be signaled when bridge terminates
-//
-// NOTE: Should be only called if you want to start manually proxying.
-// It is required to set WaitDialogsNum higher than 2
-//
-// Experimental
-func (b *BridgeV2) ProxyMedia() error {
-	if len(b.dialogs) < 2 {
-		return fmt.Errorf("number of dialogs must equal to 2")
-	}
-
-	if b.WaitDialogsNum < 3 {
-		return fmt.Errorf("you are already running proxy media. Increase WaitDialogsNum")
-	}
-
-	for _, d := range b.dialogs {
-		d.Media().mediaSession.StopRTP(2, 0)
-	}
-	return b.proxyMedia()
-}
-
-// ProxyMediaControl starts proxy in background and allows to stop proxy at any time.
-// Stop should be called once and it is not needed to be called if call is terminating
-//
-// Experimental
-func (b *BridgeV2) ProxyMediaControl() (func() error, error) {
-	proxyErr := make(chan error, 1)
-	go func() {
-		proxyErr <- b.proxyMedia()
-	}()
-
-	stopF := func() error {
-		for _, d := range b.dialogs {
-			d.Media().mediaSession.StopRTP(2, 0)
-		}
-
-		// Wait goroutine termination
-		err := <-proxyErr
-		for _, d := range b.dialogs {
-			d.Media().mediaSession.StartRTP(2)
-		}
-		return err
-	}
-
-	return stopF, b.proxyMedia()
-}
-
-// proxyMedia starts routine to proxy media between
-// Should be called after having 2 or more participants
-func (b *BridgeV2) proxyMedia() error {
-	m1 := b.dialogs[0].Media()
-	m2 := b.dialogs[1].Media()
-	return b.proxyMediaChannels(m1, m2)
-}
-
-func (b *BridgeV2) proxyMediaChannels(m1, m2 *DialogMedia) error {
+func (b *BridgeV2) proxyMediaChannels(m1, m2 *BridgeAudioMedia) error {
 	var err error
 	log := b.log
 
 	// Lets for now simplify proxy and later optimize
-	if b.DTMFpass {
-		errCh := make(chan error, 4)
-		go func() {
-			errCh <- b.proxyMediaWithDTMF(m1, m2)
-		}()
-
-		go func() {
-			errCh <- b.proxyMediaWithDTMF(m2, m1)
-		}()
-
-		// Wait for all to finish
-		for i := 0; i < 2; i++ {
-			err = errors.Join(err, <-errCh)
-		}
-		return err
-	}
 	errCh := make(chan error, 2)
 	func() {
-		p1, p2 := MediaProps{}, MediaProps{}
-		r := m1.audioReaderProps(&p1)
-		w := m2.audioWriterProps(&p2)
+		p1, p2 := m1.ReaderProps, m2.WriterProps
+		r := m1.Reader
+		w := m2.Writer
 
 		log := log.With("from", p1.Raddr+" > "+p1.Laddr, "to", p2.Laddr+" > "+p2.Raddr)
 		log.Debug("Starting proxy media routine")
@@ -201,9 +207,10 @@ func (b *BridgeV2) proxyMediaChannels(m1, m2 *DialogMedia) error {
 
 	// Second
 	func() {
-		p1, p2 := MediaProps{}, MediaProps{}
-		r := m2.audioReaderProps(&p1)
-		w := m1.audioWriterProps(&p2)
+		p1, p2 := m2.ReaderProps, m1.WriterProps
+		r := m2.Reader
+		w := m1.Writer
+
 		log := log.With("from", p1.Raddr+" > "+p1.Laddr, "to", p2.Laddr+" > "+p2.Raddr)
 		log.Debug("Starting proxy media routine")
 		go proxyMediaBackground(log, r, w, errCh)
@@ -213,31 +220,5 @@ func (b *BridgeV2) proxyMediaChannels(m1, m2 *DialogMedia) error {
 	for i := 0; i < 2; i++ {
 		err = errors.Join(err, <-errCh)
 	}
-	return err
-}
-
-func (b *BridgeV2) proxyMediaWithDTMF(m1 *DialogMedia, m2 *DialogMedia) error {
-	dtmfReader := DTMFReader{}
-	p1, p2 := MediaProps{}, MediaProps{}
-	r, err := m1.AudioReader(WithAudioReaderDTMF(&dtmfReader), WithAudioReaderMediaProps(&p1))
-	if err != nil {
-		return err
-	}
-	dtmfWriter := DTMFWriter{}
-	w, err := m2.AudioWriter(WithAudioWriterDTMF(&dtmfWriter), WithAudioWriterMediaProps(&p2))
-	if err != nil {
-		return err
-	}
-	dtmfReader.OnDTMF(func(dtmf rune) error {
-		return dtmfWriter.WriteDTMF(dtmf)
-	})
-
-	buf := rtpBufPool.Get()
-	defer rtpBufPool.Put(buf)
-
-	log := b.log.With("from", p1.Raddr+" > "+p1.Laddr, "to", p2.Laddr+" > "+p2.Raddr)
-	log.Debug("Starting proxy media routine")
-	written, err := copyWithBuf(r, w, buf.([]byte))
-	log.Debug("Bridge proxy stream finished", "bytes", written)
 	return err
 }
