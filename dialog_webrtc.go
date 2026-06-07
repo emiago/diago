@@ -105,6 +105,18 @@ func WithAudioReaderWebrtcProps(p *MediaProps) AudioReaderWebrtcOption {
 	}
 }
 
+func WithAudioReaderWebrtcDTMF(r *DTMFReader) AudioReaderWebrtcOption {
+	return func(d *DialogWebrtc) error {
+		ar, err := d.AudioReader()
+		if err != nil {
+			return err
+		}
+		r.dtmfReader = media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, d.RTPPacketReader, ar)
+		r.rtpDeadline = d.mediaSession
+		return nil
+	}
+}
+
 func (d *DialogWebrtc) AudioReader(opts ...AudioReaderWebrtcOption) (io.Reader, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -139,6 +151,17 @@ func WithAudioWriterWebrtcProps(p *MediaProps) AudioWriterWebrtcOption {
 	}
 }
 
+func WithAudioWriterWebrtcDTMF(r *DTMFWriter) AudioWriterWebrtcOption {
+	return func(m *DialogWebrtc) error {
+		aw, err := m.AudioWriter()
+		if err != nil {
+			return err
+		}
+		r.dtmfWriter = media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, m.RTPPacketWriter, aw)
+		return nil
+	}
+}
+
 func (d *DialogWebrtc) AudioWriter(opts ...AudioWriterWebrtcOption) (io.Writer, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -163,29 +186,18 @@ func (d *DialogWebrtc) SetAudioWriter(w io.Writer) {
 }
 
 // TODO: This would normally be exposed by RTP Session
-func (d *DialogWebrtc) WriteRTCP(pkts []rtcp.Packet) error {
-	return d.peerConnection.WriteRTCP(pkts)
+func (m *DialogWebrtc) WriteRTCP(pkts []rtcp.Packet) error {
+	return m.peerConnection.WriteRTCP(pkts)
 }
 
 func (m *DialogWebrtc) AudioReaderDTMF() (*DTMFReader, error) {
-	ar, err := m.AudioReader()
-	if err != nil {
-		return nil, err
-	}
-	return &DTMFReader{
-		dtmfReader:  media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, m.RTPPacketReader, ar),
-		rtpDeadline: m.mediaSession,
-	}, nil
+	r := &DTMFReader{}
+	return r, WithAudioReaderWebrtcDTMF(r)(m)
 }
 
 func (m *DialogWebrtc) AudioWriterDTMF() (*DTMFWriter, error) {
-	aw, err := m.AudioWriter()
-	if err != nil {
-		return nil, err
-	}
-	return &DTMFWriter{
-		dtmfWriter: media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, m.RTPPacketWriter, aw),
-	}, nil
+	w := &DTMFWriter{}
+	return w, WithAudioWriterWebrtcDTMF(w)(m)
 }
 
 func (m *DialogWebrtc) Echo() error {
