@@ -854,40 +854,33 @@ func (dg *Diago) RegisterTransaction(ctx context.Context, recipient sip.Uri, opt
 func (dg *Diago) createClient(tran Transport) (client *sipgo.Client) {
 	ua := dg.ua
 	// When transport is not binding to specific IP
-	hostIP := tran.bindIP
-	if hostIP != nil {
-		if hostIP.IsUnspecified() && tran.mediaBindIP != nil {
-			hostIP = tran.mediaBindIP
-		}
-	}
-
-	hostname := ""
-	if hostIP != nil && !hostIP.IsUnspecified() {
-		hostname = hostIP.String()
-	}
-
-	bindPort := 0
-	if tran.Transport == "udp" {
-		// Forcing port here makes more problem when listener is not started
-		// ex register and then serve
-		// We check that user started to listen port
-		// ports := ua.TransportLayer().ListenPorts("udp")
-		// if len(ports) > 0 {
-
-		// Checking ports with ListenPorts is racy with ListenAndServe
-		// In case UDP, we want to have this port reused.
-		bindPort = tran.BindPort
-		// }
-	}
 
 	opts := []sipgo.ClientOption{
 		sipgo.WithClientNAT(),
 		sipgo.WithClientLogger(dg.log),
 	}
 
-	// If resolved use specific connection and port
-	if hostname != "" {
-		opts = append(opts, sipgo.WithClientConnectionAddr(net.JoinHostPort(hostname, strconv.Itoa(bindPort))))
+	// UDP is good to be reused
+	// 1. Prefer resolved IP when sending out, as sending as unspecifed makes issue in receiving responses
+	// 2. Use bind port if IP is specified. ISSUE: if ip is unspecified and SIP starts listen on 0.0.0.0:5060, SIPGO will try to use 192.168.1.1:5060 and therefore fail
+	if tran.Transport == "udp" {
+		resolvedIP := tran.bindIP
+		bindPort := tran.BindPort
+		if resolvedIP != nil {
+			if resolvedIP.IsUnspecified() && tran.mediaBindIP != nil {
+				resolvedIP = tran.mediaBindIP
+				bindPort = 0
+			}
+		}
+
+		hostname := ""
+		if resolvedIP != nil && !resolvedIP.IsUnspecified() {
+			hostname = resolvedIP.String()
+		}
+
+		if hostname != "" {
+			opts = append(opts, sipgo.WithClientConnectionAddr(net.JoinHostPort(hostname, strconv.Itoa(bindPort))))
+		}
 	}
 
 	// Are we behind public IP
