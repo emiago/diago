@@ -265,10 +265,10 @@ func (d *DialogClientSession) invite(ctx context.Context, med *DialogMedia, opts
 	}
 
 	if opts.EarlyMediaDetect {
-		return d.waitAnswerEarly(ctx, &d.DialogMedia, ansOpts)
+		return d.waitAnswerEarly(ctx, med, ansOpts)
 	}
 
-	return d.waitAnswer(ctx, &d.DialogMedia, ansOpts)
+	return d.waitAnswer(ctx, med, ansOpts)
 }
 
 // WaitAnswer waits dialog on answer. It should only be used if you have error Invite but still want to continue
