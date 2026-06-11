@@ -107,10 +107,7 @@ func WithAudioReaderWebrtcProps(p *MediaProps) AudioReaderWebrtcOption {
 
 func WithAudioReaderWebrtcDTMF(r *DTMFReader) AudioReaderWebrtcOption {
 	return func(d *DialogWebrtc) error {
-		ar, err := d.AudioReader()
-		if err != nil {
-			return err
-		}
+		ar := d.audioReaderUnsafe()
 		r.dtmfReader = media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, d.RTPPacketReader, ar)
 		r.rtpDeadline = d.mediaSession
 		return nil
@@ -126,12 +123,15 @@ func (d *DialogWebrtc) AudioReader(opts ...AudioReaderWebrtcOption) (io.Reader, 
 			return nil, err
 		}
 	}
+	return d.audioReaderUnsafe(), nil
+}
 
+func (d *DialogWebrtc) audioReaderUnsafe() io.Reader {
 	if d.audioReader != nil {
-		return d.audioReader, nil
+		return d.audioReader
 	}
 
-	return d.RTPPacketReader, nil
+	return d.RTPPacketReader
 }
 
 func (d *DialogWebrtc) SetAudioReader(r io.Reader) {
@@ -153,10 +153,7 @@ func WithAudioWriterWebrtcProps(p *MediaProps) AudioWriterWebrtcOption {
 
 func WithAudioWriterWebrtcDTMF(r *DTMFWriter) AudioWriterWebrtcOption {
 	return func(m *DialogWebrtc) error {
-		aw, err := m.AudioWriter()
-		if err != nil {
-			return err
-		}
+		aw := m.audioWriterUnsafe()
 		r.dtmfWriter = media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, m.RTPPacketWriter, aw)
 		return nil
 	}
@@ -171,12 +168,15 @@ func (d *DialogWebrtc) AudioWriter(opts ...AudioWriterWebrtcOption) (io.Writer, 
 			return nil, err
 		}
 	}
+	return d.audioWriterUnsafe(), nil
+}
 
+func (d *DialogWebrtc) audioWriterUnsafe() io.Writer {
 	if d.audioWriter != nil {
-		return d.audioWriter, nil
+		return d.audioWriter
 	}
 
-	return d.RTPPacketWriter, nil
+	return d.RTPPacketWriter
 }
 
 func (d *DialogWebrtc) SetAudioWriter(w io.Writer) {
