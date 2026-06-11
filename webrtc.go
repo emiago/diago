@@ -56,11 +56,11 @@ func SetWebrtcAPI(a *webrtc.API) {
 
 func webrtcInit(iceIPs []net.IP) error {
 	var err error
-	defaultWebrtcAPI, err = newWebrtcAPI(iceIPs)
+	defaultWebrtcAPI, err = NewWebrtcAPI(iceIPs)
 	return err
 }
 
-func newWebrtcAPI(iceIPs []net.IP) (*webrtc.API, error) {
+func NewWebrtcAPI(iceIPs []net.IP) (*webrtc.API, error) {
 	api := webrtc.NewAPI()
 	return api, func() error {
 		var webrtcMedia = webrtc.MediaEngine{}
