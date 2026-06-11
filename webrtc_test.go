@@ -14,7 +14,7 @@ import (
 )
 
 func TestWebrtcOutgoing(t *testing.T) {
-	webrtcAPI, err := newWebrtcAPI([]net.IP{net.IPv4(127, 0, 0, 1)})
+	webrtcAPI, err := NewWebrtcAPI([]net.IP{net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
 	{
 		ua, _ := sipgo.NewUA()
