@@ -102,22 +102,49 @@ func newWebrtcAPI(iceIPs []net.IP) (*webrtc.API, error) {
 
 		// // // Create an InterceptorRegistry
 		i := &interceptor.Registry{}
-		if (rtpDebug || rtcpDebug) && false {
+		if rtpDebug || rtcpDebug {
 			si, _ := packetdump.NewSenderInterceptor(
-				packetdump.RTPFilter(func(pkt *rtp.Packet) bool {
-					return rtpDebug
-				}),
-				packetdump.RTCPFilter(func(pkt []rtcp.Packet) bool {
-					return rtcpDebug
-				}),
+				packetdump.PacketLog(
+					&packetLogger{
+						rtpDebug:  rtpDebug,
+						rtcpDebug: rtcpDebug,
+						direction: "WebRTC Sent",
+					},
+				),
+				// packetdump.RTPFilter(func(pkt *rtp.Packet) bool {
+				// 	if rtpDebug {
+				// 		fmt.Fprintf(os.Stderr, "=== Sent RTP ===\n%s\n", pkt.String())
+				// 	}
+
+				// 	return true
+				// }),
+				// packetdump.RTCPPerPacketFilter(func(pkt rtcp.Packet) bool {
+				// 	if rtcpDebug {
+				// 		fmt.Fprintf(os.Stderr, "=== Sent RTCP ===\n%s\n", media.StringRTCP(pkt))
+				// 	}
+				// 	return true
+				// }),
 			)
 			ri, _ := packetdump.NewReceiverInterceptor(
-				packetdump.RTPFilter(func(pkt *rtp.Packet) bool {
-					return rtpDebug
-				}),
-				packetdump.RTCPFilter(func(pkt []rtcp.Packet) bool {
-					return rtcpDebug
-				}),
+				packetdump.PacketLog(
+					&packetLogger{
+						rtpDebug:  rtpDebug,
+						rtcpDebug: rtcpDebug,
+						direction: "WebRTC Recv",
+					},
+				),
+				// packetdump.RTPFilter(func(pkt *rtp.Packet) bool {
+				// 	if rtpDebug {
+				// 		fmt.Fprintf(os.Stderr, "=== Recv RTP ===\n%s\n", pkt.String())
+				// 	}
+				// 	return true
+				// }),
+				// packetdump.RTCPPerPacketFilter(func(pkt rtcp.Packet) bool {
+				// 	if rtcpDebug {
+				// 		fmt.Fprintf(os.Stderr, "=== Recv RTCP ===\n%s\n", media.StringRTCP(pkt))
+				// 	}
+				// 	return true
+				// }),
 			)
 			i.Add(si)
 			i.Add(ri)
@@ -151,6 +178,29 @@ func newWebrtcAPI(iceIPs []net.IP) (*webrtc.API, error) {
 		)
 		return nil
 	}()
+}
+
+type packetLogger struct {
+	rtpDebug  bool
+	rtcpDebug bool
+	direction string
+}
+
+func (l *packetLogger) LogRTPPacket(header *rtp.Header, payload []byte, attributes interceptor.Attributes) {
+	if l.rtpDebug {
+		pkt := rtp.Packet{
+			Header:  *header,
+			Payload: payload,
+		}
+		fmt.Fprintf(os.Stderr, "=== %s RTP ===\n%s\n", l.direction, pkt.String())
+	}
+}
+func (l *packetLogger) LogRTCPPackets(pkts []rtcp.Packet, attributes interceptor.Attributes) {
+	if l.rtcpDebug {
+		for _, p := range pkts {
+			fmt.Fprintf(os.Stderr, "=== %s RTP ===\n%s\n", l.direction, media.StringRTCP(p))
+		}
+	}
 }
 
 func logICECandidatePairs(log *slog.Logger, rtpSender *webrtc.RTPSender) {
