@@ -11,7 +11,6 @@ import (
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/google/uuid"
-	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -453,24 +452,10 @@ func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc,
 		log.Debug("Webrtc reading remote RTCP")
 		defer log.Debug("Webrtc reading remote RTCP stopped")
 		rtcpBuf := make([]byte, media.RTPBufSize)
-		pkts := make([]rtcp.Packet, 5)
 		for {
-			n, _, rtcpErr := rtpSender.Read(rtcpBuf)
+			_, _, rtcpErr := rtpSender.Read(rtcpBuf)
 			if rtcpErr != nil {
 				return
-			}
-			// rtpSender.Track().Bind(&webrtc.AudioSenderStats{})
-
-			n, err := media.RTCPUnmarshal(rtcpBuf[:n], pkts)
-			if err != nil {
-				log.Error("Failed to unmarshal RTCP", "error", err)
-				continue
-			}
-
-			if media.RTCPDebug {
-				for _, p := range pkts[:n] {
-					log.Debug(fmt.Sprintf("RTCP write:\n%s", media.StringRTCP(p)))
-				}
 			}
 		}
 	}()
