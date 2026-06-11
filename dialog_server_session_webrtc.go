@@ -9,7 +9,6 @@ import (
 	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/sip"
 	"github.com/google/uuid"
-	"github.com/pion/rtcp"
 	webrtcsdp "github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v3"
 )
@@ -375,23 +374,10 @@ func (d *DialogServerSession) answerWebrtc(m *DialogWebrtc, sdpBody []byte, opts
 		log.Debug("Webrtc reading remote RTCP")
 		defer log.Debug("Webrtc reading remote RTCP stopped")
 		rtcpBuf := make([]byte, media.RTPBufSize)
-		pkts := make([]rtcp.Packet, 5)
 		for {
-			n, _, rtcpErr := rtpSender.Read(rtcpBuf)
+			_, _, rtcpErr := rtpSender.Read(rtcpBuf)
 			if rtcpErr != nil {
 				return
-			}
-
-			n, err := media.RTCPUnmarshal(rtcpBuf[:n], pkts)
-			if err != nil {
-				log.Error("Failed to unmarshal RTCP", "error", err)
-				continue
-			}
-
-			if media.RTCPDebug {
-				for _, p := range pkts[:n] {
-					log.Debug(fmt.Sprintf("RTCP write:\n%s", media.StringRTCP(p)))
-				}
 			}
 		}
 	}()
