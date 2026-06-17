@@ -33,6 +33,11 @@ func rtpUnmarshalPayload(n int, buf []byte, p *rtp.Packet) error {
 	if p.Header.Padding {
 		p.PaddingSize = buf[end-1]
 		end -= int(p.PaddingSize)
+	} else {
+		// Reset to 0 so a stale value from a previous packet (this *rtp.Packet
+		// is reused across reads) does not get subtracted in the downstream
+		// payloadSize calculation, which would truncate the payload. See #140.
+		p.PaddingSize = 0
 	}
 	if end < n {
 		return io.ErrShortBuffer

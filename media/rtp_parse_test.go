@@ -10,7 +10,53 @@ import (
 	"github.com/emiago/sipgo/fakes"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
+	"github.com/stretchr/testify/require"
 )
+
+// TestRTPUnmarshalResetsPaddingSize is a regression test for #140.
+//
+// `rtpUnmarshalPayload` reuses the *rtp.Packet across reads. When a
+// packet with Padding=true was followed by a packet with Padding=false,
+// the second packet's PaddingSize was left stale at the first packet's
+// value, causing the downstream payload-size calculation in
+// rtp_packet_reader.go (and rtp_session.go) to truncate the payload.
+func TestRTPUnmarshalResetsPaddingSize(t *testing.T) {
+	const payloadLen = 160
+	payload := make([]byte, payloadLen)
+	for i := range payload {
+		payload[i] = byte(i)
+	}
+
+	// First packet: Padding=true. Marshal a packet whose padding is
+	// actually present in the wire bytes.
+	paddedPkt := rtp.Packet{
+		Header:  rtp.Header{Version: 2, Padding: true, PayloadType: 8, SequenceNumber: 1, Timestamp: 100, SSRC: 0xDEADBEEF, PaddingSize: 4},
+		Payload: payload,
+	}
+	paddedBuf, err := paddedPkt.Marshal()
+	require.NoError(t, err)
+
+	// Second packet: Padding=false, same SSRC, no padding in wire bytes.
+	cleanPkt := rtp.Packet{
+		Header:  rtp.Header{Version: 2, PayloadType: 8, SequenceNumber: 2, Timestamp: 260, SSRC: 0xDEADBEEF},
+		Payload: payload,
+	}
+	cleanBuf, err := cleanPkt.Marshal()
+	require.NoError(t, err)
+
+	// Reuse the same *rtp.Packet across both reads, exactly as
+	// rtp_packet_reader.go does.
+	pkt := &rtp.Packet{}
+
+	require.NoError(t, RTPUnmarshal(paddedBuf, pkt))
+	require.Equal(t, byte(4), pkt.PaddingSize, "first packet should report its padding size")
+	require.Len(t, pkt.Payload, payloadLen, "first packet payload should match input length")
+
+	require.NoError(t, RTPUnmarshal(cleanBuf, pkt))
+	require.Equal(t, byte(0), pkt.PaddingSize, "PaddingSize must reset when Padding bit is unset (#140)")
+	require.Len(t, pkt.Payload, payloadLen, "second packet's payload must not be truncated by stale PaddingSize")
+	require.Equal(t, payload, pkt.Payload, "second packet payload bytes must match input verbatim")
+}
 
 func BenchmarkRTCPUnmarshal(b *testing.B) {
 	reader, writer := io.Pipe()
