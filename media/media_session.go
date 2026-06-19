@@ -834,8 +834,7 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 		n = len(decrypted)
 
 		// NOTE this is optimiation to avoid double unmarshaling RTP header
-		headerN := pkt.Header.MarshalSize()
-		if err := rtpUnmarshalPayload(headerN, buf, pkt); err != nil {
+		if err := rtpUnmarshalPayload(buf, pkt); err != nil {
 			return n, fmt.Errorf("rtp unmarshal failed: %w", err)
 		}
 	} else {

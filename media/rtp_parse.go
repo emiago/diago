@@ -6,7 +6,6 @@ package media
 import (
 	"errors"
 	"fmt"
-	"io"
 
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
@@ -14,6 +13,7 @@ import (
 
 var (
 	errRTCPFailedToUnmarshal = errors.New("rtcp: failed to unmarshal")
+	errRTPPayloadTooSmall    = errors.New("rtp: payload size is too small")
 )
 
 // RTPUnmarshal wrapper for now used for optimizing unmarshal
@@ -21,34 +21,26 @@ func RTPUnmarshal(buf []byte, p *rtp.Packet) error {
 	return p.Unmarshal(buf)
 }
 
-func rtpUnmarshalPayload(n int, buf []byte, p *rtp.Packet) error {
-	if p.Header.Extension {
-		// For now eliminate it as it holds reference on buffer
-		// TODO fix this
-		p.Header.Extensions = nil
-		p.Header.Extension = false
-	}
+func rtpUnmarshalPayload(buf []byte, p *rtp.Packet) error {
+	n := p.Header.MarshalSize()
 
+	// extracted from pion non header unmarshal
 	end := len(buf)
 	if p.Header.Padding {
-		p.PaddingSize = buf[end-1]
-		end -= int(p.PaddingSize)
+		if end <= n {
+			return errRTPPayloadTooSmall
+		}
+		p.Header.PaddingSize = buf[end-1]
+		end -= int(p.Header.PaddingSize)
+	} else {
+		p.Header.PaddingSize = 0
 	}
+	p.PaddingSize = p.Header.PaddingSize
 	if end < n {
-		return io.ErrShortBuffer
+		return errRTPPayloadTooSmall
 	}
 
-	// If Payload buffer exists try to fill it and allow buffer reusage
-	if p.Payload != nil && len(p.Payload) >= len(buf[n:end]) {
-		copy(p.Payload, buf[n:end])
-		return nil
-	}
-
-	// This creates allocations
-	// Payload should be recreated instead referenced
-	// This allows buf reusage
-	p.Payload = make([]byte, len(buf[n:end]))
-	copy(p.Payload, buf[n:end])
+	p.Payload = buf[n:end]
 	return nil
 }
 
