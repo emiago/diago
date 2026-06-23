@@ -129,7 +129,7 @@ func TestDialogWebrtcServerPlaybackClientReceivesRTP(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond)
 
 	med.mu.Lock()
-	require.NoError(t, med.mediaSession.reader.receiver.SetReadDeadline(time.Now().Add(5*time.Second)))
+	require.NoError(t, med.mediaSession.reader.Receiver.SetReadDeadline(time.Now().Add(5*time.Second)))
 	med.mu.Unlock()
 
 	props := MediaProps{}
@@ -285,7 +285,7 @@ func TestDialogWebrtcServerPlaybackPayloadSurvivesWebrtc(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond)
 
 	med.mu.Lock()
-	require.NoError(t, med.mediaSession.reader.receiver.SetReadDeadline(time.Now().Add(5*time.Second)))
+	require.NoError(t, med.mediaSession.reader.Receiver.SetReadDeadline(time.Now().Add(5*time.Second)))
 	med.mu.Unlock()
 
 	audioR, err := med.AudioReader()
