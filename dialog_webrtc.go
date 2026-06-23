@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/emiago/diago/media"
+	"github.com/emiago/diago/mediawebrtc"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 )
@@ -19,14 +20,14 @@ type webrtcSession struct {
 	Raddr string
 	Codec media.Codec
 
-	writer *WebrtcTrackRTPWriter
-	reader *WebrtcTrackRTPReader
+	writer *mediawebrtc.RTPWriterTrack
+	reader *mediawebrtc.RTPReaderTrack
 }
 
 func (s *webrtcSession) StopRTP(rw int8, dur time.Duration) error {
 	t := time.Now().Add(dur)
 	if rw&1 > 0 {
-		return s.reader.receiver.SetReadDeadline(t)
+		return s.reader.Receiver.SetReadDeadline(t)
 	}
 	if rw&2 > 0 {
 		// if dur == 0 {
@@ -35,18 +36,18 @@ func (s *webrtcSession) StopRTP(rw int8, dur time.Duration) error {
 		return fmt.Errorf("no support for duration based RTP write stop")
 	}
 
-	e1 := s.reader.receiver.SetReadDeadline(t)
+	e1 := s.reader.Receiver.SetReadDeadline(t)
 	// e2 := s.writer.sender.Stop()
 	return e1
 }
 func (s *webrtcSession) StartRTP(rw int8) error {
 	if rw&1 > 0 {
-		return s.reader.receiver.SetReadDeadline(time.Time{})
+		return s.reader.Receiver.SetReadDeadline(time.Time{})
 	}
 	if rw&2 > 0 {
 		return fmt.Errorf("no support to restart writer")
 	}
-	return s.reader.receiver.SetReadDeadline(time.Time{})
+	return s.reader.Receiver.SetReadDeadline(time.Time{})
 }
 
 type DialogWebrtc struct {

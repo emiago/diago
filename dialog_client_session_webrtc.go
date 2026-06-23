@@ -93,7 +93,7 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 		}
 
 		res := sip.NewResponseFromRequest(req, 200, "OK", nil)
-		remoteDirection := webrtcSDPMediaDirection(req.Body())
+		// remoteDirection := webrtcSDPMediaDirection(req.Body())
 
 		err := func(sdp []byte) error {
 			m.mu.Lock()
@@ -118,9 +118,9 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 				return err
 			}
 
-			if err := applyWebrtcRemoteDirection(m.mediaSession.writer, remoteDirection); err != nil {
-				return err
-			}
+			// if err := applyWebrtcRemoteDirection(m.mediaSession.writer, remoteDirection); err != nil {
+			// 	return err
+			// }
 
 			answer, err := m.peerConnection.CreateAnswer(nil)
 			if err != nil {
@@ -241,10 +241,10 @@ func applyWebrtcRemoteCodec(sess *webrtcSession, rtpWriter *media.RTPPacketWrite
 	return nil
 }
 
-func applyWebrtcRemoteDirection(writer *WebrtcTrackRTPWriter, remoteDirection string) error {
-	shouldSend := remoteDirection == mediasdp.ModeSendrecv || remoteDirection == mediasdp.ModeRecvonly || remoteDirection == ""
-	return writer.UpdateDirection(shouldSend)
-}
+// func applyWebrtcRemoteDirection(writer *WebrtcTrackRTPWriter, remoteDirection string) error {
+// 	shouldSend := remoteDirection == mediasdp.ModeSendrecv || remoteDirection == mediasdp.ModeRecvonly || remoteDirection == ""
+// 	return writer.UpdateDirection(shouldSend)
+// }
 
 func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc, opts InviteWebrtcOptions) error {
 	api := defaultWebrtcAPI
@@ -330,7 +330,7 @@ func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc,
 
 	// codec := sess.Codecs[0]
 	codec := media.CodecAudioUlaw
-	codecMimeType, _ := parseCodecMimeType(codec.PayloadType)
+	// codecMimeType, _ := parseCodecMimeType(codec.PayloadType)
 
 	// We are using own packetizer to send or read rtp
 	nilReader := newRTPNilReader()
@@ -342,33 +342,33 @@ func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc,
 	log.Info("Setting rtp packet reader", "codec", m.mediaSession.Codec)
 
 	peerConnection.OnTrack(func(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) { //nolint: revive
-		ioReader := &WebrtcTrackRTPReader{
-			track:    remoteTrack,
-			receiver: receiver,
-		}
+		// ioReader := &WebrtcTrackRTPReader{
+		// 	track:    remoteTrack,
+		// 	receiver: receiver,
+		// }
 
-		readMimeType := ioReader.track.Codec().MimeType
-		log.Debug("Webrtc remote track started", "mime_type", readMimeType)
-		if codecMimeType != ioReader.track.Codec().MimeType {
-			log.Info("Read media codec type received is not expected", "mime_type", readMimeType)
-		}
+		// readMimeType := ioReader.track.Codec().MimeType
+		// log.Debug("Webrtc remote track started", "mime_type", readMimeType)
+		// if codecMimeType != ioReader.track.Codec().MimeType {
+		// 	log.Info("Read media codec type received is not expected", "mime_type", readMimeType)
+		// }
 
-		rtpReader.UpdateReader(ioReader)
-		m.mu.Lock()
-		m.mediaSession.reader = ioReader
-		m.mu.Unlock()
-		nilReader.Close()
+		// rtpReader.UpdateReader(ioReader)
+		// m.mu.Lock()
+		// m.mediaSession.reader = ioReader
+		// m.mu.Unlock()
+		// nilReader.Close()
 	})
 
-	writer := &WebrtcTrackRTPWriter{
-		track:   writeAudioTrack,
-		sender:  rtpSender,
-		enabled: true,
-	}
+	// writer := &WebrtcTrackRTPWriter{
+	// 	track:   writeAudioTrack,
+	// 	sender:  rtpSender,
+	// 	enabled: true,
+	// }
 
 	log.Info("Invite media session setup", "codec", codec.String())
-	rtpWriter := media.NewRTPPacketWriter(writer, codec)
-	m.RTPPacketWriter = rtpWriter
+	// rtpWriter := media.NewRTPPacketWriter(writer, codec)
+	// m.RTPPacketWriter = rtpWriter
 	// d.Media().InitMediaSession(sess, rtpReader, rtpWriter)
 
 	inviteReq := d.InviteRequest
@@ -463,7 +463,7 @@ func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc,
 	logICECandidatePairs(log, rtpSender)
 
 	m.peerConnection = peerConnection
-	m.mediaSession.writer = writer
+	// m.mediaSession.writer = writer
 
 	return nil
 }

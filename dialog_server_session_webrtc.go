@@ -282,22 +282,22 @@ func (d *DialogServerSession) answerWebrtc(m *DialogWebrtc, sdpBody []byte, opts
 		// if newTrackErr != nil {
 		// 	panic(newTrackErr)
 		// }
-		ioReader := &WebrtcTrackRTPReader{
-			track:    remoteTrack,
-			receiver: receiver,
-		}
+		// ioReader := &mediawebrtc.RTPReaderTrack{
+		// 	track:    remoteTrack,
+		// 	receiver: receiver,
+		// }
 
-		readMimeType := ioReader.track.Codec().MimeType
-		log.Debug("Webrtc remote track started", "mime_type", readMimeType)
-		if codecMimeType != ioReader.track.Codec().MimeType {
-			log.Info("Read media codec type received is not expected", "mime_type", readMimeType)
-		}
+		// readMimeType := ioReader.track.Codec().MimeType
+		// log.Debug("Webrtc remote track started", "mime_type", readMimeType)
+		// if codecMimeType != ioReader.track.Codec().MimeType {
+		// 	log.Info("Read media codec type received is not expected", "mime_type", readMimeType)
+		// }
 
-		rtpReader.UpdateReader(ioReader)
-		m.mu.Lock()
-		m.mediaSession.reader = ioReader
-		m.mu.Unlock()
-		nilReader.Close()
+		// rtpReader.UpdateReader(ioReader)
+		// m.mu.Lock()
+		// m.mediaSession.reader = ioReader
+		// m.mu.Unlock()
+		// nilReader.Close()
 		// d.Media().RTPPacketReader
 		// Get what ever is current RTPPacketWriter
 		// Normally this should be already in place
@@ -398,12 +398,12 @@ func (d *DialogServerSession) answerWebrtc(m *DialogWebrtc, sdpBody []byte, opts
 
 	logICECandidatePairs(log, rtpSender)
 
-	writer := &WebrtcTrackRTPWriter{
-		track:   writeAudioTrack,
-		sender:  rtpSender,
-		enabled: true,
-	}
-	rtpWriter := media.NewRTPPacketWriter(writer, codec)
+	// writer := &WebrtcTrackRTPWriter{
+	// 	track:   writeAudioTrack,
+	// 	sender:  rtpSender,
+	// 	enabled: true,
+	// }
+	// rtpWriter := media.NewRTPPacketWriter(writer, codec)
 
 	// Reading from webrtc answer or remoteSD is not possible for bellow. So we are using our fast parser
 	// TODO: Find faster way of reading this information
@@ -413,10 +413,10 @@ func (d *DialogServerSession) answerWebrtc(m *DialogWebrtc, sdpBody []byte, opts
 	sdp.Unmarshal([]byte(sdpBody), &remotesdp)
 
 	m.RTPPacketReader = rtpReader
-	m.RTPPacketWriter = rtpWriter
+	// m.RTPPacketWriter = rtpWriter
 	m.mediaSession.Laddr = sdReadAddress(answersdp)
 	m.mediaSession.Raddr = sdReadAddress(remotesdp)
-	m.mediaSession.writer = writer
+	// m.mediaSession.writer = writer
 	m.peerConnection = peerConnection
 
 	return nil
