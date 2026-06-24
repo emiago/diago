@@ -356,6 +356,18 @@ func WithAudioReaderDTMF(r *DTMFReader) AudioReaderOption {
 	}
 }
 
+func WithAudioReaderPCMMonitor(mon *audio.MonitorPCMReader, w io.Writer) AudioReaderOption {
+	return func(d *DialogMedia) error {
+		codec := media.CodecAudioFromSession(d.mediaSession)
+		if err := mon.Init(w, codec, d.getAudioReader()); err != nil {
+			return err
+		}
+		mon.FlushOnError = true // It will flush on writer stop
+		d.audioReader = mon
+		return nil
+	}
+}
+
 // AudioReader returns io.Reader on which you can read your ENCODED audio.
 // By default it is RTPPacketReader unless overwritten with SetAudioReader().
 //
@@ -422,12 +434,25 @@ func WithAudioWriterRTPStats(hook media.OnRTPWriteStats) AudioWriterOption {
 	}
 }
 
-// WithAudioWriterDTMF creates DTMF interceptor
+// WithAudioWriterDTMF adds DTMF into audio pipeline
 func WithAudioWriterDTMF(r *DTMFWriter) AudioWriterOption {
 	return func(d *DialogMedia) error {
 		r.dtmfWriter = media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, d.RTPPacketWriter, d.getAudioWriter())
 		r.mediaSession = d.mediaSession
 		d.audioWriter = r
+		return nil
+	}
+}
+
+// WithAudioWriterMonitor initializes and adds PCM monitor in audio pipeline. It records and decodes stream into PCM.
+func WithAudioWriterMonitor(mon *audio.MonitorPCMWriter, w io.Writer) AudioWriterOption {
+	return func(d *DialogMedia) error {
+		codec := media.CodecAudioFromSession(d.mediaSession)
+		if err := mon.Init(w, codec, d.getAudioWriter()); err != nil {
+			return err
+		}
+		mon.FlushOnError = true // It will flush on writer stop
+		d.audioWriter = mon
 		return nil
 	}
 }

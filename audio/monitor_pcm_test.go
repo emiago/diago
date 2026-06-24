@@ -60,7 +60,7 @@ func TestMonitorPCMReaderWriter(t *testing.T) {
 		_, err = media.WriteAll(mon, audioAlawBuf[2*160:], 160)
 		require.NoError(t, err)
 
-		mon.Flush()
+		// mon.Flush()
 
 		// 2 Frames, 2 Silence, 2 Frames
 		frameSize := codecR.Samples16()

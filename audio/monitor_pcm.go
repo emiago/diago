@@ -21,10 +21,11 @@ type MonitorPCMReader struct {
 	audioReader io.Reader
 	writer      *bufio.Writer // Lets use Buffered flushing
 
-	codec    media.Codec
-	decoder  PCMDecoderBuffer
-	silence  []byte
-	lastTime time.Time
+	codec        media.Codec
+	decoder      PCMDecoderBuffer
+	silence      []byte
+	lastTime     time.Time
+	FlushOnError bool
 }
 
 func (m *MonitorPCMReader) Init(w io.Writer, codec media.Codec, audioReader io.Reader) error {
@@ -57,6 +58,9 @@ func (m *MonitorPCMReader) StartTime(t time.Time) {
 func (m *MonitorPCMReader) Read(b []byte) (int, error) {
 	n, err := m.audioReader.Read(b)
 	if err != nil {
+		if m.FlushOnError {
+			return n, errors.Join(err, m.Flush())
+		}
 		return n, err
 	}
 	// Check do we need to inject silence
@@ -87,10 +91,11 @@ type MonitorPCMWriter struct {
 	audioWriter io.Writer
 	writer      *bufio.Writer // Lets use Buffered flushing
 
-	codec    media.Codec
-	decoder  PCMDecoderBuffer
-	silence  []byte
-	lastTime time.Time
+	codec        media.Codec
+	decoder      PCMDecoderBuffer
+	silence      []byte
+	lastTime     time.Time
+	FlushOnError bool
 }
 
 func (m *MonitorPCMWriter) Init(w io.Writer, codec media.Codec, audioWriter io.Writer) error {
@@ -131,6 +136,9 @@ func (m *MonitorPCMWriter) Write(b []byte) (int, error) {
 
 	n, err := m.audioWriter.Write(b)
 	if err != nil {
+		if m.FlushOnError {
+			return n, errors.Join(err, m.Flush())
+		}
 		return n, err
 	}
 
