@@ -211,9 +211,9 @@ func TestIntegrationDialogWebrtcClientReinviteMedia(t *testing.T) {
 			}()
 
 			time.Sleep(60 * time.Millisecond)
-			require.NotNil(t, med.peerConnection)
-			require.NotNil(t, med.peerConnection.CurrentLocalDescription())
-			ld := med.peerConnection.CurrentLocalDescription()
+			require.NotNil(t, med.mediaSession.PeerConnection())
+			require.NotNil(t, med.mediaSession.PeerConnection().CurrentLocalDescription())
+			ld := med.mediaSession.PeerConnection().CurrentLocalDescription()
 			lsdp, err := ld.Unmarshal()
 			require.NoError(t, err)
 			lsdp.MediaDescriptions[0].ConnectionInformation.Address.Address = "127.0.0.2"
@@ -240,7 +240,7 @@ func TestIntegrationDialogWebrtcClientReinviteMedia(t *testing.T) {
 
 	med, err := dialog.InviteWebrtc(ctx, InviteWebrtcOptions{
 		OnMediaUpdate: func(d *DialogWebrtc) {
-			fmt.Println("Media update", d.peerConnection.RemoteDescription().SDP)
+			fmt.Println("Media update", d.mediaSession.PeerConnection().RemoteDescription().SDP)
 		},
 		Username: "test",
 		Password: "test",

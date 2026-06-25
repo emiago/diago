@@ -226,38 +226,11 @@ func (d *DialogClientSession) invite(ctx context.Context, med *DialogMedia, opts
 		}
 	}
 
-	dialogCli := d.UA
-	inviteReq.AppendHeader(&dialogCli.ContactHDR)
-	inviteReq.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
-	inviteReq.SetBody(sess.LocalSDP())
-
-	// We allow changing full from header, but we need to make sure it is correctly set
-	// If users specify 'tag' parameter it is assumed that they know what they do
-	if fromHDR := inviteReq.From(); fromHDR != nil && !fromHDR.Params.Has("tag") {
-		fromHDR.Params.Add("tag", sip.GenerateTagN(16))
-	}
-
-	// Build here request
-	client := d.UA.Client
-	if err := sipgo.ClientRequestBuild(client, inviteReq); err != nil {
-		return err
-	}
-
 	// This only gets called after session established
 	med.onMediaUpdate = opts.OnMediaUpdate
 	d.onReferDialog = opts.OnRefer
-	// reuse UDP listener
-	// Problem if listener is unspecified IP sipgo will not map this to listener
-	// Code below only works if our bind host is specified
-	// For now let SIPgo create 1 UDP connection and it will reuse it
-	// via := inviteReq.Via()
-	// if via.Host == "" {
-	// }
-	err := d.DialogClientSession.Invite(ctx, func(c *sipgo.Client, req *sip.Request) error {
-		// Do nothing
-		return nil
-	})
-	if err != nil {
+
+	if err := d.doInvite(ctx, sess.LocalSDP()); err != nil {
 		// sess.Close()
 		return err
 	}
@@ -272,6 +245,39 @@ func (d *DialogClientSession) invite(ctx context.Context, med *DialogMedia, opts
 	}
 
 	return d.waitAnswer(ctx, med, ansOpts)
+}
+
+func (d *DialogClientSession) doInvite(ctx context.Context, sd []byte) error {
+	inviteReq := d.InviteRequest
+
+	// We have to manually do INVITE
+	dialogCli := d.UA
+	inviteReq.AppendHeader(&dialogCli.ContactHDR)
+	inviteReq.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
+	inviteReq.SetBody(sd)
+
+	// We allow changing full from header, but we need to make sure it is correctly set
+	if fromHDR := inviteReq.From(); fromHDR != nil {
+		fromHDR.Params.Add("tag", sip.GenerateTagN(16))
+	}
+
+	// Build here request
+	client := d.UA.Client
+	if err := sipgo.ClientRequestBuild(client, inviteReq); err != nil {
+		return err
+	}
+
+	// This only gets called after session established
+	// d.onMediaUpdate = opts.OnMediaUpdate
+	err := d.DialogClientSession.Invite(ctx, func(c *sipgo.Client, req *sip.Request) error {
+		// Do nothing
+		return nil
+	})
+	if err != nil {
+		// sess.Close()
+		return err
+	}
+	return nil
 }
 
 // WaitAnswer waits dialog on answer. It should only be used if you have error Invite but still want to continue
