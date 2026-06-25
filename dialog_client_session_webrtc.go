@@ -238,35 +238,46 @@ func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc,
 		return err
 	}
 
-	sd, err := sess.LocalSDP(ctx, false)
+	err := func() error {
+		sd, err := sess.LocalSDP(ctx, false)
+		if err != nil {
+			return err
+		}
+
+		if err := d.doInvite(ctx, sd); err != nil {
+			return err
+		}
+
+		if err := d.DialogClientSession.WaitAnswer(ctx, sipgo.AnswerOptions{
+			OnResponse: opts.OnResponse,
+			Username:   opts.Username,
+			Password:   opts.Password,
+		}); err != nil {
+			return err
+		}
+
+		remoteSD := d.InviteResponse.Body()
+		if err := sess.RemoteSDP(ctx, remoteSD, true); err != nil {
+			return err
+		}
+
+		if err := d.Ack(ctx); err != nil {
+			return err
+		}
+
+		if err := sess.Finalize(ctx); err != nil {
+			return err
+		}
+		return nil
+	}()
+
 	if err != nil {
-		return err
+		return errors.Join(err, sess.Close())
 	}
 
-	if err := d.doInvite(ctx, sd); err != nil {
-		return err
-	}
-
-	if err := d.DialogClientSession.WaitAnswer(ctx, sipgo.AnswerOptions{
-		OnResponse: opts.OnResponse,
-		Username:   opts.Username,
-		Password:   opts.Password,
-	}); err != nil {
-		return err
-	}
-
-	remoteSD := d.InviteResponse.Body()
-	if err := sess.RemoteSDP(ctx, remoteSD, true); err != nil {
-		return err
-	}
-
-	if err := d.Ack(ctx); err != nil {
-		return err
-	}
-
-	if err := sess.Finalize(ctx); err != nil {
-		return err
-	}
+	m.OnClose(func() error {
+		return sess.Close()
+	})
 
 	m.mediaSession = sess
 	return nil
