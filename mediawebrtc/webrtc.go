@@ -10,6 +10,7 @@ import (
 	"slices"
 
 	"github.com/emiago/diago/media"
+	"github.com/pion/ice/v2"
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/packetdump"
 	"github.com/pion/rtcp"
@@ -27,21 +28,23 @@ var defaultWebrtcConfig = webrtc.Configuration{
 			URLs: []string{"stun:stun.l.google.com:19302"},
 		},
 	},
-	ICETransportPolicy:    webrtc.ICETransportPolicyAll,
-	BundlePolicy:          webrtc.BundlePolicyMaxBundle,
-	SDPSemantics:          webrtc.SDPSemanticsUnifiedPlanWithFallback,
-	ICECandidatePoolSize:  5,
+	ICETransportPolicy:   webrtc.ICETransportPolicyAll,
+	BundlePolicy:         webrtc.BundlePolicyMaxBundle,
+	SDPSemantics:         webrtc.SDPSemanticsUnifiedPlanWithFallback,
+	ICECandidatePoolSize: 5,
 }
 
 var defaultWebrtcAPI *webrtc.API
 
 type WebrtcAPIConfig struct {
-	Config webrtc.Configuration
-	ICEIPs []net.IP
+	Config       webrtc.Configuration
+	ICEIPs       []net.IP
+	NetworkTypes []webrtc.NetworkType
+	ICETCPMux    ice.TCPMux
 
-	DisableActiveTCP                         *bool
+	DisableActiveTCP                          *bool
 	DisableCertificateFingerprintVerification *bool
-	IncludeLoopbackCandidate                 *bool
+	IncludeLoopbackCandidate                  *bool
 
 	IPFilter       func(net.IP) bool
 	RegisterCodecs func(*webrtc.MediaEngine) error
@@ -85,6 +88,12 @@ func NewWebrtcAPIFromConfig(cfg WebrtcAPIConfig) (*webrtc.API, error) {
 	}
 	if disableActiveTCP {
 		settEng.DisableActiveTCP(true)
+	}
+	if len(cfg.NetworkTypes) > 0 {
+		settEng.SetNetworkTypes(cfg.NetworkTypes)
+	}
+	if cfg.ICETCPMux != nil {
+		settEng.SetICETCPMux(cfg.ICETCPMux)
 	}
 	disableFPVerification := true
 	if cfg.DisableCertificateFingerprintVerification != nil {
