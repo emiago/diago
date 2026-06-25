@@ -11,8 +11,6 @@ import (
 
 	"github.com/emiago/diago/media"
 	"github.com/emiago/diago/mediawebrtc"
-	"github.com/pion/rtcp"
-	"github.com/pion/webrtc/v3"
 )
 
 type webrtcSession struct {
@@ -55,13 +53,10 @@ type DialogWebrtc struct {
 	onClose func() error
 	log     *slog.Logger
 	// peerConnection *webrtc.PeerConnection
-	mediaSession *webrtcSession
+	mediaSession *mediawebrtc.MediaSession
 
 	RTPPacketWriter *media.RTPPacketWriter
 	RTPPacketReader *media.RTPPacketReader
-
-	// webrtc stuff to access
-	peerConnection *webrtc.PeerConnection
 
 	audioReader io.Reader
 	audioWriter io.Writer
@@ -99,7 +94,7 @@ type AudioReaderWebrtcOption func(d *DialogWebrtc) error
 
 func WithAudioReaderWebrtcProps(p *MediaProps) AudioReaderWebrtcOption {
 	return func(d *DialogWebrtc) error {
-		p.Codec = d.mediaSession.Codec
+		p.Codec = d.mediaSession.Codec()
 		p.Laddr = d.mediaSession.Laddr
 		p.Raddr = d.mediaSession.Raddr
 		return nil
@@ -132,7 +127,7 @@ func (d *DialogWebrtc) audioReaderUnsafe() io.Reader {
 		return d.audioReader
 	}
 
-	return d.RTPPacketReader
+	return d.mediaSession.RTPPacketReader
 }
 
 func (d *DialogWebrtc) SetAudioReader(r io.Reader) {
@@ -145,7 +140,7 @@ type AudioWriterWebrtcOption func(d *DialogWebrtc) error
 
 func WithAudioWriterWebrtcProps(p *MediaProps) AudioWriterWebrtcOption {
 	return func(d *DialogWebrtc) error {
-		p.Codec = d.mediaSession.Codec
+		p.Codec = d.mediaSession.Codec()
 		p.Laddr = d.mediaSession.Laddr
 		p.Raddr = d.mediaSession.Raddr
 		return nil
@@ -184,11 +179,6 @@ func (d *DialogWebrtc) SetAudioWriter(w io.Writer) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.audioWriter = w
-}
-
-// TODO: This would normally be exposed by RTP Session
-func (m *DialogWebrtc) WriteRTCP(pkts []rtcp.Packet) error {
-	return m.peerConnection.WriteRTCP(pkts)
 }
 
 func (m *DialogWebrtc) AudioReaderDTMF() (*DTMFReader, error) {
