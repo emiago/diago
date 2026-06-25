@@ -284,7 +284,6 @@ func (m *MediaSession) LocalSDP(ctx context.Context, answered bool) ([]byte, err
 		if err != nil {
 			return err
 		}
-		localSDP = []byte(sd.SDP)
 
 		// Create channel that is blocked until ICE Gathering is complete
 		gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
@@ -298,6 +297,7 @@ func (m *MediaSession) LocalSDP(ctx context.Context, answered bool) ([]byte, err
 		case <-gatherComplete:
 		}
 
+		localSDP = []byte(peerConnection.LocalDescription().SDP)
 		log.Info("Invite media session setup", "codec", m.codec.String())
 		return nil
 	}()
