@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"reflect"
 	"slices"
 
 	"github.com/emiago/diago/media"
@@ -46,6 +47,19 @@ var (
 	defaultWebrtcAPI *webrtc.API
 )
 
+type WebrtcAPIConfig struct {
+	Config webrtc.Configuration
+	ICEIPs []net.IP
+
+	DisableActiveTCP                         *bool
+	DisableCertificateFingerprintVerification *bool
+	IncludeLoopbackCandidate                 *bool
+
+	IPFilter       func(net.IP) bool
+	RegisterCodecs func(*webrtc.MediaEngine) error
+	Interceptors   func() (*interceptor.Registry, error)
+}
+
 func init() {
 	webrtcInit([]net.IP{})
 }
@@ -61,46 +75,76 @@ func webrtcInit(iceIPs []net.IP) error {
 }
 
 func NewWebrtcAPI(iceIPs []net.IP) (*webrtc.API, error) {
+	return NewWebrtcAPIFromConfig(WebrtcAPIConfig{ICEIPs: iceIPs})
+}
+
+func NewWebrtcAPIFromConfig(cfg WebrtcAPIConfig) (*webrtc.API, error) {
+	if !reflect.ValueOf(cfg.Config).IsZero() {
+		defaultWebrtcConfig = cfg.Config
+	}
+
 	api := webrtc.NewAPI()
 	return api, func() error {
 		var webrtcMedia = webrtc.MediaEngine{}
-		if err := webrtcRegisterCodecs(&webrtcMedia); err != nil {
+		registerCodecs := cfg.RegisterCodecs
+		if registerCodecs == nil {
+			registerCodecs = webrtcRegisterCodecs
+		}
+		if err := registerCodecs(&webrtcMedia); err != nil {
 			return err
 		}
+
 		settEng := webrtc.SettingEngine{}
-		// We want UDP
-		settEng.DisableActiveTCP(true)
-		// We do not need to deal with DTLS
-		settEng.DisableCertificateFingerprintVerification(true)
+		disableActiveTCP := true
+		if cfg.DisableActiveTCP != nil {
+			disableActiveTCP = *cfg.DisableActiveTCP
+		}
+		if disableActiveTCP {
+			settEng.DisableActiveTCP(true)
+		}
+		disableFPVerification := true
+		if cfg.DisableCertificateFingerprintVerification != nil {
+			disableFPVerification = *cfg.DisableCertificateFingerprintVerification
+		}
+		if disableFPVerification {
+			settEng.DisableCertificateFingerprintVerification(true)
+		}
 
 		// Use local if only provided as ICEIP
+		iceIPs := cfg.ICEIPs
 		hasLocal := slices.ContainsFunc(iceIPs, func(ip net.IP) bool { return ip.IsLoopback() })
+		if cfg.IncludeLoopbackCandidate != nil {
+			hasLocal = *cfg.IncludeLoopbackCandidate
+		}
 		settEng.SetIncludeLoopbackCandidate(hasLocal)
-		settEng.SetIPFilter(func(i net.IP) bool {
-			if iceIPs == nil {
-				return true
-			}
-			// We should use only Transport IP
-			listensOnIp := true
-			for _, lip := range iceIPs {
-				if lip.IsUnspecified() {
-					// Use all if IP is unspecified
+		ipFilter := cfg.IPFilter
+		if ipFilter == nil {
+			ipFilter = func(i net.IP) bool {
+				if iceIPs == nil {
 					return true
 				}
+				// We should use only Transport IP
+				listensOnIp := true
+				for _, lip := range iceIPs {
+					if lip.IsUnspecified() {
+						// Use all if IP is unspecified
+						return true
+					}
 
-				isIpv6 := lip.To4() == nil
-				isIpv6Int := i.To4() == nil
-				if !(lip.Equal(i) && isIpv6 == isIpv6Int) {
-					listensOnIp = false
+					isIpv6 := lip.To4() == nil
+					isIpv6Int := i.To4() == nil
+					if !(lip.Equal(i) && isIpv6 == isIpv6Int) {
+						listensOnIp = false
+					}
 				}
+				return listensOnIp
 			}
-			return listensOnIp
-		})
+		}
+		settEng.SetIPFilter(ipFilter)
 
 		rtpDebug := os.Getenv("RTP_DEBUG") == "true"
 		rtcpDebug := os.Getenv("RTCP_DEBUG") == "true"
 
-		// // // Create an InterceptorRegistry
 		i := &interceptor.Registry{}
 		if rtpDebug || rtcpDebug {
 			si, _ := packetdump.NewSenderInterceptor(
@@ -111,19 +155,6 @@ func NewWebrtcAPI(iceIPs []net.IP) (*webrtc.API, error) {
 						direction: "WebRTC Sent",
 					},
 				),
-				// packetdump.RTPFilter(func(pkt *rtp.Packet) bool {
-				// 	if rtpDebug {
-				// 		fmt.Fprintf(os.Stderr, "=== Sent RTP ===\n%s\n", pkt.String())
-				// 	}
-
-				// 	return true
-				// }),
-				// packetdump.RTCPPerPacketFilter(func(pkt rtcp.Packet) bool {
-				// 	if rtcpDebug {
-				// 		fmt.Fprintf(os.Stderr, "=== Sent RTCP ===\n%s\n", media.StringRTCP(pkt))
-				// 	}
-				// 	return true
-				// }),
 			)
 			ri, _ := packetdump.NewReceiverInterceptor(
 				packetdump.PacketLog(
@@ -133,43 +164,14 @@ func NewWebrtcAPI(iceIPs []net.IP) (*webrtc.API, error) {
 						direction: "WebRTC Recv",
 					},
 				),
-				// packetdump.RTPFilter(func(pkt *rtp.Packet) bool {
-				// 	if rtpDebug {
-				// 		fmt.Fprintf(os.Stderr, "=== Recv RTP ===\n%s\n", pkt.String())
-				// 	}
-				// 	return true
-				// }),
-				// packetdump.RTCPPerPacketFilter(func(pkt rtcp.Packet) bool {
-				// 	if rtcpDebug {
-				// 		fmt.Fprintf(os.Stderr, "=== Recv RTCP ===\n%s\n", media.StringRTCP(pkt))
-				// 	}
-				// 	return true
-				// }),
 			)
 			i.Add(si)
 			i.Add(ri)
 		}
 
-		// // Register default interceptors
 		if err := webrtc.RegisterDefaultInterceptors(&webrtcMedia, i); err != nil {
 			return err
 		}
-		settEng.DisableActiveTCP(true)
-		// settEng.SetICETimeouts()
-		// settEng.DisableSRTPReplayProtection(true)
-		// settEng.DisableSRTCPReplayProtection(true)
-		// settEng.SetRelayAcceptanceMinWait(1 * time.Millisecond)
-		// settEng.SetSrflxAcceptanceMinWait(1 * time.Millisecond)
-		// settEng.SetPrflxAcceptanceMinWait(1 * time.Millisecond)
-
-		// // defaultSrflxAcceptanceMinWait is the wait time before nominating a srflx candidate
-		// defaultSrflxAcceptanceMinWait = 500 * time.Millisecond
-
-		// // defaultPrflxAcceptanceMinWait is the wait time before nominating a prflx candidate
-		// defaultPrflxAcceptanceMinWait = 1000 * time.Millisecond
-
-		// // defaultRelayAcceptanceMinWait is the wait time before nominating a relay candidate
-		// defaultRelayAcceptanceMinWait = 2000 * time.Millisecond
 
 		api = webrtc.NewAPI(
 			webrtc.WithMediaEngine(&webrtcMedia),

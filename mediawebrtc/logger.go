@@ -20,7 +20,7 @@ func DefaultLogger() *slog.Logger {
 	if defLogger != nil {
 		return defLogger
 	}
-	return slog.Default()
+	return slog.Default().With("caller", "mediawebrtc")
 }
 
 func logICECandidatePairs(log *slog.Logger, rtpSender *webrtc.RTPSender) {
