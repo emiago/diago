@@ -4,13 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 
 	"github.com/emiago/diago/media"
 	mediasdp "github.com/emiago/diago/media/sdp"
+	"github.com/emiago/diago/mediawebrtc"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/google/uuid"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -99,42 +98,21 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 			m.mu.Lock()
 			defer m.mu.Unlock()
 
-			if m.peerConnection == nil {
+			if m.mediaSession == nil {
 				return fmt.Errorf("reinvite called on non initialized media")
 			}
-			if m.mediaSession == nil || m.mediaSession.writer == nil {
-				return fmt.Errorf("reinvite called before webrtc media writer is initialized")
+
+			sess := m.mediaSession.Fork()
+
+			if err := sess.RemoteSDP(context.TODO(), sdp, false); err != nil {
+				return err
 			}
 
-			err := m.peerConnection.SetRemoteDescription(webrtc.SessionDescription{
-				Type: webrtc.SDPTypeOffer,
-				SDP:  string(sdp),
-			})
+			ld, err := sess.LocalSDP(context.TODO(), true)
 			if err != nil {
 				return err
 			}
-
-			if err := applyWebrtcRemoteCodec(m.mediaSession, m.RTPPacketWriter, sdp); err != nil {
-				return err
-			}
-
-			// if err := applyWebrtcRemoteDirection(m.mediaSession.writer, remoteDirection); err != nil {
-			// 	return err
-			// }
-
-			answer, err := m.peerConnection.CreateAnswer(nil)
-			if err != nil {
-				return err
-			}
-
-			gatherComplete := webrtc.GatheringCompletePromise(m.peerConnection)
-			if err := m.peerConnection.SetLocalDescription(answer); err != nil {
-				return err
-			}
-			<-gatherComplete
-
-			ld := m.peerConnection.LocalDescription()
-			res = sip.NewResponseFromRequest(req, 200, "OK", []byte(ld.SDP))
+			res = sip.NewResponseFromRequest(req, 200, "OK", ld)
 			res.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
 			return nil
 		}(req.Body())
@@ -154,9 +132,13 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 		return nil, err
 	}
 
-	if m.mediaSession.Codec.SampleRate == 0 {
+	if m.mediaSession.Codec().SampleRate == 0 {
 		panic("no codec")
 	}
+
+	// Make this faster access for now
+	m.RTPPacketReader = m.mediaSession.RTPPacketReader
+	m.RTPPacketWriter = m.mediaSession.RTPPacketWriter
 
 	return m, nil
 }
@@ -247,160 +229,23 @@ func applyWebrtcRemoteCodec(sess *webrtcSession, rtpWriter *media.RTPPacketWrite
 // }
 
 func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc, opts InviteWebrtcOptions) error {
-	api := defaultWebrtcAPI
-	log := slog.With("peer_connection", uuid.New().String(), "caller", "InviteWebrtc")
-
-	if len(opts.WebrtcConfig.ICEServers) == 0 {
-		opts.WebrtcConfig = defaultWebrtcConfig
+	sess := &mediawebrtc.MediaSession{
+		// Keep the WebRTC media session aligned with the dialog codec config so
+		// later re-INVITEs can negotiate against the same codec set.
+		Codecs: d.mediaConfig.Codecs,
+	}
+	if err := sess.Init(opts.WebrtcConfig); err != nil {
+		return err
 	}
 
-	peerConnection, err := api.NewPeerConnection(opts.WebrtcConfig)
+	sd, err := sess.LocalSDP(ctx, false)
 	if err != nil {
 		return err
 	}
 
-	m.OnClose(func() error {
-		return peerConnection.Close()
-	})
-
-	// Set the handler for ICE connection state
-	// This will notify you when the peer has connected/disconnected
-	// iceConnectedCtx, iceConnectedCancel := context.WithCancel(context.TODO())
-	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		log.Debug("Connection State has changed", "state", connectionState.String())
-
-		if connectionState == webrtc.ICEConnectionStateFailed {
-			if closeErr := peerConnection.Close(); closeErr != nil {
-				fmt.Println("ICE close", err)
-			}
-		}
-
-		// if connectionState == webrtc.ICEConnectionStateConnected {
-		// 	iceConnectedCancel()
-		// }
-	})
-
-	peerConnectedCtx, peerConnectedCancel := context.WithCancel(context.TODO())
-	peerConnection.OnConnectionStateChange(func(connectionState webrtc.PeerConnectionState) {
-		log.Debug("Peer Connection State has changed", "state", connectionState.String())
-		if connectionState == webrtc.PeerConnectionStateConnected {
-			peerConnectedCancel()
-		}
-	})
-
-	// TODO mapping
-	writeAudioTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMU}, "audio", "diago")
-	if err != nil {
+	if err := d.doInvite(ctx, sd); err != nil {
 		return err
 	}
-
-	rtpSender, err := peerConnection.AddTrack(writeAudioTrack)
-	if err != nil {
-		return err
-	}
-
-	// Handling originator media codecs to avoid transcoding!
-	sd, err := peerConnection.CreateOffer(&webrtc.OfferOptions{
-		OfferAnswerOptions: webrtc.OfferAnswerOptions{},
-		ICERestart:         false,
-	})
-	if err != nil {
-		return err
-	}
-
-	// Create channel that is blocked until ICE Gathering is complete
-	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
-	if err = peerConnection.SetLocalDescription(sd); err != nil {
-		return err
-	}
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-gatherComplete:
-	}
-
-	// Now lets build media session from webrtc stack
-	// sess := &media.MediaSession{}
-	// Lets override with sdp
-	// localSDP := peerConnection.LocalDescription().SDP
-	// if err := sess.InitWithSDP([]byte(localSDP)); err != nil {
-	// 	return err
-	// }
-
-	// codec := sess.Codecs[0]
-	codec := media.CodecAudioUlaw
-	// codecMimeType, _ := parseCodecMimeType(codec.PayloadType)
-
-	// We are using own packetizer to send or read rtp
-	nilReader := newRTPNilReader()
-	rtpReader := media.NewRTPPacketReader(nilReader, codec)
-	m.RTPPacketReader = rtpReader
-	m.mediaSession = &webrtcSession{
-		Codec: codec,
-	}
-	log.Info("Setting rtp packet reader", "codec", m.mediaSession.Codec)
-
-	peerConnection.OnTrack(func(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) { //nolint: revive
-		// ioReader := &WebrtcTrackRTPReader{
-		// 	track:    remoteTrack,
-		// 	receiver: receiver,
-		// }
-
-		// readMimeType := ioReader.track.Codec().MimeType
-		// log.Debug("Webrtc remote track started", "mime_type", readMimeType)
-		// if codecMimeType != ioReader.track.Codec().MimeType {
-		// 	log.Info("Read media codec type received is not expected", "mime_type", readMimeType)
-		// }
-
-		// rtpReader.UpdateReader(ioReader)
-		// m.mu.Lock()
-		// m.mediaSession.reader = ioReader
-		// m.mu.Unlock()
-		// nilReader.Close()
-	})
-
-	// writer := &WebrtcTrackRTPWriter{
-	// 	track:   writeAudioTrack,
-	// 	sender:  rtpSender,
-	// 	enabled: true,
-	// }
-
-	log.Info("Invite media session setup", "codec", codec.String())
-	// rtpWriter := media.NewRTPPacketWriter(writer, codec)
-	// m.RTPPacketWriter = rtpWriter
-	// d.Media().InitMediaSession(sess, rtpReader, rtpWriter)
-
-	inviteReq := d.InviteRequest
-
-	// We have to manually do INVITE
-	dialogCli := d.UA
-	inviteReq.AppendHeader(&dialogCli.ContactHDR)
-	inviteReq.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
-	inviteReq.SetBody([]byte(peerConnection.LocalDescription().SDP))
-
-	// We allow changing full from header, but we need to make sure it is correctly set
-	if fromHDR := inviteReq.From(); fromHDR != nil {
-		fromHDR.Params.Add("tag", sip.GenerateTagN(16))
-	}
-
-	// Build here request
-	client := d.UA.Client
-	if err := sipgo.ClientRequestBuild(client, inviteReq); err != nil {
-		return err
-	}
-
-	// This only gets called after session established
-	// d.onMediaUpdate = opts.OnMediaUpdate
-	err = d.DialogClientSession.Invite(ctx, func(c *sipgo.Client, req *sip.Request) error {
-		// Do nothing
-		return nil
-	})
-	if err != nil {
-		// sess.Close()
-		return err
-	}
-	log = log.With("call_id", d.InviteRequest.CallID().Value())
 
 	if err := d.DialogClientSession.WaitAnswer(ctx, sipgo.AnswerOptions{
 		OnResponse: opts.OnResponse,
@@ -410,18 +255,8 @@ func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc,
 		return err
 	}
 
-	// for completness
-	// if err := d.MediaSession().RemoteSDP(d.InviteResponse.Body()); err != nil {
-	// 	return err
-	// }
-
-	// Webrtc
-	sda := webrtc.SessionDescription{
-		Type: webrtc.SDPTypeAnswer,
-		SDP:  string(d.InviteResponse.Body()),
-	}
-
-	if err := peerConnection.SetRemoteDescription(sda); err != nil {
+	remoteSD := d.InviteResponse.Body()
+	if err := sess.RemoteSDP(ctx, remoteSD, true); err != nil {
 		return err
 	}
 
@@ -429,41 +264,10 @@ func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc,
 		return err
 	}
 
-	// log.Debug("Waiting for ICE connected")
-	// select {
-	// case <-ctx.Done():
-	// 	return fmt.Errorf("waiting ICE connected failed: %w", ctx.Err())
-	// case <-iceConnectedCtx.Done():
-	// }
-
-	// This is more required
-	log.Debug("Waiting for peer connection connected")
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("waiting peer connection connected failed: %w", ctx.Err())
-	case <-peerConnectedCtx.Done():
+	if err := sess.Finalize(ctx); err != nil {
+		return err
 	}
 
-	// connStats, _ := peerConnection.GetStats().GetConnectionStats(peerConnection)
-	// Read incoming RTCP packets
-	// Before these packets are returned they are processed by interceptors. For things
-	// like NACK this needs to be called.
-	go func() {
-		log.Debug("Webrtc reading remote RTCP")
-		defer log.Debug("Webrtc reading remote RTCP stopped")
-		rtcpBuf := make([]byte, media.RTPBufSize)
-		for {
-			_, _, rtcpErr := rtpSender.Read(rtcpBuf)
-			if rtcpErr != nil {
-				return
-			}
-		}
-	}()
-
-	logICECandidatePairs(log, rtpSender)
-
-	m.peerConnection = peerConnection
-	// m.mediaSession.writer = writer
-
+	m.mediaSession = sess
 	return nil
 }
