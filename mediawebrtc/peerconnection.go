@@ -128,7 +128,7 @@ func (s *MediaSession) StartRTP(rw int8) error {
 }
 
 func (m *MediaSession) RemoteSDP(ctx context.Context, sdpBody []byte, offered bool) error {
-	log := DefaultLogger().With("peer_connection", uuid.New().String(), "caller", "RemoteSDP")
+	log := DefaultLogger().With("peer_connection", uuid.New().String())
 	peerConnection := m.peerConnection
 	if offered {
 		sda := webrtc.SessionDescription{
@@ -260,7 +260,7 @@ func (m *MediaSession) Finalize(ctx context.Context) error {
 }
 
 func (m *MediaSession) LocalSDP(ctx context.Context, answered bool) ([]byte, error) {
-	log := DefaultLogger().With("peer_connection", uuid.New().String(), "caller", "LocalSDP")
+	log := DefaultLogger().With("peer_connection", uuid.New().String())
 
 	if answered {
 		peerConnection := m.peerConnection
