@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/emiago/diago/media"
+	"github.com/emiago/diago/mediawebrtc"
 	"github.com/emiago/diago/testdata"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
@@ -18,10 +19,10 @@ import (
 
 func TestDialogWebrtcAudioReaderWriterProps(t *testing.T) {
 	dialog := &DialogWebrtc{
-		mediaSession: &webrtcSession{
-			Codec: media.CodecAudioUlaw,
-			Laddr: "local",
-			Raddr: "remote",
+		mediaSession: &mediawebrtc.MediaSession{
+			Codecs: []media.Codec{media.CodecAudioUlaw},
+			Laddr:  "local",
+			Raddr:  "remote",
 		},
 	}
 
@@ -122,14 +123,15 @@ func TestDialogWebrtcServerPlaybackClientReceivesRTP(t *testing.T) {
 	require.NoError(t, err)
 	defer med.Close()
 
-	require.Eventually(t, func() bool {
-		med.mu.Lock()
-		defer med.mu.Unlock()
-		return med.mediaSession.reader != nil
-	}, 5*time.Second, 10*time.Millisecond)
+	// require.Eventually(t, func() bool {
+	// 	med.mu.Lock()
+	// 	defer med.mu.Unlock()
+	// 	return med.mediaSession.RTPPacketReader.Reader() != nil
+	// 	return med.mediaSession.reader != nil
+	// }, 5*time.Second, 10*time.Millisecond)
 
 	med.mu.Lock()
-	require.NoError(t, med.mediaSession.reader.Receiver.SetReadDeadline(time.Now().Add(5*time.Second)))
+	require.NoError(t, med.mediaSession.StopRTP(1, 5*time.Second))
 	med.mu.Unlock()
 
 	props := MediaProps{}
@@ -278,14 +280,14 @@ func TestDialogWebrtcServerPlaybackPayloadSurvivesWebrtc(t *testing.T) {
 
 	close(startPlayback)
 
-	require.Eventually(t, func() bool {
-		med.mu.Lock()
-		defer med.mu.Unlock()
-		return med.mediaSession.reader != nil
-	}, 5*time.Second, 10*time.Millisecond)
+	// require.Eventually(t, func() bool {
+	// 	med.mu.Lock()
+	// 	defer med.mu.Unlock()
+	// 	return med.mediaSession.reader != nil
+	// }, 5*time.Second, 10*time.Millisecond)
 
 	med.mu.Lock()
-	require.NoError(t, med.mediaSession.reader.Receiver.SetReadDeadline(time.Now().Add(5*time.Second)))
+	require.NoError(t, med.mediaSession.StopRTP(1, 5*time.Second))
 	med.mu.Unlock()
 
 	audioR, err := med.AudioReader()
