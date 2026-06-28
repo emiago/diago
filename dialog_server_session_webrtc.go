@@ -100,6 +100,12 @@ func (d *DialogServerSession) AnswerWebrtc(opts AnswerWebrtcOptions) (*DialogWeb
 		opts.Codecs = d.mediaConf.Codecs
 	}
 
+	d.OnState(func(s sip.DialogState) {
+		if s == sip.DialogStateEnded {
+			m.Close()
+		}
+	})
+
 	return m, d.answerWebrtc(m, d.InviteRequest.Body(), opts)
 }
 
