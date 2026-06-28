@@ -100,14 +100,11 @@ func WithTransport(t Transport) DiagoOption {
 
 		if t.ExternalHost == "" {
 			t.ExternalHost = t.BindHost
+			t.ExternalPort = t.BindPort
 			// External host should match media IP
 			if t.mediaBindIP != nil {
 				t.ExternalHost = t.mediaBindIP.String()
 			}
-		}
-
-		if t.ExternalPort == 0 {
-			t.ExternalPort = t.BindPort
 		}
 
 		// Resolve unspecified IP for contact hdr
