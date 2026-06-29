@@ -204,6 +204,7 @@ func (m *MediaSession) RemoteSDP(ctx context.Context, sdpBody []byte, offered bo
 	codec := localCodecs[0]
 	// Create media session so that codecs are used correctly by diago
 	log.Info("Answer media session setup", "codec", codec.String())
+	m.Codecs = localCodecs
 
 	if err := m.setupTracks(log); err != nil {
 		return err
@@ -310,9 +311,14 @@ func (m *MediaSession) PeerConnection() *webrtc.PeerConnection {
 func (m *MediaSession) setupTracks(log *slog.Logger) error {
 	peerConnection := m.peerConnection
 
-	// codec := sess.Codecs[0]
-	codec := media.CodecAudioUlaw
+	if len(m.Codecs) == 0 {
+		return fmt.Errorf("webrtc setup tracks: no codecs configured")
+	}
+	codec := m.Codecs[0]
 	codecMimeType, _ := parseCodecMimeType(codec.PayloadType)
+	// if err != nil {
+	// 	return err
+	// }
 
 	// mess := &media.MediaSession{
 	// 	// Formats: localFormats,
@@ -385,8 +391,7 @@ func (m *MediaSession) setupTracks(log *slog.Logger) error {
 		nilReader.Close()
 	})
 
-	// TODO mapping
-	writeAudioTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMU}, "audio", "diago")
+	writeAudioTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: codecMimeType}, "audio", "diago")
 	if err != nil {
 		return err
 	}
