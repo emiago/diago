@@ -33,7 +33,7 @@ func TestMediaNegotiaton(t *testing.T) {
 	// 		require.Contains(t, err.Error(), "unsupported media description protocol")
 	// 	})
 
-	t.Run("ValidRTPSDP", func(t *testing.T) {
+	t.Run("answererPrefersRemoteOfferOrder", func(t *testing.T) {
 		sd := `v=0
 o=- 3948988145 3948988145 IN IP4 192.168.178.54
 s=Sip Go Media
@@ -74,8 +74,58 @@ a=rtpmap:111 opus/48000/2
 			Mode: "sendrecv",
 		}
 		require.NoError(t, m.Init(webrtc.Configuration{}))
+		require.Empty(t, m.CommonCodecs())
 		err := m.RemoteSDP(ctx, []byte(sd), false)
 		require.NoError(t, err)
+		require.Equal(t, []media.Codec{
+			media.CodecAudioUlaw,
+			media.CodecAudioAlaw,
+		}, m.CommonCodecs())
+		require.Equal(t, media.CodecAudioUlaw, m.Codec())
+	})
+
+	t.Run("offererPrefersRemoteAnswerOrder", func(t *testing.T) {
+		offerer := MediaSession{
+			Codecs: []media.Codec{
+				media.CodecAudioAlaw,
+				media.CodecAudioUlaw,
+				media.CodecAudioOpus,
+				media.CodecTelephoneEvent8000,
+			},
+			Mode: "sendrecv",
+		}
+		require.NoError(t, offerer.Init(webrtc.Configuration{}))
+		defer offerer.Close()
+
+		offer, err := offerer.LocalSDP(ctx, false)
+		require.NoError(t, err)
+		require.Empty(t, offerer.CommonCodecs())
+
+		answerer := MediaSession{
+			Codecs: []media.Codec{
+				media.CodecAudioUlaw,
+				media.CodecAudioAlaw,
+			},
+			Mode: "sendrecv",
+		}
+		require.NoError(t, answerer.Init(webrtc.Configuration{}))
+		defer answerer.Close()
+
+		require.NoError(t, answerer.RemoteSDP(ctx, offer, false))
+		answer, err := answerer.LocalSDP(ctx, true)
+		require.NoError(t, err)
+		require.Equal(t, []media.Codec{
+			media.CodecAudioUlaw,
+			media.CodecAudioAlaw,
+		}, answerer.CommonCodecs())
+		require.Equal(t, media.CodecAudioUlaw, answerer.Codec())
+
+		require.NoError(t, offerer.RemoteSDP(ctx, answer, true))
+		require.Equal(t, []media.Codec{
+			media.CodecAudioUlaw,
+			media.CodecAudioAlaw,
+		}, offerer.CommonCodecs())
+		require.Equal(t, media.CodecAudioUlaw, offerer.Codec())
 	})
 
 	// 	t.Run("SecuredWithoutCrypto", func(t *testing.T) {
