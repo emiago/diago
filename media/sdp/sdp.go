@@ -250,9 +250,12 @@ func nextLine(reader *bytes.Buffer) (line string, err error) {
 	}
 
 	lenline := len(line)
+	if lenline == 1 {
+		return "", nil
+	}
 
 	// Be tolerant for CRLF
-	if line[lenline-2] == '\r' {
+	if lenline > 1 && line[lenline-2] == '\r' {
 		return line[:lenline-2], nil
 	}
 
