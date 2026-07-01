@@ -62,6 +62,10 @@ type DialogWebrtc struct {
 	audioWriter io.Writer
 }
 
+func (d *DialogWebrtc) MediaSession() *mediawebrtc.MediaSession {
+	return d.mediaSession
+}
+
 func (d *DialogWebrtc) OnClose(f func() error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

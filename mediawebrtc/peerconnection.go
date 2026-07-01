@@ -22,7 +22,8 @@ type MediaSession struct {
 	Codecs []media.Codec
 	Mode   string
 
-	codec media.Codec
+	codec        media.Codec
+	filterCodecs []media.Codec
 
 	peerConnection *webrtc.PeerConnection
 	peerConnected  context.Context
@@ -86,6 +87,7 @@ func (m *MediaSession) Fork() *MediaSession {
 		Mode:           m.Mode,
 		Laddr:          m.Laddr,
 		Raddr:          m.Raddr,
+		filterCodecs:   slices.Clone(m.filterCodecs),
 		peerConnection: m.peerConnection,
 	}
 }
@@ -99,6 +101,12 @@ func (m *MediaSession) Close() error {
 
 func (m *MediaSession) Codec() media.Codec {
 	return m.codec
+}
+
+// CommonCodecs returns common codecs if negotiation is finished, that is Local and Remote SDP are exchanged.
+// NOTE: Not thread safe, should be called after negotiation only.
+func (m *MediaSession) CommonCodecs() []media.Codec {
+	return m.filterCodecs
 }
 
 func (s *MediaSession) StopRTP(rw int8, dur time.Duration) error {
@@ -139,6 +147,19 @@ func (m *MediaSession) RemoteSDP(ctx context.Context, sdpBody []byte, offered bo
 		if err := peerConnection.SetRemoteDescription(sda); err != nil {
 			return err
 		}
+		remoteCodecs, err := audioCodecsFromWebrtcSDP(peerConnection.RemoteDescription())
+		if err != nil {
+			return err
+		}
+		localCodecs := commonCodecs(remoteCodecs, m.Codecs)
+		if len(localCodecs) == 0 {
+			return fmt.Errorf("remote has no local codecs support, remote=%v local=%v", remoteCodecs, m.Codecs)
+		}
+		m.Codecs = slices.Clone(localCodecs)
+		m.filterCodecs = slices.Clone(localCodecs)
+		if err := m.setActiveCodec(localCodecs[0]); err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -152,58 +173,22 @@ func (m *MediaSession) RemoteSDP(ctx context.Context, sdpBody []byte, offered bo
 		return fmt.Errorf("failed to set remote description: %w", err)
 	}
 
-	remoteSD, err := peerConnection.RemoteDescription().Unmarshal()
-	if err != nil {
-		return fmt.Errorf("failed to parse remote description: %w", err)
-	}
-
-	if len(remoteSD.MediaDescriptions) == 0 {
-		return fmt.Errorf("no media descriptions found in SDP")
-	}
-
-	attrs := []string{}
-	for _, a := range remoteSD.Attributes {
-		attrs = append(attrs, a.String())
-	}
-
-	var audioMediaDesc *webrtcsdp.MediaDescription
-	for _, md := range remoteSD.MediaDescriptions {
-		if md.MediaName.Media == "audio" {
-			audioMediaDesc = md
-			break
-		}
-	}
-	if audioMediaDesc == nil {
-		return fmt.Errorf("answer webrtc: no audio media description present")
-	}
-
-	remoteFormats := audioMediaDesc.MediaName.Formats
-	remoteCodecs := make([]media.Codec, len(remoteFormats))
-	n, err := media.CodecsFromSDPRead(audioMediaDesc.MediaName.Formats, attrs, remoteCodecs)
+	remoteCodecs, err := audioCodecsFromWebrtcSDP(peerConnection.RemoteDescription())
 	if err != nil {
 		return err
 	}
-	remoteCodecs = remoteCodecs[:n]
 
-	// localFormats := make([]string, 0, len(opts.Formats))
-	localCodecs := make([]media.Codec, 0, len(m.Codecs))
-	// Order local formats based on remote
+	localCodecs := commonCodecs(remoteCodecs, m.Codecs)
 	log.Debug(fmt.Sprintf("Comparing formats remote=%v local=%v", remoteCodecs, m.Codecs))
-	for _, rf := range remoteCodecs {
-		for _, lf := range m.Codecs {
-			if lf == rf {
-				localCodecs = append(localCodecs, lf)
-			}
-		}
-	}
 	if len(localCodecs) == 0 {
-		return fmt.Errorf("remote has no local codecs support, remote=%v local=%v", remoteFormats, m.Codecs)
+		return fmt.Errorf("remote has no local codecs support, remote=%v local=%v", remoteCodecs, m.Codecs)
 	}
 
 	// Now use first to write
 	codec := localCodecs[0]
 	// Create media session so that codecs are used correctly by diago
 	log.Info("Answer media session setup", "codec", codec.String())
+	m.filterCodecs = slices.Clone(localCodecs)
 	m.Codecs = localCodecs
 
 	if err := m.setupTracks(log); err != nil {
@@ -220,6 +205,19 @@ func (m *MediaSession) RemoteSDP(ctx context.Context, sdpBody []byte, offered bo
 
 	// Sets the LocalDescription, and sta
 	if err = peerConnection.SetLocalDescription(answer); err != nil {
+		return err
+	}
+	answerCodecs, err := audioCodecsFromWebrtcSDP(peerConnection.LocalDescription())
+	if err != nil {
+		return err
+	}
+	answerCommonCodecs := commonCodecs(answerCodecs, localCodecs)
+	if len(answerCommonCodecs) == 0 {
+		return fmt.Errorf("answer has no local codecs support, answer=%v local=%v", answerCodecs, localCodecs)
+	}
+	m.Codecs = slices.Clone(answerCommonCodecs)
+	m.filterCodecs = slices.Clone(answerCommonCodecs)
+	if err := m.setActiveCodec(answerCommonCodecs[0]); err != nil {
 		return err
 	}
 
@@ -306,6 +304,86 @@ func (m *MediaSession) LocalSDP(ctx context.Context, answered bool) ([]byte, err
 
 func (m *MediaSession) PeerConnection() *webrtc.PeerConnection {
 	return m.peerConnection
+}
+
+func audioCodecsFromWebrtcSDP(sd *webrtc.SessionDescription) ([]media.Codec, error) {
+	if sd == nil {
+		return nil, fmt.Errorf("missing remote description")
+	}
+
+	remoteSD, err := sd.Unmarshal()
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse remote description: %w", err)
+	}
+
+	if len(remoteSD.MediaDescriptions) == 0 {
+		return nil, fmt.Errorf("no media descriptions found in SDP")
+	}
+
+	var audioMediaDesc *webrtcsdp.MediaDescription
+	for _, md := range remoteSD.MediaDescriptions {
+		if md.MediaName.Media == "audio" {
+			audioMediaDesc = md
+			break
+		}
+	}
+	if audioMediaDesc == nil {
+		return nil, fmt.Errorf("answer webrtc: no audio media description present")
+	}
+
+	attrs := []string{}
+	for _, a := range remoteSD.Attributes {
+		attrs = append(attrs, a.String())
+	}
+	for _, a := range audioMediaDesc.Attributes {
+		attrs = append(attrs, a.String())
+	}
+
+	remoteCodecs := make([]media.Codec, len(audioMediaDesc.MediaName.Formats))
+	n, err := media.CodecsFromSDPRead(audioMediaDesc.MediaName.Formats, attrs, remoteCodecs)
+	if err != nil {
+		return nil, err
+	}
+	return remoteCodecs[:n], nil
+}
+
+func commonCodecs(remoteCodecs, localCodecs []media.Codec) []media.Codec {
+	filtered := make([]media.Codec, 0, len(remoteCodecs))
+	for _, rc := range remoteCodecs {
+		for _, lc := range localCodecs {
+			if lc == rc {
+				filtered = append(filtered, lc)
+				break
+			}
+		}
+	}
+	return filtered
+}
+
+func (m *MediaSession) setActiveCodec(codec media.Codec) error {
+	if m.codec == codec {
+		return nil
+	}
+
+	codecMimeType, err := parseCodecMimeType(codec.PayloadType)
+	if err != nil {
+		return err
+	}
+
+	if m.writer != nil {
+		writeAudioTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: codecMimeType}, "audio", "diago")
+		if err != nil {
+			return err
+		}
+		if err := m.writer.ReplaceTrack(writeAudioTrack); err != nil {
+			return err
+		}
+	}
+	if m.RTPPacketWriter != nil {
+		m.RTPPacketWriter.UpdateWriter(m.writer, codec)
+	}
+	m.codec = codec
+	return nil
 }
 
 func (m *MediaSession) setupTracks(log *slog.Logger) error {
