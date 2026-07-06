@@ -45,17 +45,18 @@ func main() {
 	// err = dg.ServeBackground(ctx, func(d *DialogServerSession) {})
 	// require.NoError(t, err)
 
-	d, err := dg.Invite(ctx, sip.Uri{User: "11", Host: "127.0.0.1", Port: 16443}, diago.InviteOptions{Transport: "tcp"})
+	d, med, err := dg.Invite(ctx, sip.Uri{User: "11", Host: "127.0.0.1", Port: 16443}, diago.InviteOptions{Transport: "tcp"})
 	if err != nil {
 		panic(err)
 	}
 	defer d.Close()
+	defer med.Close()
 	defer d.Hangup(d.Context())
 
 	ulaw := make([]byte, 160)
 
-	r, _ := d.AudioReader()
-	w, _ := d.AudioWriter()
+	r, _ := med.AudioReader()
+	w, _ := med.AudioWriter()
 	time.Sleep(1 * time.Second)
 
 	go func() {

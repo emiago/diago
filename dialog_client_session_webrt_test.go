@@ -93,6 +93,7 @@ func TestDialogClientSessionWebrtc(t *testing.T) {
 			Transport: "tcp",
 		})
 		require.NoError(t, err)
+		defer dialog.Close()
 
 		// Hanguped
 		med, err := dialog.InviteWebrtc(context.TODO(), InviteWebrtcOptions{})
@@ -114,7 +115,7 @@ func TestDialogClientSessionWebrtc(t *testing.T) {
 		ports := phone.server.TransportLayer().ListenPorts("udp")
 		require.Len(t, ports, 1)
 		// Hanguped
-		dialog, err := phone.Invite(context.TODO(), sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
+		dialog, _, err := phone.Invite(context.TODO(), sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
 		require.NoError(t, err)
 		<-dialog.Context().Done()
 		assert.Equal(t, dialog.InviteRequest.Via().Port, dialog.InviteRequest.Contact().Address.Port)
@@ -127,11 +128,11 @@ func TestDialogClientSessionWebrtc(t *testing.T) {
 		phone := newWebrtcDialer(ua)
 
 		/* // Forbiddden
-		_, err = phone.Invite(context.TODO(), sip.Uri{User: "noroute", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
+		_, _, err = phone.Invite(context.TODO(), sip.Uri{User: "noroute", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
 		require.Error(t, err)
 
 		// Hanguped
-		dialog, err := phone.Invite(context.TODO(), sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
+		dialog, _, err := phone.Invite(context.TODO(), sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
 		require.NoError(t, err)
 		<-dialog.Context().Done() */
 
@@ -201,7 +202,6 @@ func TestIntegrationDialogWebrtcClientReinviteMedia(t *testing.T) {
 			}
 			defer med.Close()
 
-			// ar, _ := d.AudioReader()
 			ar := med.RTPPacketReader
 			ctx, cancel := context.WithCancel(context.Background())
 			go func() {
@@ -245,8 +245,8 @@ func TestIntegrationDialogWebrtcClientReinviteMedia(t *testing.T) {
 		Username: "test",
 		Password: "test",
 	})
-	defer med.Close()
 	require.NoError(t, err)
+	defer med.Close()
 	err = dialog.Ack(ctx)
 	require.NoError(t, err)
 

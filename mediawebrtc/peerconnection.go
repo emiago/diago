@@ -100,7 +100,14 @@ func (m *MediaSession) Close() error {
 }
 
 func (m *MediaSession) Codec() media.Codec {
+	if m.codec.SampleRate == 0 && len(m.Codecs) > 0 {
+		return m.Codecs[0]
+	}
 	return m.codec
+}
+
+func (m *MediaSession) RTPReaderReady() bool {
+	return m.reader != nil
 }
 
 // CommonCodecs returns common codecs if negotiation is finished, that is Local and Remote SDP are exchanged.
@@ -112,6 +119,9 @@ func (m *MediaSession) CommonCodecs() []media.Codec {
 func (s *MediaSession) StopRTP(rw int8, dur time.Duration) error {
 	t := time.Now().Add(dur)
 	if rw&1 > 0 {
+		if s.reader == nil || s.reader.Receiver == nil {
+			return fmt.Errorf("rtp reader is not initialized")
+		}
 		return s.reader.Receiver.SetReadDeadline(t)
 	}
 	if rw&2 > 0 {
@@ -121,16 +131,25 @@ func (s *MediaSession) StopRTP(rw int8, dur time.Duration) error {
 		return fmt.Errorf("no support for duration based RTP write stop")
 	}
 
+	if s.reader == nil || s.reader.Receiver == nil {
+		return fmt.Errorf("rtp reader is not initialized")
+	}
 	e1 := s.reader.Receiver.SetReadDeadline(t)
 	// e2 := s.writer.sender.Stop()
 	return e1
 }
 func (s *MediaSession) StartRTP(rw int8) error {
 	if rw&1 > 0 {
+		if s.reader == nil || s.reader.Receiver == nil {
+			return fmt.Errorf("rtp reader is not initialized")
+		}
 		return s.reader.Receiver.SetReadDeadline(time.Time{})
 	}
 	if rw&2 > 0 {
 		return fmt.Errorf("no support to restart writer")
+	}
+	if s.reader == nil || s.reader.Receiver == nil {
+		return fmt.Errorf("rtp reader is not initialized")
 	}
 	return s.reader.Receiver.SetReadDeadline(time.Time{})
 }
