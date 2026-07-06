@@ -36,13 +36,13 @@ func newDiagoClientTest(ua *sipgo.UserAgent, onRequest func(req *sip.Request) *s
 	return NewDiago(ua, WithClient(client))
 }
 
-func dialogEcho(sess DialogSession) error {
-	audioR, err := sess.Media().AudioReader()
+func dialogEcho(med *DialogMedia) error {
+	audioR, err := med.AudioReader()
 	if err != nil {
 		return err
 	}
 
-	audioW, err := sess.Media().AudioWriter()
+	audioW, err := med.AudioWriter()
 	if err != nil {
 		return err
 	}
@@ -72,16 +72,21 @@ func TestIntegrationDialogClient(t *testing.T) {
 		if d.ToUser() == "alice" {
 			d.Trying()
 			d.Ringing()
-			d.Answer()
+			med, err := d.Answer(AnswerOptions{})
+			if err != nil {
+				t.Log("Failed to answer", "error", err)
+				return
+			}
+			defer med.Close()
 
-			dialogEcho(d)
+			dialogEcho(med)
 			<-d.Context().Done()
 			return
 		}
 
 		if d.ToUser() == "hanguper" {
 			d.Trying()
-			d.Answer()
+			_, _ = d.Answer(AnswerOptions{})
 			d.Hangup(d.Context())
 			return
 		}
@@ -100,8 +105,10 @@ func TestIntegrationDialogClient(t *testing.T) {
 		// Has no listener just UAC. Contact will hold empheral port
 		phone := newDialer(ua)
 		// Hanguped
-		dialog, err := phone.Invite(context.TODO(), sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
+		dialog, med, err := phone.Invite(context.TODO(), sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
 		require.NoError(t, err)
+		defer dialog.Close()
+		defer med.Close()
 		<-dialog.Context().Done()
 	})
 
@@ -118,8 +125,10 @@ func TestIntegrationDialogClient(t *testing.T) {
 		ports := phone.server.TransportLayer().ListenPorts("udp")
 		require.Len(t, ports, 1)
 		// Hanguped
-		dialog, err := phone.Invite(context.TODO(), sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
+		dialog, med, err := phone.Invite(context.TODO(), sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
 		require.NoError(t, err)
+		defer dialog.Close()
+		defer med.Close()
 		<-dialog.Context().Done()
 		assert.Equal(t, dialog.InviteRequest.Via().Port, dialog.InviteRequest.Contact().Address.Port)
 	})
@@ -136,24 +145,27 @@ func TestIntegrationDialogClient(t *testing.T) {
 		phone.server.TransportLayer().ListenPorts("udp")
 
 		// Forbiddden
-		_, err = phone.Invite(context.TODO(), sip.Uri{User: "noroute", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
+		_, _, err = phone.Invite(context.TODO(), sip.Uri{User: "noroute", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
 		require.Error(t, err)
 
 		// Hanguped
-		dialog, err := phone.Invite(context.TODO(), sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
+		dialog, med, err := phone.Invite(context.TODO(), sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
 		require.NoError(t, err)
+		defer dialog.Close()
+		defer med.Close()
 		<-dialog.Context().Done()
 
 		// Answered call
-		dialog, err = phone.Invite(context.TODO(), sip.Uri{User: "alice", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
+		dialog, med, err = phone.Invite(context.TODO(), sip.Uri{User: "alice", Host: "127.0.0.1", Port: 5060}, InviteOptions{})
 		require.NoError(t, err)
 		defer dialog.Close()
+		defer med.Close()
 
 		// Confirm media traveling
-		audioR, err := dialog.AudioReader()
+		audioR, err := med.AudioReader()
 		require.NoError(t, err)
 
-		audioW, err := dialog.AudioWriter()
+		audioW, err := med.AudioWriter()
 		require.NoError(t, err)
 
 		writeN, _ := audioW.Write([]byte("my audio"))
@@ -195,7 +207,7 @@ func TestIntegrationDialogClientCancel(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		_, err := dg.Invite(ctx, sip.Uri{User: "test", Host: "127.0.0.1", Port: port}, InviteOptions{
+		_, _, err := dg.Invite(ctx, sip.Uri{User: "test", Host: "127.0.0.1", Port: port}, InviteOptions{
 			OnResponse: func(res *sip.Response) error {
 				if res.StatusCode == sip.StatusRinging {
 					cancel()
@@ -241,19 +253,21 @@ func TestIntegrationDialogClientEarlyMedia(t *testing.T) {
 			}
 
 			d.Trying()
-			if err := d.ProgressMedia(); err != nil {
+			med, err := d.ProgressMedia(ProgressMediaOptions{})
+			if err != nil {
 				t.Log("Failed to progress media", err)
 				return
 			}
+			defer med.Close()
 
 			// Write frame
-			w, _ := d.AudioWriter()
+			w, _ := med.AudioWriter()
 			if _, err := w.Write(bytes.Repeat([]byte{0, 100}, 80)); err != nil {
 				t.Log("Failed to write frame", err)
 				return
 			}
 
-			if err := d.Answer(); err != nil {
+			if _, err := d.Answer(AnswerOptions{}); err != nil {
 				t.Log("Failed to answer", err)
 				return
 			}
@@ -273,15 +287,16 @@ func TestIntegrationDialogClientEarlyMedia(t *testing.T) {
 	require.NoError(t, err)
 	defer dialog.Close()
 
-	err = dialog.Invite(ctx, InviteClientOptions{
+	med, err := dialog.Invite(ctx, InviteClientOptions{
 		EarlyMediaDetect: true,
 		Username:         "test",
 		Password:         "test123",
 	})
 	require.ErrorIs(t, err, ErrClientEarlyMedia)
+	defer med.Close()
 
 	// Now we should be able to read media
-	r, err := dialog.AudioReader()
+	r, err := med.AudioReader()
 	require.NoError(t, err)
 
 	// Read early media in background
@@ -333,7 +348,7 @@ func TestIntegrationDialogClientReinvite(t *testing.T) {
 	err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
 	require.NoError(t, err)
 
-	dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15060}, InviteOptions{})
+	dialog, _, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15060}, InviteOptions{})
 	require.NoError(t, err)
 
 	err = dialog.ReInvite(ctx)
@@ -374,7 +389,7 @@ func TestIntegrationDialogClientReinviteKeepAlive(t *testing.T) {
 	err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
 	require.NoError(t, err)
 
-	dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15066}, InviteOptions{})
+	dialog, _, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15066}, InviteOptions{})
 	require.NoError(t, err)
 
 	// Update now with full media
@@ -413,12 +428,13 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 				return
 			}
 
-			d.AnswerOptions(AnswerOptions{OnMediaUpdate: func(d *DialogMedia) {
+			med, err := d.Answer(AnswerOptions{OnMediaUpdate: func(d *DialogMedia) {
 				// fmt.Println("Server media update", d)
 			}})
+			require.NoError(t, err)
+			defer med.Close()
 
-			// ar, _ := d.AudioReader()
-			ar := d.RTPPacketReader
+			ar := med.RTPPacketReader
 			ctx, cancel := context.WithCancel(context.Background())
 			go func() {
 				defer cancel()
@@ -427,8 +443,7 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 			}()
 
 			time.Sleep(60 * time.Millisecond)
-			var err error
-			ms := d.MediaSession().Fork()
+			ms := med.MediaSession().Fork()
 			ms.Laddr = net.UDPAddr{IP: net.IPv4(127, 0, 0, 2), Port: 39999}
 			err = ms.Init() // This will start new listener
 			require.NoError(t, err)
@@ -451,7 +466,7 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 	// require.NoError(t, err)
 	dialog, err := dg.NewDialog(sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15079}, NewDialogOptions{})
 	require.NoError(t, err)
-	err = dialog.Invite(ctx, InviteClientOptions{
+	med, err := dialog.Invite(ctx, InviteClientOptions{
 		OnMediaUpdate: func(d *DialogMedia) {
 			fmt.Println("Media update", d)
 		},
@@ -459,11 +474,12 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 		Password: "test",
 	})
 	require.NoError(t, err)
+	defer med.Close()
 	err = dialog.Ack(ctx)
 	require.NoError(t, err)
 
 	require.NoError(t, err)
-	pb, _ := dialog.PlaybackCreate()
+	pb, _ := med.PlaybackCreate()
 	_, err = pb.Play(bytes.NewBuffer(beep), "audio/pcm")
 	require.NoError(t, err)
 
@@ -535,7 +551,7 @@ func TestIntegrationDialogClientBadMediaNegotiation(t *testing.T) {
 
 		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
 			t.Log("Call received")
-			if err := d.Answer(); err != nil {
+			if _, err := d.Answer(AnswerOptions{}); err != nil {
 				t.Log("Error on answer", err)
 				return
 			}
@@ -558,7 +574,7 @@ func TestIntegrationDialogClientBadMediaNegotiation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Media negotiaton should fail and call should be terminated
-	_, err = dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15060}, InviteOptions{
+	_, _, err = dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15060}, InviteOptions{
 		OnResponse: func(res *sip.Response) error {
 			// Fake Bad SDP
 			res.SetBody([]byte("Bad SDP"))
@@ -602,7 +618,7 @@ func TestIntegrationDialogClientRefer(t *testing.T) {
 			t.Log("Call received")
 			d.AnswerOptions(AnswerOptions{
 				OnRefer: func(referDialog *DialogClientSession) error {
-					if err := referDialog.Invite(referDialog.Context(), InviteClientOptions{}); err != nil {
+					if _, err := referDialog.Invite(referDialog.Context(), InviteClientOptions{}); err != nil {
 						return err
 					}
 					if err := referDialog.Ack(ctx); err != nil {
@@ -641,7 +657,7 @@ func TestIntegrationDialogClientRefer(t *testing.T) {
 				d.Ringing()
 				return
 			default:
-				d.Answer()
+				_, _ = d.Answer(AnswerOptions{})
 			}
 
 			<-d.Context().Done()
@@ -664,7 +680,7 @@ func TestIntegrationDialogClientRefer(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("Succesfull", func(t *testing.T) {
-		d, err := dg.Invite(ctx, sip.Uri{Host: "127.0.0.1", Port: 15071}, InviteOptions{})
+		d, _, err := dg.Invite(ctx, sip.Uri{Host: "127.0.0.1", Port: 15071}, InviteOptions{})
 		require.NoError(t, err)
 		defer d.Close()
 		defer d.Hangup(d.Context())
@@ -682,7 +698,7 @@ func TestIntegrationDialogClientRefer(t *testing.T) {
 	})
 
 	t.Run("UnreachableRefer", func(t *testing.T) {
-		d, err := dg.Invite(ctx, sip.Uri{Host: "127.0.0.1", Port: 15071}, InviteOptions{})
+		d, _, err := dg.Invite(ctx, sip.Uri{Host: "127.0.0.1", Port: 15071}, InviteOptions{})
 		require.NoError(t, err)
 		defer d.Close()
 		defer d.Hangup(d.Context())
@@ -700,7 +716,7 @@ func TestIntegrationDialogClientRefer(t *testing.T) {
 	})
 
 	t.Run("BusyRefer", func(t *testing.T) {
-		d, err := dg.Invite(ctx, sip.Uri{Host: "127.0.0.1", Port: 15071}, InviteOptions{})
+		d, _, err := dg.Invite(ctx, sip.Uri{Host: "127.0.0.1", Port: 15071}, InviteOptions{})
 		require.NoError(t, err)
 		defer d.Close()
 		defer d.Hangup(d.Context())

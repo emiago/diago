@@ -64,7 +64,7 @@ func TestIntegrationDialogServerEarlyMedia(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		dialog, err := dialer.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15010}, InviteOptions{
+		dialog, med, err := dialer.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15010}, InviteOptions{
 			OnResponse: func(res *sip.Response) error {
 				t.Log("Received resp", res.StatusCode)
 				allResponses = append(allResponses, *res.Clone())
@@ -76,31 +76,34 @@ func TestIntegrationDialogServerEarlyMedia(t *testing.T) {
 			return
 		}
 		defer dialog.Close()
+		defer med.Close()
 		<-dialog.Context().Done()
 		t.Log("Dialog done")
 	}()
 
 	d := <-waitDialog
 
-	err = d.ProgressMedia()
+	earlyMed, err := d.ProgressMedia(ProgressMediaOptions{})
 	require.NoError(t, err)
+	defer earlyMed.Close()
 
 	// It is valid to also send 180
 	time.Sleep(500 * time.Millisecond)
 	require.NoError(t, d.Ringing())
 
 	// We can play some file ringtone
-	playback, err := d.PlaybackCreate()
+	playback, err := earlyMed.PlaybackCreate()
 	require.NoError(t, err)
 	_, err = playback.PlayFile("testdata/files/demo-echodone.wav")
 	require.NoError(t, err)
 
 	// We can now answer
-	err = d.Answer()
+	answerMed, err := d.Answer(AnswerOptions{})
 	require.NoError(t, err)
+	defer answerMed.Close()
 
 	// New playback is needed to follow new media session
-	playback, err = d.PlaybackCreate()
+	playback, err = answerMed.PlaybackCreate()
 	require.NoError(t, err)
 	_, err = playback.PlayFile("testdata/files/demo-echodone.wav")
 	require.NoError(t, err)
@@ -134,7 +137,7 @@ func TestIntegrationDialogServerReinvite(t *testing.T) {
 		require.NoError(t, err)
 
 		go func() {
-			dialog, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15060}, InviteOptions{})
+			dialog, _, err := dg.Invite(ctx, sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15060}, InviteOptions{})
 			require.NoError(t, err)
 			<-dialog.Context().Done()
 			t.Log("Dialog done")
@@ -161,7 +164,7 @@ func TestIntegrationDialogServerReinvite(t *testing.T) {
 	require.NoError(t, err)
 	d := <-waitDialog
 
-	err = d.Answer()
+	_, err = d.Answer(AnswerOptions{})
 	require.NoError(t, err)
 	err = d.ReInvite(d.Context())
 	require.NoError(t, err)
@@ -270,10 +273,10 @@ func TestIntegrationDialogServerRefer(t *testing.T) {
 		require.NoError(t, err)
 
 		go func() {
-			err := dialog.Invite(ctx, InviteClientOptions{
+			_, err := dialog.Invite(ctx, InviteClientOptions{
 				OnRefer: func(referDialog *DialogClientSession) error {
 					// referDialog.
-					if err := referDialog.Invite(ctx, InviteClientOptions{}); err != nil {
+					if _, err := referDialog.Invite(ctx, InviteClientOptions{}); err != nil {
 						return err
 					}
 					if err := referDialog.Ack(ctx); err != nil {
@@ -316,7 +319,7 @@ func TestIntegrationDialogServerRefer(t *testing.T) {
 				d.Ringing()
 				return
 			default:
-				d.Answer()
+				_, _ = d.Answer(AnswerOptions{})
 			}
 
 			<-d.Context().Done()
@@ -348,7 +351,7 @@ func TestIntegrationDialogServerRefer(t *testing.T) {
 		d := <-waitDialog
 		defer d.Hangup(ctx)
 
-		err = d.Answer()
+		_, err = d.Answer(AnswerOptions{})
 		require.NoError(t, err)
 
 		referState := make(chan int)
@@ -368,7 +371,7 @@ func TestIntegrationDialogServerRefer(t *testing.T) {
 		d := <-waitDialog
 		defer d.Hangup(ctx)
 
-		err = d.Answer()
+		_, err = d.Answer(AnswerOptions{})
 		require.NoError(t, err)
 
 		referState := make(chan int)
@@ -388,7 +391,7 @@ func TestIntegrationDialogServerRefer(t *testing.T) {
 		d := <-waitDialog
 		defer d.Hangup(ctx)
 
-		err = d.Answer()
+		_, err = d.Answer(AnswerOptions{})
 		require.NoError(t, err)
 
 		referState := make(chan int)
@@ -406,27 +409,28 @@ func TestIntegrationDialogServerRefer(t *testing.T) {
 
 func TestIntegrationDialogServerPlayback(t *testing.T) {
 	rtpBuf := newRTPWriterBuffer()
-	dialog := &DialogServerSession{
-		DialogMedia: DialogMedia{
-			mediaSession:    &media.MediaSession{Codecs: []media.Codec{media.CodecAudioUlaw}},
-			RTPPacketWriter: media.NewRTPPacketWriter(rtpBuf, media.CodecAudioUlaw),
-		},
+	med := &DialogMedia{
+		mediaSession:    &media.MediaSession{Codecs: []media.Codec{media.CodecAudioUlaw}},
+		RTPPacketWriter: media.NewRTPPacketWriter(rtpBuf, media.CodecAudioUlaw),
 	}
+	// dialog := &DialogServerSession{
+	// 	media: med,
+	// }
 
-	playback, err := dialog.PlaybackCreate()
+	playback, err := med.PlaybackCreate()
 	require.NoError(t, err)
 
-	initTS := dialog.RTPPacketWriter.InitTimestamp()
+	initTS := med.RTPPacketWriter.InitTimestamp()
 	_, err = playback.PlayFile("testdata/files/demo-echodone.wav")
 	require.NoError(t, err)
-	diffTS := dialog.RTPPacketWriter.PacketHeader.Timestamp - initTS
+	diffTS := med.RTPPacketWriter.PacketHeader.Timestamp - initTS
 	assert.Greater(t, diffTS, uint32(1000))
 
 	time.Sleep(100 * time.Millisecond) // 4 frames
-	initTS = dialog.RTPPacketWriter.InitTimestamp()
+	initTS = med.RTPPacketWriter.InitTimestamp()
 	_, err = playback.PlayFile("testdata/files/demo-echodone.wav")
 	require.NoError(t, err)
-	diffTS2 := dialog.RTPPacketWriter.PacketHeader.Timestamp - initTS
+	diffTS2 := med.RTPPacketWriter.PacketHeader.Timestamp - initTS
 	t.Log(initTS, diffTS2)
 
 	// Timestamp should be offset more than previous diff by Sleep

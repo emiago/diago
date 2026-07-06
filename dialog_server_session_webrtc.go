@@ -11,69 +11,6 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-// TODO: This should replace current one
-func (d *DialogServerSession) AnswerV2(opt AnswerOptions) (*DialogMedia, error) {
-	d.mu.Lock()
-	d.onReferDialog = opt.OnRefer
-	d.onMediaUpdate = opt.OnMediaUpdate
-	d.mu.Unlock()
-
-	m := &DialogMedia{}
-	conf := d.mediaConf
-	conf.update(opt.Codecs, opt.RTPNAT)
-	if err := m.initMediaSessionFromConf(conf); err != nil {
-		return nil, err
-	}
-	rtpSess := media.NewRTPSession(m.mediaSession)
-	return m, d.answerSession(rtpSess)
-}
-
-// TODO Change answerOptions because codecs or RTPNAT makes no sense here
-func (d *DialogServerSession) AnswerV2EarlyMedia(m *DialogMedia, opt AnswerOptions) error {
-	d.mu.Lock()
-	d.onReferDialog = opt.OnRefer
-	d.onMediaUpdate = opt.OnMediaUpdate
-	d.mu.Unlock()
-
-	if err := d.RespondSDP(d.mediaSession.LocalSDP()); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (d *DialogServerSession) ProgressMediaV2(opts ProgressMediaOptions) (*DialogMedia, error) {
-	codecs := opts.Codecs
-	rtpNAT := opts.RTPNAT
-
-	conf := d.mediaConf
-	// Let override of formats
-	if codecs != nil {
-		conf.Codecs = codecs
-	}
-	conf.rtpNAT = rtpNAT
-
-	med := &DialogMedia{}
-
-	err := func() error {
-		if err := med.initMediaSessionFromConf(conf); err != nil {
-			return err
-		}
-
-		rtpSess := media.NewRTPSession(med.mediaSession)
-		if err := med.setupRTPSession(d.InviteRequest.Body(), rtpSess); err != nil {
-			return err
-		}
-
-		headers := []sip.Header{sip.NewHeader("Content-Type", "application/sdp")}
-		body := rtpSess.Sess.LocalSDP()
-		if err := d.DialogServerSession.Respond(183, "Session Progress", body, headers...); err != nil {
-			return err
-		}
-		return rtpSess.MonitorBackground()
-	}()
-	return med, err
-}
-
 type AnswerWebrtcOptions struct {
 	// OnMediaUpdate triggers when media update happens. It is blocking func, so make sure you exit
 	OnMediaUpdate func(d *DialogMedia)

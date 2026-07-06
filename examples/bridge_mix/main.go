@@ -59,9 +59,11 @@ func BridgeCall(d *diago.Diago, inDialog *diago.DialogServerSession) error {
 
 	inCtx := inDialog.Context()
 
-	if err := inDialog.Answer(); err != nil {
+	med, err := inDialog.Answer(diago.AnswerOptions{})
+	if err != nil {
 		return err
 	}
+	defer med.Close()
 	if err := bridge.AddDialogSession(inDialog); err != nil {
 		return err
 	}

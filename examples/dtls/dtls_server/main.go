@@ -45,12 +45,14 @@ func main() {
 
 	err := dg.Serve(ctx, func(d *diago.DialogServerSession) {
 		d.Trying()
-		if err := d.Answer(); err != nil {
+		med, err := d.Answer(diago.AnswerOptions{})
+		if err != nil {
 			panic(err)
 		}
+		defer med.Close()
 
 		slog.Info("Starting echo")
-		err := d.Echo()
+		err = med.Echo()
 		slog.Info("Echo finished with", "error", err)
 
 	})

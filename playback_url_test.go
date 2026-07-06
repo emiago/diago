@@ -49,9 +49,14 @@ func TestIntegrationPlaybackURL(t *testing.T) {
 		defer wg.Done()
 		in.Trying()
 		in.Ringing()
-		in.Answer()
+		med, err := in.Answer(AnswerOptions{})
+		if err != nil {
+			errServer = errors.Join(errServer, err)
+			return
+		}
+		defer med.Close()
 		t.Log("Playing url ", urlStr)
-		pb, _ := in.PlaybackCreate()
+		pb, _ := med.PlaybackCreate()
 		if _, err := pb.PlayURL(urlStr); err != nil {
 			errServer = errors.Join(errServer, err)
 		}
@@ -73,11 +78,12 @@ func TestIntegrationPlaybackURL(t *testing.T) {
 		err := phone.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
 		require.NoError(t, err)
 
-		dialog, err := phone.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 15060}, InviteOptions{})
+		dialog, med, err := phone.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 15060}, InviteOptions{})
 		require.NoError(t, err)
 		defer dialog.Close()
+		defer med.Close()
 
-		rtpReader := dialog.RTPPacketReader
+		rtpReader := med.RTPPacketReader
 
 		go func() {
 			defer dialog.Close()

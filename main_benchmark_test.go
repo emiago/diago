@@ -65,13 +65,14 @@ func BenchmarkIntegrationClientServer(t *testing.B) {
 
 		ctx := d.Context()
 
-		err := d.Answer()
+		med, err := d.Answer(AnswerOptions{})
 		if err != nil {
 			t.Log(err.Error())
 			return
 		}
+		defer med.Close()
 
-		pb, err := d.PlaybackCreate()
+		pb, err := med.PlaybackCreate()
 		if err != nil {
 			t.Log(err.Error())
 			return
@@ -132,21 +133,23 @@ func BenchmarkIntegrationClientServer(t *testing.B) {
 						maxInvitesPerSec <- struct{}{}
 					}
 					dialCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					dialog, err := phone.Invite(dialCtx, sip.Uri{Host: tran.BindHost, Port: tran.BindPort, User: "dialer"}, InviteOptions{})
+					dialog, med, err := phone.Invite(dialCtx, sip.Uri{Host: tran.BindHost, Port: tran.BindPort, User: "dialer"}, InviteOptions{})
 					cancel()
 
 					require.NoError(t, err)
+					defer dialog.Close()
+					defer med.Close()
 
 					mediapkts := 0
 					outoforder := 0
-					audioReader, _ := dialog.AudioReader()
+					audioReader, _ := med.AudioReader()
 					wg.Add(1)
 					go func() {
 						defer wg.Done()
 
 						buf := make([]byte, media.RTPBufSize)
 						var prevSeq uint16
-						reader := dialog.RTPPacketReader
+						reader := med.RTPPacketReader
 						for {
 							_, err := audioReader.Read(buf)
 							// _, err := reader.ReadRTP(buf, &p)

@@ -123,16 +123,13 @@ func TestDialogWebrtcServerPlaybackClientReceivesRTP(t *testing.T) {
 	require.NoError(t, err)
 	defer med.Close()
 
-	// require.Eventually(t, func() bool {
-	// 	med.mu.Lock()
-	// 	defer med.mu.Unlock()
-	// 	return med.mediaSession.RTPPacketReader.Reader() != nil
-	// 	return med.mediaSession.reader != nil
-	// }, 5*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool {
+		med.mu.Lock()
+		defer med.mu.Unlock()
+		return med.mediaSession.RTPReaderReady()
+	}, 5*time.Second, 10*time.Millisecond)
 
-	med.mu.Lock()
 	require.NoError(t, med.mediaSession.StopRTP(1, 5*time.Second))
-	med.mu.Unlock()
 
 	props := MediaProps{}
 	audioR, err := med.AudioReader(WithAudioReaderWebrtcProps(&props))
@@ -280,15 +277,13 @@ func TestDialogWebrtcServerPlaybackPayloadSurvivesWebrtc(t *testing.T) {
 
 	close(startPlayback)
 
-	// require.Eventually(t, func() bool {
-	// 	med.mu.Lock()
-	// 	defer med.mu.Unlock()
-	// 	return med.mediaSession.reader != nil
-	// }, 5*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool {
+		med.mu.Lock()
+		defer med.mu.Unlock()
+		return med.mediaSession.RTPReaderReady()
+	}, 5*time.Second, 10*time.Millisecond)
 
-	med.mu.Lock()
 	require.NoError(t, med.mediaSession.StopRTP(1, 5*time.Second))
-	med.mu.Unlock()
 
 	audioR, err := med.AudioReader()
 	require.NoError(t, err)

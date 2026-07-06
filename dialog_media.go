@@ -68,12 +68,6 @@ type DialogMedia struct {
 	audioReader io.Reader
 	audioWriter io.Writer
 
-	// remoteContactTarget is actual target changed caused by incomign or outgoing REINVITE
-	// We do not use sipgo as this needs mutex but also keeping original invite
-	remoteContactTarget *sip.ContactHeader
-
-	onReferNotify func(statusCode int)
-
 	onClose       func() error
 	onMediaUpdate func(*DialogMedia)
 
@@ -217,7 +211,6 @@ func (d *DialogMedia) setupRTPSession(sdp []byte, rtpSess *media.RTPSession) err
 func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransaction, contactHDR sip.Header) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.remoteContactTarget = req.Contact().Clone()
 
 	// When body is not present this can mean client is doing keep alive
 	// Still offer needs to be responded

@@ -10,6 +10,7 @@ import (
 	"math/rand/v2"
 	mrand "math/rand/v2"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -25,13 +26,15 @@ type OnReferDialogFunc func(referDialog *DialogClientSession) error
 type DialogServerSession struct {
 	*sipgo.DialogServerSession
 
-	// MediaSession *media.MediaSession
-	DialogMedia
-
 	onReferDialog OnReferDialogFunc
 
 	mediaConf MediaConfig
-	closed    atomic.Uint32
+	media     *DialogMedia
+	// remoteContactTarget is actual target changed caused by incoming or outgoing REINVITE.
+	remoteContactTarget *sip.ContactHeader
+	onReferNotify       func(statusCode int)
+	mu                  sync.Mutex
+	closed              atomic.Uint32
 }
 
 func (d *DialogServerSession) Id() string {
@@ -45,11 +48,22 @@ func (d *DialogServerSession) Close() error {
 
 	// TODO: remove this closing
 	var e1 error
-	if d.DialogMedia.mediaSession != nil {
-		e1 = d.DialogMedia.Close()
+	if d.media != nil {
+		e1 = d.media.Close()
 	}
 	e2 := d.DialogServerSession.Close()
 	return errors.Join(e1, e2)
+}
+
+func (d *DialogServerSession) Media() *DialogMedia {
+	return d.media
+}
+
+func (d *DialogServerSession) InitMediaSession(m *media.MediaSession, r *media.RTPPacketReader, w *media.RTPPacketWriter) {
+	if d.media == nil {
+		d.media = &DialogMedia{}
+	}
+	d.media.InitMediaSession(m, r, w)
 }
 
 func (d *DialogServerSession) FromUser() string {
@@ -79,10 +93,6 @@ func (d *DialogServerSession) Progress() error {
 // ProgressMedia sends 183 Session Progress and creates early media
 //
 // Experimental: Naming of API might change
-func (d *DialogServerSession) ProgressMedia() error {
-	return d.ProgressMediaOptions(ProgressMediaOptions{})
-}
-
 type ProgressMediaOptions struct {
 	// Codecs that will be used
 	Codecs []media.Codec
@@ -91,18 +101,54 @@ type ProgressMediaOptions struct {
 	RTPNAT int
 }
 
+func (d *DialogServerSession) ProgressMedia(opts ProgressMediaOptions) (*DialogMedia, error) {
+	codecs := opts.Codecs
+	rtpNAT := opts.RTPNAT
+
+	conf := d.mediaConf
+	// Let override of formats
+	if codecs != nil {
+		conf.Codecs = codecs
+	}
+	conf.rtpNAT = rtpNAT
+
+	med := &DialogMedia{}
+	d.media = med
+
+	err := func() error {
+		if err := med.initMediaSessionFromConf(conf); err != nil {
+			return err
+		}
+
+		rtpSess := media.NewRTPSession(med.mediaSession)
+		if err := med.setupRTPSession(d.InviteRequest.Body(), rtpSess); err != nil {
+			return err
+		}
+
+		headers := []sip.Header{sip.NewHeader("Content-Type", "application/sdp")}
+		body := rtpSess.Sess.LocalSDP()
+		if err := d.DialogServerSession.Respond(183, "Session Progress", body, headers...); err != nil {
+			return err
+		}
+		return rtpSess.MonitorBackground()
+	}()
+	return med, err
+}
+
 func (d *DialogServerSession) ProgressMediaOptions(opt ProgressMediaOptions) error {
 	d.updateMediaConf(opt.Codecs, opt.RTPNAT)
-	if err := d.initMediaSessionFromConf(d.mediaConf); err != nil {
+	med := &DialogMedia{}
+	d.media = med
+	if err := med.initMediaSessionFromConf(d.mediaConf); err != nil {
 		return err
 	}
-	rtpSess := media.NewRTPSession(d.mediaSession)
+	rtpSess := media.NewRTPSession(med.mediaSession)
 	sdp := d.InviteRequest.Body()
 	if sdp == nil {
 		return fmt.Errorf("no sdp present in INVITE")
 	}
 
-	if err := d.DialogMedia.setupRTPSession(sdp, rtpSess); err != nil {
+	if err := med.setupRTPSession(sdp, rtpSess); err != nil {
 		return err
 	}
 
@@ -126,10 +172,7 @@ func (d *DialogServerSession) RemoteContact() *sip.ContactHeader {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	if d.remoteContactTarget != nil {
-		return d.remoteContactTarget
-	}
-	return d.InviteRequest.Contact()
+	return d.remoteContactUnsafe()
 }
 
 func (d *DialogServerSession) RespondSDP(body []byte) error {
@@ -140,24 +183,6 @@ func (d *DialogServerSession) RespondSDP(body []byte) error {
 // Answer creates media session and answers
 // After this new AudioReader and AudioWriter are created for audio manipulation
 // NOTE: Not final API
-func (d *DialogServerSession) Answer() error {
-	// Media Exists as early
-	if d.mediaSession != nil {
-		// This will now block until ACK received with 64*T1 as max.
-		if err := d.RespondSDP(d.mediaSession.LocalSDP()); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	if err := d.initMediaSessionFromConf(d.mediaConf); err != nil {
-		return err
-	}
-
-	rtpSess := media.NewRTPSession(d.mediaSession)
-	return d.answerSession(rtpSess)
-}
-
 type AnswerOptions struct {
 	// OnMediaUpdate triggers when media update happens. It is blocking func, so make sure you exit
 	OnMediaUpdate func(d *DialogMedia)
@@ -177,6 +202,43 @@ type AnswerOptions struct {
 	RTPNAT int
 }
 
+// Answer creates media session and answers.
+// After this new AudioReader and AudioWriter are created for audio manipulation.
+func (d *DialogServerSession) Answer(opt AnswerOptions) (*DialogMedia, error) {
+	d.mu.Lock()
+	d.onReferDialog = opt.OnRefer
+	d.mu.Unlock()
+
+	if d.media != nil && d.media.mediaSession != nil {
+		med := d.media
+		return med, d.AnswerEarlyMedia(med, opt)
+	}
+
+	m := &DialogMedia{}
+	m.onMediaUpdate = opt.OnMediaUpdate
+	d.media = m
+	conf := d.mediaConf
+	conf.update(opt.Codecs, opt.RTPNAT)
+	if err := m.initMediaSessionFromConf(conf); err != nil {
+		return nil, err
+	}
+	rtpSess := media.NewRTPSession(m.mediaSession)
+	return m, d.answerSession(m, rtpSess)
+}
+
+// TODO Change answerOptions because codecs or RTPNAT makes no sense here
+func (d *DialogServerSession) AnswerEarlyMedia(m *DialogMedia, opt AnswerOptions) error {
+	d.mu.Lock()
+	d.onReferDialog = opt.OnRefer
+	d.mu.Unlock()
+	m.onMediaUpdate = opt.OnMediaUpdate
+
+	if err := d.RespondSDP(m.mediaSession.LocalSDP()); err != nil {
+		return err
+	}
+	return nil
+}
+
 // AnswerOptions allows to answer dialog with options
 // Experimental
 //
@@ -184,24 +246,26 @@ type AnswerOptions struct {
 func (d *DialogServerSession) AnswerOptions(opt AnswerOptions) error {
 	d.mu.Lock()
 	d.onReferDialog = opt.OnRefer
-	d.onMediaUpdate = opt.OnMediaUpdate
 	d.mu.Unlock()
 
 	// If media exists as early, only respond 200
-	if d.mediaSession != nil {
+	if d.media != nil && d.media.mediaSession != nil {
 		// Check do codecs match
-		if err := d.RespondSDP(d.mediaSession.LocalSDP()); err != nil {
+		if err := d.RespondSDP(d.media.mediaSession.LocalSDP()); err != nil {
 			return err
 		}
 		return nil
 	}
 
 	d.updateMediaConf(opt.Codecs, opt.RTPNAT)
-	if err := d.initMediaSessionFromConf(d.mediaConf); err != nil {
+	m := &DialogMedia{}
+	m.onMediaUpdate = opt.OnMediaUpdate
+	d.media = m
+	if err := m.initMediaSessionFromConf(d.mediaConf); err != nil {
 		return err
 	}
-	rtpSess := media.NewRTPSession(d.mediaSession)
-	return d.answerSession(rtpSess)
+	rtpSess := media.NewRTPSession(m.mediaSession)
+	return d.answerSession(m, rtpSess)
 }
 
 func (d *DialogServerSession) updateMediaConf(codecs []media.Codec, rtpNAT int) {
@@ -215,7 +279,7 @@ func (d *DialogServerSession) updateMediaConf(codecs []media.Codec, rtpNAT int) 
 
 // answerSession. It allows answering with custom RTP Session.
 // NOTE: Not final API
-func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
+func (d *DialogServerSession) answerSession(med *DialogMedia, rtpSess *media.RTPSession) error {
 	// TODO: Use setupRTPSession
 	sess := rtpSess.Sess
 	sdp := d.InviteRequest.Body()
@@ -228,7 +292,7 @@ func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
 	}
 
 	d.mu.Lock()
-	d.initRTPSessionUnsafe(sess, rtpSess)
+	med.initRTPSessionUnsafe(sess, rtpSess)
 	// Close RTP session
 	// d.onCloseUnsafe(func() error {
 	// 	return rtpSess.Close()
@@ -251,37 +315,42 @@ func (d *DialogServerSession) answerSession(rtpSess *media.RTPSession) error {
 }
 
 // AnswerLate does answer with Late offer.
-func (d *DialogServerSession) AnswerLate() error {
-	if err := d.initMediaSessionFromConf(d.mediaConf); err != nil {
-		return err
+func (d *DialogServerSession) AnswerLate() (*DialogMedia, error) {
+	m := &DialogMedia{}
+	d.media = m
+	if err := m.initMediaSessionFromConf(d.mediaConf); err != nil {
+		return nil, err
 	}
-	sess := d.mediaSession
+	sess := m.mediaSession
 	rtpSess := media.NewRTPSession(sess)
 	localSDP := sess.LocalSDP()
 
-	d.mu.Lock()
-	d.initRTPSessionUnsafe(sess, rtpSess)
+	m.mu.Lock()
+	m.initRTPSessionUnsafe(sess, rtpSess)
 	// Close RTP session
 	// d.onCloseUnsafe(func() error {
 	// 	return rtpSess.Close()
 	// })
-	d.mu.Unlock()
+	m.mu.Unlock()
 
 	// This will now block until ACK received with 64*T1 as max.
 	// How to let caller to cancel this?
 	if err := d.RespondSDP(localSDP); err != nil {
-		return err
+		return nil, err
 	}
 	// Must be called after media and reader writer is setup
-	return rtpSess.MonitorBackground()
+	return m, rtpSess.MonitorBackground()
 }
 
 func (d *DialogServerSession) ReadAck(req *sip.Request, tx sip.ServerTransaction) error {
 	// Check do we have some session
 	err := func() error {
-		d.mu.Lock()
-		defer d.mu.Unlock()
-		sess := d.mediaSession
+		if d.media == nil {
+			return nil
+		}
+		d.media.mu.Lock()
+		defer d.media.mu.Unlock()
+		sess := d.media.mediaSession
 		if sess == nil {
 			return nil
 		}
@@ -320,7 +389,10 @@ func (d *DialogServerSession) Hangup(ctx context.Context) error {
 }
 
 func (d *DialogServerSession) ReInvite(ctx context.Context) error {
-	sdp := d.mediaSession.LocalSDP()
+	if d.media == nil {
+		return fmt.Errorf("dialog media is not initialized")
+	}
+	sdp := d.media.mediaSession.LocalSDP()
 	contact := d.RemoteContact()
 	req := sip.NewRequest(sip.INVITE, contact.Address)
 	req.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
@@ -352,6 +424,9 @@ func (d *DialogServerSession) reInviteMediaSession(ctx context.Context, ms *medi
 	sdp := ms.LocalSDP()
 
 	// NOTE: we do not change original invite request
+	if d.media == nil {
+		return fmt.Errorf("dialog media is not initialized")
+	}
 	d.mu.Lock()
 	contact := d.remoteContactUnsafe()
 	d.mu.Unlock()
@@ -368,14 +443,16 @@ func (d *DialogServerSession) reInviteMediaSession(ctx context.Context, ms *medi
 	// Save new remote target contact and update media
 	return func() error {
 		d.mu.Lock()
-		defer d.mu.Unlock()
 		d.remoteContactTarget = res.Contact()
+		d.mu.Unlock()
 
 		remoteSDP := res.Body()
 		if err := ms.RemoteSDP(remoteSDP); err != nil {
 			return fmt.Errorf("sdp update media remote SDP applying failed: %w", err)
 		}
-		return d.mediaUpdateUnsafe(ms)
+		d.media.mu.Lock()
+		defer d.media.mu.Unlock()
+		return d.media.mediaUpdateUnsafe(ms)
 	}()
 }
 
@@ -508,6 +585,9 @@ type ReferServerOptions struct {
 }
 
 func (d *DialogServerSession) ReferOptions(ctx context.Context, referTo sip.Uri, opts ReferServerOptions) error {
+	if d.media == nil {
+		return fmt.Errorf("dialog media is not initialized")
+	}
 	d.mu.Lock()
 	cont := d.remoteContactUnsafe()
 	if opts.OnNotify != nil {
@@ -518,7 +598,10 @@ func (d *DialogServerSession) ReferOptions(ctx context.Context, referTo sip.Uri,
 }
 
 func (d *DialogServerSession) handleReferNotify(req *sip.Request, tx sip.ServerTransaction) {
-	dialogHandleReferNotify(d, req, tx)
+	d.mu.Lock()
+	onReferNotify := d.onReferNotify
+	d.mu.Unlock()
+	dialogHandleReferNotify(d, req, tx, onReferNotify)
 }
 
 func (d *DialogServerSession) handleRefer(dg *Diago, req *sip.Request, tx sip.ServerTransaction) {
@@ -560,7 +643,13 @@ func (d *DialogServerSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, err.Error(), nil))
 	}
 
-	return d.handleMediaUpdate(req, tx, d.InviteResponse.Contact())
+	if d.media == nil {
+		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
+	}
+	d.mu.Lock()
+	d.remoteContactTarget = req.Contact().Clone()
+	d.mu.Unlock()
+	return d.media.handleMediaUpdate(req, tx, d.InviteResponse.Contact())
 }
 
 func (d *DialogServerSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTransaction) error {
@@ -581,7 +670,10 @@ func (d *DialogServerSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTra
 }
 
 func (d *DialogServerSession) Hold(ctx context.Context) error {
-	m := d.MediaSession().Fork()
+	if d.media == nil {
+		return fmt.Errorf("dialog media is not initialized")
+	}
+	m := d.media.MediaSession().Fork()
 	m.Mode = sdp.ModeSendonly
 	if err := d.reInviteMediaSession(ctx, m); err != nil {
 		return err
@@ -590,7 +682,10 @@ func (d *DialogServerSession) Hold(ctx context.Context) error {
 }
 
 func (d *DialogServerSession) Unhold(ctx context.Context) error {
-	m := d.MediaSession().Fork()
+	if d.media == nil {
+		return fmt.Errorf("dialog media is not initialized")
+	}
+	m := d.media.MediaSession().Fork()
 	m.Mode = sdp.ModeSendrecv
 	if err := d.reInviteMediaSession(ctx, m); err != nil {
 		return err

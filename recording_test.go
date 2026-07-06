@@ -18,21 +18,19 @@ func TestIntegrationRecordingStereoWav(t *testing.T) {
 	require.NoError(t, err)
 	encodedAudio := bytes.Repeat(alawFrame, 4)
 
-	dialog := &DialogServerSession{
-		DialogMedia: DialogMedia{
-			mediaSession: &media.MediaSession{Codecs: []media.Codec{media.CodecAudioUlaw}},
-			// audioReader:  bytes.NewBuffer(make([]byte, 9999)),
-			audioReader:     bytes.NewBuffer(encodedAudio),
-			audioWriter:     bytes.NewBuffer([]byte{}),
-			RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioUlaw),
-		},
+	med := &DialogMedia{
+		mediaSession: &media.MediaSession{Codecs: []media.Codec{media.CodecAudioUlaw}},
+		// audioReader:  bytes.NewBuffer(make([]byte, 9999)),
+		audioReader:     bytes.NewBuffer(encodedAudio),
+		audioWriter:     bytes.NewBuffer([]byte{}),
+		RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioUlaw),
 	}
 
 	recordFile, err := os.OpenFile("/tmp/diago_test_record_stereo.wav", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0755)
 	require.NoError(t, err)
 	defer recordFile.Close()
 
-	rec, err := dialog.AudioStereoRecordingCreate(recordFile)
+	rec, err := med.AudioStereoRecordingCreate(recordFile)
 	require.NoError(t, err)
 
 	media.ReadAll(rec.AudioReader(), 160)

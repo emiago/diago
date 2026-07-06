@@ -75,7 +75,7 @@ func TestDiagoInviteCallerID(t *testing.T) {
 			return sip.NewResponseFromRequest(req, 200, "OK", nil)
 		})
 
-		_, err := dg.Invite(context.Background(), sip.Uri{User: "alice", Host: "localhost"}, InviteOptions{})
+		_, _, err := dg.Invite(context.Background(), sip.Uri{User: "alice", Host: "localhost"}, InviteOptions{})
 		if assert.Error(t, err) {
 			assert.Equal(t, "no SDP in response", err.Error())
 		}
@@ -193,7 +193,7 @@ func TestDiagoNewDialog(t *testing.T) {
 	// 	require.NoError(t, err)
 	// 	defer dialog.Close()
 
-	// 	err = dialog.Invite(ctx, InviteOptions{})
+	// 	_, err = dialog.Invite(ctx, InviteOptions{})
 	// 	require.NoError(t, err)
 
 	// 	dialog.Audio
@@ -204,7 +204,7 @@ func TestDiagoNewDialog(t *testing.T) {
 		require.NoError(t, err)
 		defer dialog.Close()
 
-		err = dialog.Invite(ctx, InviteClientOptions{})
+		_, err = dialog.Invite(ctx, InviteClientOptions{})
 		require.NoError(t, err)
 		assert.NotEmpty(t, dialog.ID)
 
@@ -214,7 +214,7 @@ func TestDiagoNewDialog(t *testing.T) {
 		// assert.NotEmpty(t, dialog.ID)
 	})
 
-	// _, err := dg.Invite(context.Background(), sip.Uri{User: "alice", Host: "localhost"}, InviteOptions{})
+	// _, _, err := dg.Invite(context.Background(), sip.Uri{User: "alice", Host: "localhost"}, InviteOptions{})
 	// if assert.Error(t, err) {
 	// 	assert.Equal(t, "no SDP in response", err.Error())
 	// }
@@ -274,11 +274,13 @@ func TestIntegrationDiagoCallWithCustomCodecs(t *testing.T) {
 
 		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
 			d.Trying()
-			if err := d.Answer(); err != nil {
+			med, err := d.Answer(AnswerOptions{})
+			if err != nil {
 				panic(err)
 			}
+			defer med.Close()
 
-			err := d.Echo()
+			err = med.Echo()
 			slog.Info("Echo finished with", "error", err)
 
 		})
@@ -301,13 +303,14 @@ func TestIntegrationDiagoCallWithCustomCodecs(t *testing.T) {
 			},
 		))
 
-	d, err := dg.Invite(ctx, sip.Uri{User: "11", Host: "127.0.0.1", Port: 15066}, InviteOptions{Transport: "tcp"})
+	_, med, err := dg.Invite(ctx, sip.Uri{User: "11", Host: "127.0.0.1", Port: 15066}, InviteOptions{Transport: "tcp"})
 	require.NoError(t, err)
+	defer med.Close()
 
 	l16Audio := bytes.Repeat([]byte{0, 16, 96, 0}, l16Codec.Samples16()/4)
 	reader := bytes.NewBuffer(l16Audio)
-	r, _ := d.AudioReader()
-	w, _ := d.AudioWriter()
+	r, _ := med.AudioReader()
+	w, _ := med.AudioWriter()
 	_, err = media.Copy(reader, w)
 	require.ErrorIs(t, err, io.EOF)
 
@@ -342,11 +345,13 @@ func TestIntegrationDiagoSRTPCall(t *testing.T) {
 
 		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
 			d.Trying()
-			if err := d.Answer(); err != nil {
+			med, err := d.Answer(AnswerOptions{})
+			if err != nil {
 				panic(err)
 			}
+			defer med.Close()
 
-			err := d.Echo()
+			err = med.Echo()
 			slog.Info("Echo finished with", "error", err)
 
 		})
@@ -374,10 +379,11 @@ func TestIntegrationDiagoSRTPCall(t *testing.T) {
 	// err = dg.ServeBackground(ctx, func(d *DialogServerSession) {})
 	// require.NoError(t, err)
 
-	d, err := dg.Invite(ctx, sip.Uri{User: "11", Host: "127.0.0.1", Port: 15443}, InviteOptions{Transport: "tcp"})
+	_, med, err := dg.Invite(ctx, sip.Uri{User: "11", Host: "127.0.0.1", Port: 15443}, InviteOptions{Transport: "tcp"})
 	require.NoError(t, err)
+	defer med.Close()
 
-	// pb, err := d.PlaybackCreate()
+	// pb, err := med.PlaybackCreate()
 	// if err != nil {
 	// 	panic(err)
 	// }
@@ -386,8 +392,8 @@ func TestIntegrationDiagoSRTPCall(t *testing.T) {
 	audio.EncodeUlawTo(ulaw, bytes.Repeat([]byte{1}, 320))
 
 	reader := bytes.NewBuffer(ulaw)
-	r, _ := d.AudioReader()
-	w, _ := d.AudioWriter()
+	r, _ := med.AudioReader()
+	w, _ := med.AudioWriter()
 	_, err = media.Copy(reader, w)
 	require.ErrorIs(t, err, io.EOF)
 
@@ -427,11 +433,13 @@ func TestIntegrationDiagoDTLSCall(t *testing.T) {
 
 		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
 			d.Trying()
-			if err := d.Answer(); err != nil {
+			med, err := d.Answer(AnswerOptions{})
+			if err != nil {
 				panic(err)
 			}
+			defer med.Close()
 
-			err := d.Echo()
+			err = med.Echo()
 			slog.Info("Echo finished with", "error", err)
 
 		})
@@ -461,10 +469,11 @@ func TestIntegrationDiagoDTLSCall(t *testing.T) {
 	// err = dg.ServeBackground(ctx, func(d *DialogServerSession) {})
 	// require.NoError(t, err)
 
-	d, err := dg.Invite(ctx, sip.Uri{User: "11", Host: "127.0.0.1", Port: 16443}, InviteOptions{Transport: "tcp"})
+	_, med, err := dg.Invite(ctx, sip.Uri{User: "11", Host: "127.0.0.1", Port: 16443}, InviteOptions{Transport: "tcp"})
 	require.NoError(t, err)
+	defer med.Close()
 
-	// pb, err := d.PlaybackCreate()
+	// pb, err := med.PlaybackCreate()
 	// if err != nil {
 	// 	panic(err)
 	// }
@@ -473,8 +482,8 @@ func TestIntegrationDiagoDTLSCall(t *testing.T) {
 	audio.EncodeUlawTo(ulaw, bytes.Repeat([]byte{1}, 320))
 
 	reader := bytes.NewBuffer(ulaw)
-	r, _ := d.AudioReader()
-	w, _ := d.AudioWriter()
+	r, _ := med.AudioReader()
+	w, _ := med.AudioWriter()
 	time.Sleep(1 * time.Second)
 	t.Log("---------------------------Writing media")
 	_, err = media.Copy(reader, w)
