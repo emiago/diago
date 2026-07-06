@@ -100,11 +100,13 @@ func WithTransport(t Transport) DiagoOption {
 
 		if t.ExternalHost == "" {
 			t.ExternalHost = t.BindHost
-			t.ExternalPort = t.BindPort
 			// External host should match media IP
 			if t.mediaBindIP != nil {
 				t.ExternalHost = t.mediaBindIP.String()
 			}
+		}
+		if t.ExternalPort == 0 {
+			t.ExternalPort = t.BindPort
 		}
 
 		// Resolve unspecified IP for contact hdr
@@ -279,7 +281,6 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		// TODO authentication
 		dWrap := &DialogServerSession{
 			DialogServerSession: dialog,
-			DialogMedia:         DialogMedia{},
 			// TODO we may actually just build media session with this conf here
 			mediaConf: MediaConfig{
 				Codecs:     dg.mediaConf.Codecs,
@@ -360,12 +361,16 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		// Terminate our media processing
 		// As user may stuck in playing or reading media, this unblocks that goroutine
 		if cd != nil {
-			defer closeAndLog(&cd.DialogMedia, "failed to close client media")
+			if med := cd.Media(); med != nil {
+				defer closeAndLog(med, "failed to close client media")
+			}
 
 			return cd.ReadBye(req, tx)
 		}
 
-		defer closeAndLog(&sd.DialogMedia, "failed to close server media")
+		if med := sd.Media(); med != nil {
+			defer closeAndLog(med, "failed to close server media")
+		}
 		return sd.ReadBye(req, tx)
 	}))
 
@@ -568,38 +573,39 @@ type InviteOptions struct {
 //
 // For better control more details use above functions instead.
 // If you want to bridge call then use helper InviteBridge
-func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts InviteOptions) (d *DialogClientSession, err error) {
+func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts InviteOptions) (d *DialogClientSession, med *DialogMedia, err error) {
 	d, err = dg.NewDialog(recipient, NewDialogOptions{Transport: opts.Transport})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	if err := d.Invite(ctx, InviteClientOptions{
+	med, err = d.Invite(ctx, InviteClientOptions{
 		Originator: opts.Originator,
 		OnResponse: opts.OnResponse,
 		Headers:    opts.Headers,
 		Username:   opts.Username,
 		Password:   opts.Password,
-	}); err != nil {
+	})
+	if err != nil {
 		closeErr := d.Close()
-		return nil, errors.Join(err, closeErr)
+		return nil, nil, errors.Join(err, closeErr)
 	}
 
 	if err := d.Ack(ctx); err != nil {
 		closeErr := d.Close()
-		return nil, errors.Join(err, closeErr)
+		return nil, nil, errors.Join(err, closeErr)
 	}
-	return d, nil
+	return d, med, nil
 }
 
 // InviteBridge makes outgoing call leg and does bridging.
 // Outgoing session will be added into bridge on answer
 // If bridge has Originator (first participant) it will be used for creating outgoing call leg as in B2BUA
 // When bridge is provided then this call will be bridged with any participant already present in bridge
-func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts InviteOptions) (d *DialogClientSession, err error) {
+func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Bridge, opts InviteOptions) (d *DialogClientSession, med *DialogMedia, err error) {
 	d, err = dg.NewDialog(recipient, NewDialogOptions{})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Keep things compatible
@@ -607,27 +613,28 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		opts.Originator = bridge.Originator
 	}
 
-	if err := d.Invite(ctx, InviteClientOptions{
+	med, err = d.Invite(ctx, InviteClientOptions{
 		Originator: opts.Originator,
 		OnResponse: opts.OnResponse,
 		Headers:    opts.Headers,
 		Username:   opts.Username,
 		Password:   opts.Password,
-	}); err != nil {
-		return nil, errors.Join(err, d.Hangup(d.Context()), d.Close())
+	})
+	if err != nil {
+		return nil, nil, errors.Join(err, d.Hangup(d.Context()), d.Close())
 	}
 
 	// Do bridging now
 	if err := bridge.AddDialogSession(d); err != nil {
 		d.Close()
-		return nil, err
+		return nil, nil, err
 	}
 
 	if err := d.Ack(ctx); err != nil {
 		d.Close()
-		return nil, err
+		return nil, nil, err
 	}
-	return d, nil
+	return d, med, nil
 }
 
 type NewDialogOptions struct {
@@ -700,8 +707,13 @@ func (dg *Diago) newSipDialog(recipient sip.Uri, tran *Transport, opts NewDialog
 		}
 	})
 
-	d.OnClose(func() error {
-		return dg.cache.client.DialogDelete(context.Background(), d.ID)
+	d.Dialog.OnState(func(s sip.DialogState) {
+		if s != sip.DialogStateEnded {
+			return
+		}
+		if err := dg.cache.client.DialogDelete(context.Background(), d.ID); err != nil {
+			dg.log.Error("Failed to delete client dialog", "error", err)
+		}
 	})
 	return d, nil
 }

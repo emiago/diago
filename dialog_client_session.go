@@ -10,6 +10,7 @@ import (
 	mrand "math/rand/v2"
 	"net"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -27,14 +28,17 @@ var (
 type DialogClientSession struct {
 	*sipgo.DialogClientSession
 
-	DialogMedia
-
 	// onReInvite replaces need for DialogMedia reference and it is required by media stack that listens on this update and handle SDP changes
 	onReInvite func(invite *sip.Request) (*sip.Response, error)
 
 	onReferDialog OnReferDialogFunc
 	mediaConfig   MediaConfig
+	media         *DialogMedia
+	// remoteContactTarget is actual target changed caused by incoming or outgoing REINVITE.
+	remoteContactTarget *sip.ContactHeader
+	onReferNotify       func(statusCode int)
 
+	mu     sync.Mutex
 	closed atomic.Uint32
 }
 
@@ -42,9 +46,16 @@ func (d *DialogClientSession) Close() error {
 	if !d.closed.CompareAndSwap(0, 1) {
 		return nil
 	}
-	e1 := d.DialogMedia.Close()
+	var e1 error
+	if d.media != nil {
+		e1 = d.media.Close()
+	}
 	e2 := d.DialogClientSession.Close()
 	return errors.Join(e1, e2)
+}
+
+func (d *DialogClientSession) Media() *DialogMedia {
+	return d.media
 }
 
 func (d *DialogClientSession) Id() string {
@@ -140,11 +151,33 @@ func (o *InviteClientOptions) WithCaller(displayName string, callerID string, ho
 //
 // NOTE: It updates internal invite request so NOT THREAD SAFE.
 // If you pass originator it will use originator to set correct from header and avoid media transcoding
-func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptions) error {
-	if err := d.initMediaSessionFromConf(d.mediaConfig); err != nil {
-		return err
+func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptions) (*DialogMedia, error) {
+	med := &DialogMedia{}
+	if err := med.initMediaSessionFromConf(d.mediaConfig); err != nil {
+		return nil, err
 	}
-	return d.invite(ctx, &d.DialogMedia, opts)
+	d.media = med
+
+	// NOTE: this can be racy
+	d.Dialog.OnState(func(s sip.DialogState) {
+		if s == sip.DialogStateEnded {
+			med.Close()
+		}
+
+		if s == sip.DialogStateConfirmed {
+			// Do some finalize on ACK?
+		}
+	})
+
+	if err := d.invite(ctx, med, opts); err != nil {
+		if errors.Is(err, ErrClientEarlyMedia) {
+			return med, err
+		}
+		med.Close()
+		return nil, err
+	}
+
+	return med, nil
 }
 
 func (d *DialogClientSession) invite(ctx context.Context, med *DialogMedia, opts InviteClientOptions) error {
@@ -283,7 +316,10 @@ func (d *DialogClientSession) doInvite(ctx context.Context, sd []byte) error {
 // WaitAnswer waits dialog on answer. It should only be used if you have error Invite but still want to continue
 // ex. ErrClientEarlyMedia was returned but you want to proceed with answering
 func (d *DialogClientSession) WaitAnswer(ctx context.Context, opts sipgo.AnswerOptions) error {
-	return d.waitAnswer(ctx, &d.DialogMedia, opts)
+	if d.media == nil {
+		return fmt.Errorf("dialog media is not initialized")
+	}
+	return d.waitAnswer(ctx, d.media, opts)
 }
 
 func (d *DialogClientSession) waitAnswerEarly(ctx context.Context, med *DialogMedia, opts sipgo.AnswerOptions) error {
@@ -403,8 +439,8 @@ func (d *DialogClientSession) Ack(ctx context.Context) error {
 
 	// NOTE it generally advisable todo this after successfull ACK:
 	// Server may not even listen yet as it is waiting for ACK
-	if d.mediaSession != nil {
-		if err := d.mediaSession.Finalize(); err != nil {
+	if d.media != nil && d.media.mediaSession != nil {
+		if err := d.media.mediaSession.Finalize(); err != nil {
 			return err
 		}
 	}
@@ -450,8 +486,11 @@ func (d *DialogClientSession) ack(ctx context.Context, remoteTarget sip.Uri, bod
 
 // ReInvite sends new invite based on current media session
 func (d *DialogClientSession) ReInvite(ctx context.Context) error {
+	if d.media == nil {
+		return fmt.Errorf("dialog media is not initialized")
+	}
 	d.mu.Lock()
-	sdp := d.mediaSession.LocalSDP()
+	sdp := d.media.mediaSession.LocalSDP()
 	contact := d.remoteContactUnsafe()
 	d.mu.Unlock()
 
@@ -523,6 +562,9 @@ func (d *DialogClientSession) reInviteMediaSession(ctx context.Context, ms *medi
 	sdp := ms.LocalSDP()
 
 	// NOTE: we do not change original invite request
+	if d.media == nil {
+		return fmt.Errorf("dialog media is not initialized")
+	}
 	d.mu.Lock()
 	contact := d.remoteContactUnsafe()
 	d.mu.Unlock()
@@ -540,21 +582,26 @@ func (d *DialogClientSession) reInviteMediaSession(ctx context.Context, ms *medi
 	// Save new remote target contact and update media
 	return func() error {
 		d.mu.Lock()
-		defer d.mu.Unlock()
 		d.remoteContactTarget = res.Contact()
+		d.mu.Unlock()
 
 		remoteSDP := res.Body()
 		if err := ms.RemoteSDP(remoteSDP); err != nil {
 			return fmt.Errorf("sdp update media remote SDP applying failed: %w", err)
 		}
 
-		return d.mediaUpdateUnsafe(ms)
+		d.media.mu.Lock()
+		defer d.media.mu.Unlock()
+		return d.media.mediaUpdateUnsafe(ms)
 	}()
 }
 
 // reInvites withs empty SDP are way to keep alive or do some post media update after receiving offer on 2xx
 func (d *DialogClientSession) reInviteKeepAlive(ctx context.Context) error {
 	// NOTE: we do not change original invite request
+	if d.media == nil {
+		return fmt.Errorf("dialog media is not initialized")
+	}
 	d.mu.Lock()
 	contact := d.remoteContactUnsafe()
 	d.mu.Unlock()
@@ -594,6 +641,9 @@ type ReferClientOptions struct {
 }
 
 func (d *DialogClientSession) ReferOptions(ctx context.Context, referTo sip.Uri, opts ReferClientOptions) error {
+	if d.media == nil {
+		return fmt.Errorf("dialog media is not initialized")
+	}
 	d.mu.Lock()
 	cont := d.remoteContactUnsafe()
 	if opts.OnNotify != nil {
@@ -604,7 +654,10 @@ func (d *DialogClientSession) ReferOptions(ctx context.Context, referTo sip.Uri,
 }
 
 func (d *DialogClientSession) handleReferNotify(req *sip.Request, tx sip.ServerTransaction) {
-	dialogHandleReferNotify(d, req, tx)
+	d.mu.Lock()
+	onReferNotify := d.onReferNotify
+	d.mu.Unlock()
+	dialogHandleReferNotify(d, req, tx, onReferNotify)
 }
 
 func (d *DialogClientSession) handleRefer(dg *Diago, req *sip.Request, tx sip.ServerTransaction) {
@@ -635,7 +688,13 @@ func (d *DialogClientSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 		return tx.Respond(res)
 	}
 
-	return d.handleMediaUpdate(req, tx, d.InviteRequest.Contact())
+	if d.media == nil {
+		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
+	}
+	d.mu.Lock()
+	d.remoteContactTarget = req.Contact().Clone()
+	d.mu.Unlock()
+	return d.media.handleMediaUpdate(req, tx, d.InviteRequest.Contact())
 }
 
 func (d *DialogClientSession) handleReInviteACK(req *sip.Request, tx sip.ServerTransaction) error {
@@ -648,19 +707,25 @@ func (d *DialogClientSession) handleReInviteACK(req *sip.Request, tx sip.ServerT
 	body := req.Body()
 	if body != nil {
 		// Update media session state under lock, but invoke the app callback after unlock to avoid deadlocks.
-		d.mu.Lock()
-		err := d.sdpUpdateUnsafe(body)
-		onMediaUpdate := d.onMediaUpdate
-		d.mu.Unlock()
+		if d.media == nil {
+			return fmt.Errorf("dialog media is not initialized")
+		}
+		d.media.mu.Lock()
+		err := d.media.sdpUpdateUnsafe(body)
+		onMediaUpdate := d.media.onMediaUpdate
+		d.media.mu.Unlock()
 		if err != nil {
 			return err
 		}
 
 		if onMediaUpdate != nil {
-			onMediaUpdate(d.Media())
+			onMediaUpdate(d.media)
 		}
 	}
-	return d.mediaSession.Finalize()
+	if d.media == nil || d.media.mediaSession == nil {
+		return nil
+	}
+	return d.media.mediaSession.Finalize()
 }
 
 func (d *DialogClientSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTransaction) error {
@@ -668,7 +733,10 @@ func (d *DialogClientSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTra
 }
 
 func (d *DialogClientSession) Hold(ctx context.Context) error {
-	m := d.MediaSession().Fork()
+	if d.media == nil {
+		return fmt.Errorf("dialog media is not initialized")
+	}
+	m := d.media.MediaSession().Fork()
 	m.Mode = sdp.ModeSendonly
 	if err := d.reInviteMediaSession(ctx, m); err != nil {
 		return err
@@ -677,7 +745,10 @@ func (d *DialogClientSession) Hold(ctx context.Context) error {
 }
 
 func (d *DialogClientSession) Unhold(ctx context.Context) error {
-	m := d.MediaSession().Fork()
+	if d.media == nil {
+		return fmt.Errorf("dialog media is not initialized")
+	}
+	m := d.media.MediaSession().Fork()
 	m.Mode = sdp.ModeSendrecv
 	if err := d.reInviteMediaSession(ctx, m); err != nil {
 		return err
