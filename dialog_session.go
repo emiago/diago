@@ -65,7 +65,7 @@ func dialogRefer(ctx context.Context, d DialogSession, recipient sip.Uri, referT
 	return nil
 }
 
-func dialogHandleReferNotify(d DialogSession, req *sip.Request, tx sip.ServerTransaction) {
+func dialogHandleReferNotify(d DialogSession, req *sip.Request, tx sip.ServerTransaction, onReferNotify func(statusCode int)) {
 	// TODO how to know this is refer
 	contentType := req.ContentType().Value()
 	// For now very basic check
@@ -82,13 +82,6 @@ func dialogHandleReferNotify(d DialogSession, req *sip.Request, tx sip.ServerTra
 
 	tx.Respond(sip.NewResponseFromRequest(req, sip.StatusOK, "OK", nil))
 
-	// TODO: We need find better way to store this on refer.
-	// best case this would be dialogSIP
-	med := d.Media()
-	med.mu.Lock()
-	onNot := med.onReferNotify
-	med.mu.Unlock()
-
 	code := func() int {
 		v := strings.TrimPrefix(frag[:11], "SIP/2.0 ")
 		switch v {
@@ -102,8 +95,8 @@ func dialogHandleReferNotify(d DialogSession, req *sip.Request, tx sip.ServerTra
 		}
 	}()
 
-	if onNot != nil {
-		onNot(code)
+	if onReferNotify != nil {
+		onReferNotify(code)
 	} else if code >= 200 {
 		d.Hangup(context.TODO())
 	}
@@ -325,7 +318,7 @@ func (r *ReferTransaction) Accept(ctx context.Context, opts InviteClientOptions)
 			opts.Headers = append(opts.Headers, sip.HeaderClone(h))
 		}
 
-		if err := referDialog.Invite(ctx, opts); err != nil {
+		if _, err := referDialog.Invite(ctx, opts); err != nil {
 			return err
 		}
 

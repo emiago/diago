@@ -74,17 +74,15 @@ func TestIntegrationPlaybackFile(t *testing.T) {
 		io.ReadAll(r)
 	}()
 
-	dialog := &DialogServerSession{
-		DialogMedia: DialogMedia{
-			mediaSession: &media.MediaSession{Codecs: []media.Codec{media.CodecAudioUlaw}},
-			// audioReader:  bytes.NewBuffer(make([]byte, 9999)),
-			audioWriter:     w,
-			RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioUlaw),
-		},
+	med := &DialogMedia{
+		mediaSession: &media.MediaSession{Codecs: []media.Codec{media.CodecAudioUlaw}},
+		// audioReader:  bytes.NewBuffer(make([]byte, 9999)),
+		audioWriter:     w,
+		RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioUlaw),
 	}
 
 	t.Run("withControl", func(t *testing.T) {
-		playback, err := dialog.PlaybackControlCreate()
+		playback, err := med.PlaybackControlCreate()
 		require.NoError(t, err)
 
 		playback.Stop()
@@ -94,7 +92,7 @@ func TestIntegrationPlaybackFile(t *testing.T) {
 	})
 
 	t.Run("default", func(t *testing.T) {
-		playback, err := dialog.PlaybackCreate()
+		playback, err := med.PlaybackCreate()
 		require.NoError(t, err)
 
 		written, err := playback.PlayFile("testdata/files/demo-echodone.wav")
