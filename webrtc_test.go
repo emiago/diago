@@ -65,8 +65,9 @@ func TestWebrtcOutgoing(t *testing.T) {
 					return err
 				}
 
-				d.InitMediaSession(mess, nil, nil)
-				if err := d.Answer(); err != nil {
+				d.media = &DialogMedia{}
+				d.media.InitMediaSession(mess, nil, nil)
+				if _, err := d.Answer(AnswerOptions{}); err != nil {
 					return err
 				}
 

@@ -48,7 +48,8 @@ func start(ctx context.Context) error {
 func Record(inDialog *diago.DialogServerSession) error {
 	inDialog.Trying()  // Progress -> 100 Trying
 	inDialog.Ringing() // Ringing -> 180 Response
-	if err := inDialog.Answer(); err != nil {
+	med, err := inDialog.Answer(diago.AnswerOptions{})
+	if err != nil {
 		return err
 	} // Answer -> 200 Response
 
@@ -62,7 +63,7 @@ func Record(inDialog *diago.DialogServerSession) error {
 	defer wawFile.Close()
 
 	// Create recording audio pipeline
-	rec, err := inDialog.AudioStereoRecordingCreate(wawFile)
+	rec, err := med.AudioStereoRecordingCreate(wawFile)
 	if err != nil {
 		return err
 	}

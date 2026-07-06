@@ -33,28 +33,26 @@ func TestBridgeProxy(t *testing.T) {
 	b := NewBridge()
 	b.WaitDialogsNum = 99 // Do not start proxy
 
-	incoming := &DialogServerSession{
-		DialogMedia: DialogMedia{
-			mediaSession: &media.MediaSession{
-				Codecs: []media.Codec{media.CodecAudioAlaw},
-			},
-			audioReader:     bytes.NewBuffer(make([]byte, 9999)),
-			audioWriter:     bytes.NewBuffer(make([]byte, 0)),
-			RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioAlaw),
-			RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioAlaw),
+	incomingMed := &DialogMedia{
+		mediaSession: &media.MediaSession{
+			Codecs: []media.Codec{media.CodecAudioAlaw},
 		},
+		audioReader:     bytes.NewBuffer(make([]byte, 9999)),
+		audioWriter:     bytes.NewBuffer(make([]byte, 0)),
+		RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioAlaw),
+		RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioAlaw),
 	}
-	outgoing := &DialogClientSession{
-		DialogMedia: DialogMedia{
-			mediaSession: &media.MediaSession{
-				Codecs: []media.Codec{media.CodecAudioAlaw},
-			},
-			audioReader:     bytes.NewBuffer(make([]byte, 9999)),
-			audioWriter:     bytes.NewBuffer(make([]byte, 0)),
-			RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioAlaw),
-			RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioAlaw),
+	incoming := &DialogServerSession{media: incomingMed}
+	outgoingMed := &DialogMedia{
+		mediaSession: &media.MediaSession{
+			Codecs: []media.Codec{media.CodecAudioAlaw},
 		},
+		audioReader:     bytes.NewBuffer(make([]byte, 9999)),
+		audioWriter:     bytes.NewBuffer(make([]byte, 0)),
+		RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioAlaw),
+		RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioAlaw),
 	}
+	outgoing := &DialogClientSession{media: outgoingMed}
 
 	err := b.AddDialogSession(incoming)
 	require.NoError(t, err)
@@ -65,8 +63,8 @@ func TestBridgeProxy(t *testing.T) {
 	require.ErrorIs(t, err, io.EOF)
 
 	// Confirm all data is proxied
-	assert.Equal(t, 9999, incoming.audioWriter.(*bytes.Buffer).Len())
-	assert.Equal(t, 9999, outgoing.audioWriter.(*bytes.Buffer).Len())
+	assert.Equal(t, 9999, incomingMed.audioWriter.(*bytes.Buffer).Len())
+	assert.Equal(t, 9999, outgoingMed.audioWriter.(*bytes.Buffer).Len())
 }
 
 func TestBridgeNoTranscodingAllowed(t *testing.T) {
@@ -74,7 +72,7 @@ func TestBridgeNoTranscodingAllowed(t *testing.T) {
 	// b.waitDialogsNum = 99 // Do not start proxy
 
 	incoming := &DialogServerSession{
-		DialogMedia: DialogMedia{
+		media: &DialogMedia{
 			mediaSession: &media.MediaSession{
 				Codecs: []media.Codec{media.CodecAudioAlaw},
 			},
@@ -83,7 +81,7 @@ func TestBridgeNoTranscodingAllowed(t *testing.T) {
 		},
 	}
 	outgoing := &DialogClientSession{
-		DialogMedia: DialogMedia{
+		media: &DialogMedia{
 			mediaSession: &media.MediaSession{
 				Codecs: []media.Codec{media.CodecAudioUlaw},
 			},
@@ -117,7 +115,7 @@ func TestIntegrationBridging(t *testing.T) {
 	err := tu.ServeBackground(ctx, func(in *DialogServerSession) {
 		in.Trying()
 		in.Ringing()
-		in.Answer()
+		_, _ = in.Answer(AnswerOptions{})
 
 		inCtx := in.Context()
 		ctx, cancel := context.WithTimeout(inCtx, 15*time.Second)
@@ -131,7 +129,7 @@ func TestIntegrationBridging(t *testing.T) {
 			return
 		}
 
-		out, err := tu.InviteBridge(ctx, sip.Uri{User: "test", Host: "127.0.0.200", Port: 5090}, &bridge, InviteOptions{})
+		out, _, err := tu.InviteBridge(ctx, sip.Uri{User: "test", Host: "127.0.0.200", Port: 5090}, &bridge, InviteOptions{})
 		if err != nil {
 			t.Log("Dialing failed", err)
 			return
@@ -168,16 +166,17 @@ func TestIntegrationBridging(t *testing.T) {
 
 		err := dg.ServeBackground(context.Background(), func(d *DialogServerSession) {
 			ctx := d.Context()
-			err = d.Answer()
+			med, err := d.Answer(AnswerOptions{})
 			require.NoError(t, err)
+			defer med.Close()
 
 			// ms := d.mediaSession
 			buf := make([]byte, media.RTPBufSize)
-			r, _ := d.AudioReader()
+			r, _ := med.AudioReader()
 			n, err := r.Read(buf)
 			require.NoError(t, err)
 
-			w, _ := d.AudioWriter()
+			w, _ := med.AudioWriter()
 			w.Write(buf[:n])
 			require.NoError(t, err)
 
@@ -191,16 +190,17 @@ func TestIntegrationBridging(t *testing.T) {
 		defer ua.Close()
 
 		dg := newDialer(ua)
-		dialog, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
+		dialog, med, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
 		require.NoError(t, err)
 		defer dialog.Close()
+		defer med.Close()
 
-		w, _ := dialog.AudioWriter()
+		w, _ := med.AudioWriter()
 		_, err = w.Write([]byte("1234"))
 		require.NoError(t, err)
 
 		buf := make([]byte, media.RTPBufSize)
-		r, _ := dialog.AudioReader()
+		r, _ := med.AudioReader()
 		r.Read(buf)
 		require.NoError(t, err)
 
@@ -233,7 +233,7 @@ func TestIntegrationBridgingMix(t *testing.T) {
 
 		in.Trying()
 		in.Ringing()
-		in.Answer()
+		_, _ = in.Answer(AnswerOptions{})
 
 		// Add us in bridge
 		t.Log("Adding into bridge", in.ID)
@@ -259,7 +259,7 @@ func TestIntegrationBridgingMix(t *testing.T) {
 		dialogs := make([]*DialogClientSession, 3)
 		for i := range 3 {
 			t.Log("Inviting", "i", i)
-			dialog, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
+			dialog, _, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
 			require.NoError(t, err)
 			dialogs[i] = dialog
 		}
@@ -306,26 +306,30 @@ func TestIntegrationBridgingMix(t *testing.T) {
 		bridge = NewBridgeMix()
 		bridge.WaitDialogsNum = 2 // Do not start mixing until all 3 get joined, otherwise there will be no gurantee when something is mixed
 
-		dialog1, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
+		dialog1, med1, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
 		require.NoError(t, err)
 		defer dialog1.Hangup(dialog1.Context())
+		defer dialog1.Close()
+		defer med1.Close()
 
-		dialog2, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
+		dialog2, med2, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
 		require.NoError(t, err)
 		defer dialog2.Hangup(dialog2.Context())
+		defer dialog2.Close()
+		defer med2.Close()
 
 		// Write sound on dialog 1 and make sure it is read on dialog2
 		sound := []byte("123450")
 		go func(dialog *DialogClientSession) {
-			w, _ := dialog.AudioWriter()
+			w, _ := med1.AudioWriter()
 			for i := 0; i < 10; i++ {
 				w.Write(sound)
 			}
 
 		}(dialog1)
 
-		r, _ := dialog2.AudioReader()
-		dialog2.StopRTP(1, 1*time.Second)
+		r, _ := med2.AudioReader()
+		med2.StopRTP(1, 1*time.Second)
 
 		buf := make([]byte, media.RTPBufSize)
 		for i := 0; i < 10; i++ {

@@ -66,18 +66,21 @@ func BridgeCall(d *diago.Diago, inDialog *diago.DialogServerSession, recipient s
 
 	bridge := diago.NewBridge()
 	// Now answer our in dialog
-	if err := inDialog.Answer(); err != nil {
+	med, err := inDialog.Answer(diago.AnswerOptions{})
+	if err != nil {
 		return err
 	}
+	defer med.Close()
 	if err := bridge.AddDialogSession(inDialog); err != nil {
 		return err
 	}
 
-	outDialog, err := d.InviteBridge(ctx, recipient, &bridge, diago.InviteOptions{})
+	outDialog, outMed, err := d.InviteBridge(ctx, recipient, &bridge, diago.InviteOptions{})
 	if err != nil {
 		return err
 	}
 	defer outDialog.Close()
+	defer outMed.Close()
 	outCtx := outDialog.Context()
 
 	defer inDialog.Hangup(inCtx)
