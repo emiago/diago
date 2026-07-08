@@ -22,18 +22,16 @@ Quick links:
 - [GO Docs](https://pkg.go.dev/github.com/emiago/diago)
 - [Roadmap](https://emiago.github.io/diago/docs/#core-roadmap)
 
-## Important media API change
+## WebRTC/Pion API changes
 
-`Answer` and `Invite` now return the media stack. Keep and use the returned media
-object for media operations instead of accessing media through the dialog
-session.
+For WebRTC/Pion migration details and current media API direction, read
+[WEBRTC_PION_CHANGES.md](WEBRTC_PION_CHANGES.md).
 
-**Everyone is encouraged to try the [`webrtc-pion` branch](https://github.com/emiago/diago/tree/webrtc-pion)
-and test the new returned-media API.**
+**NOTE:** SIP dialog sessions and media stacks are now separated. Use returned
+media objects such as `*DialogMedia` and `*DialogWebrtc` for media operations.
 
-See [WEBRTC_PION_CHANGES.md](https://github.com/emiago/diago/blob/webrtc-pion/WEBRTC_PION_CHANGES.md)
-for the API migration details. WebRTC is not the primary focus yet; this work
-will also bring the Pion media stack into Diago.
+**NOTE:** Existing code using dialog-owned media access should be migrated to the
+new returned-media API.
 
 *If you find this project useful and you want to support/sponzor or need help with your projects, you can contact me more on*
 [mail](mailto:emirfreelance91@gmail.com).
