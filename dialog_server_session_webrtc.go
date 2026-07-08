@@ -13,7 +13,7 @@ import (
 
 type AnswerWebrtcOptions struct {
 	// OnMediaUpdate triggers when media update happens. It is blocking func, so make sure you exit
-	OnMediaUpdate func(d *DialogMedia)
+	OnMediaUpdate func(d *DialogWebrtc)
 
 	// OnRefer is called on successfull REFER handling
 	//
@@ -83,6 +83,7 @@ func (d *DialogServerSession) answerWebrtc(m *DialogWebrtc, sdpBody []byte, opts
 	})
 
 	m.mediaSession = sess
+	m.registerDialogCallbacks(&d.dialogCallbacks, opts.OnMediaUpdate)
 
 	// Make this faster access for now
 	m.RTPPacketReader = m.mediaSession.RTPPacketReader

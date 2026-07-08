@@ -53,60 +53,11 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 		}
 	})
 
-	d.dialogCallbacks.mu.Lock()
-	var pendingSession *mediawebrtc.MediaSession
-	d.onRemoteSDP = func(ctx context.Context, remoteSDP []byte, offered bool) error {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-
-		if m.mediaSession == nil {
-			return fmt.Errorf("reinvite called on non initialized media")
-		}
-
-		sess := m.mediaSession
-		if !offered {
-			sess = m.mediaSession.Fork()
-			pendingSession = sess
-		}
-
-		if err := sess.RemoteSDP(ctx, remoteSDP, offered); err != nil {
-			return err
-		}
-		if opts.OnMediaUpdate != nil {
-			opts.OnMediaUpdate(m)
-		}
-		return nil
-	}
-	d.onLocalSDP = func(ctx context.Context, answered bool, mode string, mediaSession ...*media.MediaSession) ([]byte, error) {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		if m.mediaSession == nil {
-			return nil, fmt.Errorf("reinvite called on non initialized media")
-		}
-		sess := m.mediaSession
-		if pendingSession != nil {
-			sess = pendingSession
-		}
-		localSDP, err := sess.LocalSDP(ctx, answered)
-		if err != nil {
-			return nil, err
-		}
-		if pendingSession != nil && answered {
-			m.mediaSession = pendingSession
-			pendingSession = nil
-		}
-		return localSDP, nil
-	}
-	d.onFinalize = func(ctx context.Context) error {
-		return nil
-	}
-	d.onClose = append(d.onClose, m.Close)
-	d.dialogCallbacks.mu.Unlock()
-
 	if err := d.inviteWebrtc(ctx, m, opts); err != nil {
 		m.Close()
 		return nil, err
 	}
+	m.registerDialogCallbacks(&d.dialogCallbacks, opts.OnMediaUpdate)
 
 	if m.mediaSession.Codec().SampleRate == 0 {
 		panic("no codec")
