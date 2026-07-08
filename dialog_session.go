@@ -18,7 +18,6 @@ type DialogSession interface {
 	Id() string
 	Context() context.Context
 	Hangup(ctx context.Context) error
-	Media() *DialogMedia
 	DialogSIP() *sipgo.Dialog
 	Do(ctx context.Context, req *sip.Request) (*sip.Response, error)
 	Close() error

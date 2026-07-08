@@ -51,9 +51,9 @@ type WebrtcAPIConfig struct {
 	Config webrtc.Configuration
 	ICEIPs []net.IP
 
-	DisableActiveTCP                         *bool
+	DisableActiveTCP                          *bool
 	DisableCertificateFingerprintVerification *bool
-	IncludeLoopbackCandidate                 *bool
+	IncludeLoopbackCandidate                  *bool
 
 	IPFilter       func(net.IP) bool
 	RegisterCodecs func(*webrtc.MediaEngine) error
