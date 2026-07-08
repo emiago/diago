@@ -357,21 +357,12 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			return handleNoDialog(req, tx, err)
 		}
 
-		// Respond to BYE
-		// Terminate our media processing
-		// As user may stuck in playing or reading media, this unblocks that goroutine
 		if cd != nil {
-			if med := cd.Media(); med != nil {
-				defer closeAndLog(med, "failed to close client media")
-			}
-
-			return cd.ReadBye(req, tx)
+			err := cd.ReadBye(req, tx)
+			return errors.Join(err, cd.Close())
 		}
-
-		if med := sd.Media(); med != nil {
-			defer closeAndLog(med, "failed to close server media")
-		}
-		return sd.ReadBye(req, tx)
+		err = sd.ReadBye(req, tx)
+		return errors.Join(err, sd.Close())
 	}))
 
 	server.OnInfo(errHandler(func(req *sip.Request, tx sip.ServerTransaction) error {
@@ -608,11 +599,6 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		return nil, nil, err
 	}
 
-	// Keep things compatible
-	if opts.Originator == nil {
-		opts.Originator = bridge.Originator
-	}
-
 	med, err = d.Invite(ctx, InviteClientOptions{
 		Originator: opts.Originator,
 		OnResponse: opts.OnResponse,
@@ -625,7 +611,7 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 	}
 
 	// Do bridging now
-	if err := bridge.AddDialogSession(d); err != nil {
+	if err := bridge.AddDialogMedia(med); err != nil {
 		d.Close()
 		return nil, nil, err
 	}

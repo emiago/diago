@@ -20,7 +20,7 @@ type BridgeAudioMedia struct {
 	WriterProps MediaProps
 }
 
-type BridgeV2 struct {
+type Bridge struct {
 	// originator is dialog session that created bridge
 	originator *BridgeAudioMedia
 	// DTMFpass is also dtmf pipeline and proxy. By default only audio media is proxied
@@ -38,13 +38,13 @@ type BridgeV2 struct {
 }
 
 // NewBridge creates bridge with default settings.
-func NewBridgeV2() BridgeV2 {
-	b := BridgeV2{}
+func NewBridge() Bridge {
+	b := Bridge{}
 	b.Init(media.DefaultLogger())
 	return b
 }
 
-func (b *BridgeV2) Init(log *slog.Logger) {
+func (b *Bridge) Init(log *slog.Logger) {
 	b.log = log
 	if b.log == nil {
 		b.log = media.DefaultLogger()
@@ -55,11 +55,11 @@ func (b *BridgeV2) Init(log *slog.Logger) {
 	}
 }
 
-func (b *BridgeV2) GetDialogs() []*BridgeAudioMedia {
+func (b *Bridge) GetDialogs() []*BridgeAudioMedia {
 	return b.dialogs
 }
 
-func (b *BridgeV2) AddDialogMedia(m *DialogMedia) error {
+func (b *Bridge) AddDialogMedia(m *DialogMedia) error {
 	med := BridgeAudioMedia{}
 	var err error
 	med.Reader, err = m.AudioReader(WithAudioReaderMediaProps(&med.ReaderProps))
@@ -92,7 +92,7 @@ func (b *BridgeV2) AddDialogMedia(m *DialogMedia) error {
 	return b.AddAudioMedia(&med)
 }
 
-func (b *BridgeV2) AddMedia(m any) error {
+func (b *Bridge) AddMedia(m any) error {
 	switch t := m.(type) {
 	case *DialogMedia:
 		return b.AddDialogMedia(t)
@@ -103,7 +103,7 @@ func (b *BridgeV2) AddMedia(m any) error {
 	}
 }
 
-func (b *BridgeV2) AddDialogWebrtc(m *DialogWebrtc) error {
+func (b *Bridge) AddDialogWebrtc(m *DialogWebrtc) error {
 	med := BridgeAudioMedia{}
 	var err error
 	med.Reader, err = m.AudioReader(WithAudioReaderWebrtcProps(&med.ReaderProps))
@@ -134,7 +134,7 @@ func (b *BridgeV2) AddDialogWebrtc(m *DialogWebrtc) error {
 	return b.AddAudioMedia(&med)
 }
 
-func (b *BridgeV2) AddAudioMedia(m *BridgeAudioMedia) error {
+func (b *Bridge) AddAudioMedia(m *BridgeAudioMedia) error {
 	// Check can this dialog be added to bridge. NO TRANSCODING
 	if b.originator != nil {
 		// This may look ugly but it is safe way of reading
@@ -189,7 +189,7 @@ func (b *BridgeV2) AddAudioMedia(m *BridgeAudioMedia) error {
 	return nil
 }
 
-func (b *BridgeV2) proxyMediaChannels(m1, m2 *BridgeAudioMedia) error {
+func (b *Bridge) proxyMediaChannels(m1, m2 *BridgeAudioMedia) error {
 	var err error
 	log := b.log
 

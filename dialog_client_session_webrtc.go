@@ -53,49 +53,55 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 		}
 	})
 
-	d.onReInvite = func(req *sip.Request) (*sip.Response, error) {
-		// Handle media reinvite
-		if req.IsAck() {
-			// This should be on our reinvite handling
-			// For now just handle without error
-			return nil, nil
+	d.dialogCallbacks.mu.Lock()
+	var pendingSession *mediawebrtc.MediaSession
+	d.onRemoteSDP = func(ctx context.Context, remoteSDP []byte, offered bool) error {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+
+		if m.mediaSession == nil {
+			return fmt.Errorf("reinvite called on non initialized media")
 		}
 
-		res := sip.NewResponseFromRequest(req, 200, "OK", nil)
-		// remoteDirection := webrtcSDPMediaDirection(req.Body())
-
-		err := func(sdp []byte) error {
-			m.mu.Lock()
-			defer m.mu.Unlock()
-
-			if m.mediaSession == nil {
-				return fmt.Errorf("reinvite called on non initialized media")
-			}
-
-			sess := m.mediaSession.Fork()
-
-			if err := sess.RemoteSDP(context.TODO(), sdp, false); err != nil {
-				return err
-			}
-
-			ld, err := sess.LocalSDP(context.TODO(), true)
-			if err != nil {
-				return err
-			}
-			res = sip.NewResponseFromRequest(req, 200, "OK", ld)
-			res.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
-			return nil
-		}(req.Body())
-
-		if err != nil {
-			return nil, err
+		sess := m.mediaSession
+		if !offered {
+			sess = m.mediaSession.Fork()
+			pendingSession = sess
 		}
 
+		if err := sess.RemoteSDP(ctx, remoteSDP, offered); err != nil {
+			return err
+		}
 		if opts.OnMediaUpdate != nil {
 			opts.OnMediaUpdate(m)
 		}
-		return res, nil
+		return nil
 	}
+	d.onLocalSDP = func(ctx context.Context, answered bool, mode string, mediaSession ...*media.MediaSession) ([]byte, error) {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.mediaSession == nil {
+			return nil, fmt.Errorf("reinvite called on non initialized media")
+		}
+		sess := m.mediaSession
+		if pendingSession != nil {
+			sess = pendingSession
+		}
+		localSDP, err := sess.LocalSDP(ctx, answered)
+		if err != nil {
+			return nil, err
+		}
+		if pendingSession != nil && answered {
+			m.mediaSession = pendingSession
+			pendingSession = nil
+		}
+		return localSDP, nil
+	}
+	d.onFinalize = func(ctx context.Context) error {
+		return nil
+	}
+	d.onClose = append(d.onClose, m.Close)
+	d.dialogCallbacks.mu.Unlock()
 
 	if err := d.inviteWebrtc(ctx, m, opts); err != nil {
 		m.Close()
