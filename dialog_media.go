@@ -208,15 +208,15 @@ func (d *DialogMedia) setupRTPSession(sdp []byte, rtpSess *media.RTPSession) err
 	return nil
 }
 
-func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransaction, contactHDR sip.Header) error {
+func (d *DialogMedia) handleMediaUpdate(remoteSDP []byte) ([]byte, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	// When body is not present this can mean client is doing keep alive
 	// Still offer needs to be responded
-	if req.Body() != nil {
-		if err := d.sdpReInviteUnsafe(req.Body()); err != nil {
-			return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestTerminated, "Request Terminated - "+err.Error(), nil))
+	if remoteSDP != nil {
+		if err := d.sdpReInviteUnsafe(remoteSDP); err != nil {
+			return nil, err
 		}
 
 		if d.onMediaUpdate != nil {
@@ -227,11 +227,7 @@ func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransacti
 	}
 
 	// Reply with updated SDP
-	sd := d.mediaSession.LocalSDP()
-	res := sip.NewResponseFromRequest(req, sip.StatusOK, "OK", sd)
-	res.AppendHeader(contactHDR)
-	res.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
-	return tx.Respond(res)
+	return d.mediaSession.LocalSDP(), nil
 }
 
 // Must be protected with lock
@@ -253,7 +249,13 @@ func (d *DialogMedia) checkEarlyMedia(remoteSDP []byte) error {
 	if d.rtpSession == nil {
 		return errNoRTPSession
 	}
-	return d.sdpUpdateUnsafe(remoteSDP)
+	if d.mediaSession == nil {
+		return fmt.Errorf("no media session present")
+	}
+	if err := d.mediaSession.RemoteSDP(remoteSDP); err != nil {
+		return fmt.Errorf("sdp update media remote SDP applying failed: %w", err)
+	}
+	return nil
 }
 
 func (d *DialogMedia) sdpUpdateUnsafe(sdp []byte) error {
@@ -295,6 +297,69 @@ func (d *DialogMedia) replaceRTPSessionUnsafe(msess *media.MediaSession) error {
 	d.mediaSession = msess
 	d.rtpSession = rtpSess
 	return nil
+}
+
+func (d *DialogMedia) registerDialogCallbacks(c *dialogCallbacks) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var pendingMediaSession *media.MediaSession
+	c.onRemoteSDP = func(ctx context.Context, remoteSDP []byte, offered bool) error {
+		if remoteSDP != nil {
+			d.mu.Lock()
+			var err error
+			if offered && pendingMediaSession != nil {
+				err = pendingMediaSession.RemoteSDP(remoteSDP)
+				if err == nil {
+					err = d.mediaUpdateUnsafe(pendingMediaSession)
+					pendingMediaSession = nil
+				}
+			} else {
+				err = d.sdpUpdateUnsafe(remoteSDP)
+			}
+			onMediaUpdate := d.onMediaUpdate
+			d.mu.Unlock()
+			if err != nil {
+				return err
+			}
+			if onMediaUpdate != nil {
+				onMediaUpdate(d)
+			}
+		}
+		return nil
+	}
+	c.onLocalSDP = func(ctx context.Context, answered bool, mode string, mediaSession ...*media.MediaSession) ([]byte, error) {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+
+		if d.mediaSession == nil {
+			return nil, fmt.Errorf("dialog media is not initialized")
+		}
+
+		if answered {
+			return d.mediaSession.LocalSDP(), nil
+		}
+
+		ms := d.mediaSession.Fork()
+		if len(mediaSession) > 0 && mediaSession[0] != nil {
+			ms = mediaSession[0]
+		}
+		if mode != "" {
+			ms.Mode = mode
+		}
+		pendingMediaSession = ms
+		return ms.LocalSDP(), nil
+	}
+	c.onFinalize = func(ctx context.Context) error {
+		d.mu.Lock()
+		ms := d.mediaSession
+		d.mu.Unlock()
+		if ms == nil {
+			return nil
+		}
+		return ms.Finalize()
+	}
+	c.onClose = append(c.onClose, d.Close)
 }
 
 type AudioReaderOption func(d *DialogMedia) error

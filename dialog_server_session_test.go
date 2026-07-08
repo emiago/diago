@@ -98,12 +98,9 @@ func TestIntegrationDialogServerEarlyMedia(t *testing.T) {
 	require.NoError(t, err)
 
 	// We can now answer
-	answerMed, err := d.Answer(AnswerOptions{})
-	require.NoError(t, err)
-	defer answerMed.Close()
+	require.NoError(t, d.AnswerEarlyMedia(earlyMed, AnswerOptions{}))
 
-	// New playback is needed to follow new media session
-	playback, err = answerMed.PlaybackCreate()
+	playback, err = earlyMed.PlaybackCreate()
 	require.NoError(t, err)
 	_, err = playback.PlayFile("testdata/files/demo-echodone.wav")
 	require.NoError(t, err)

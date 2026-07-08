@@ -71,7 +71,7 @@ func BridgeCall(d *diago.Diago, inDialog *diago.DialogServerSession, recipient s
 		return err
 	}
 	defer med.Close()
-	if err := bridge.AddDialogSession(inDialog); err != nil {
+	if err := bridge.AddDialogMedia(med); err != nil {
 		return err
 	}
 

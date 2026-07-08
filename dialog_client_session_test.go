@@ -267,7 +267,7 @@ func TestIntegrationDialogClientEarlyMedia(t *testing.T) {
 				return
 			}
 
-			if _, err := d.Answer(AnswerOptions{}); err != nil {
+			if err := d.AnswerEarlyMedia(med, AnswerOptions{}); err != nil {
 				t.Log("Failed to answer", err)
 				return
 			}
@@ -307,7 +307,7 @@ func TestIntegrationDialogClientEarlyMedia(t *testing.T) {
 		earlyMediaBuf, _ = media.ReadAll(r, 160)
 	}()
 
-	err = dialog.WaitAnswer(ctx, sipgo.AnswerOptions{})
+	err = dialog.WaitAnswer(ctx, med, sipgo.AnswerOptions{})
 	require.NoError(t, err)
 	dialog.Ack(ctx)
 
@@ -333,7 +333,7 @@ func TestIntegrationDialogClientReinvite(t *testing.T) {
 		))
 		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
 			t.Log("Call received")
-			d.AnswerOptions(AnswerOptions{OnMediaUpdate: func(d *DialogMedia) {
+			d.Answer(AnswerOptions{OnMediaUpdate: func(d *DialogMedia) {
 
 			}})
 			<-d.Context().Done()
@@ -374,7 +374,7 @@ func TestIntegrationDialogClientReinviteKeepAlive(t *testing.T) {
 		))
 		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
 			t.Log("Call received")
-			d.AnswerOptions(AnswerOptions{OnMediaUpdate: func(d *DialogMedia) {
+			d.Answer(AnswerOptions{OnMediaUpdate: func(d *DialogMedia) {
 
 			}})
 			<-d.Context().Done()
@@ -616,7 +616,7 @@ func TestIntegrationDialogClientRefer(t *testing.T) {
 
 		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
 			t.Log("Call received")
-			d.AnswerOptions(AnswerOptions{
+			d.Answer(AnswerOptions{
 				OnRefer: func(referDialog *DialogClientSession) error {
 					if _, err := referDialog.Invite(referDialog.Context(), InviteClientOptions{}); err != nil {
 						return err
