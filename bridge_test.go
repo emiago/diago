@@ -42,7 +42,6 @@ func TestBridgeProxy(t *testing.T) {
 		RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioAlaw),
 		RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioAlaw),
 	}
-	incoming := &DialogServerSession{media: incomingMed}
 	outgoingMed := &DialogMedia{
 		mediaSession: &media.MediaSession{
 			Codecs: []media.Codec{media.CodecAudioAlaw},
@@ -52,14 +51,13 @@ func TestBridgeProxy(t *testing.T) {
 		RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioAlaw),
 		RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioAlaw),
 	}
-	outgoing := &DialogClientSession{media: outgoingMed}
 
-	err := b.AddDialogSession(incoming)
+	err := b.AddDialogMedia(incomingMed)
 	require.NoError(t, err)
-	err = b.AddDialogSession(outgoing)
+	err = b.AddDialogMedia(outgoingMed)
 	require.NoError(t, err)
 
-	err = b.proxyMedia()
+	err = b.proxyMediaChannels(b.dialogs[0], b.dialogs[1])
 	require.ErrorIs(t, err, io.EOF)
 
 	// Confirm all data is proxied
@@ -71,28 +69,24 @@ func TestBridgeNoTranscodingAllowed(t *testing.T) {
 	b := NewBridge()
 	// b.waitDialogsNum = 99 // Do not start proxy
 
-	incoming := &DialogServerSession{
-		media: &DialogMedia{
-			mediaSession: &media.MediaSession{
-				Codecs: []media.Codec{media.CodecAudioAlaw},
-			},
-			// RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioAlaw),
-			// RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioAlaw),
+	incomingMed := &DialogMedia{
+		mediaSession: &media.MediaSession{
+			Codecs: []media.Codec{media.CodecAudioAlaw},
 		},
+		audioReader: bytes.NewBuffer(make([]byte, 0)),
+		audioWriter: bytes.NewBuffer(make([]byte, 0)),
 	}
-	outgoing := &DialogClientSession{
-		media: &DialogMedia{
-			mediaSession: &media.MediaSession{
-				Codecs: []media.Codec{media.CodecAudioUlaw},
-			},
-			// RTPPacketReader: media.NewRTPPacketReader(nil, media.CodecAudioUlaw),
-			// RTPPacketWriter: media.NewRTPPacketWriter(nil, media.CodecAudioUlaw),
+	outgoingMed := &DialogMedia{
+		mediaSession: &media.MediaSession{
+			Codecs: []media.Codec{media.CodecAudioUlaw},
 		},
+		audioReader: bytes.NewBuffer(make([]byte, 0)),
+		audioWriter: bytes.NewBuffer(make([]byte, 0)),
 	}
 
-	err := b.AddDialogSession(incoming)
+	err := b.AddDialogMedia(incomingMed)
 	require.NoError(t, err)
-	err = b.AddDialogSession(outgoing)
+	err = b.AddDialogMedia(outgoingMed)
 	require.Error(t, err)
 }
 
@@ -115,7 +109,12 @@ func TestIntegrationBridging(t *testing.T) {
 	err := tu.ServeBackground(ctx, func(in *DialogServerSession) {
 		in.Trying()
 		in.Ringing()
-		_, _ = in.Answer(AnswerOptions{})
+		med, err := in.Answer(AnswerOptions{})
+		if err != nil {
+			t.Log("Answer failed", err)
+			return
+		}
+		defer med.Close()
 
 		inCtx := in.Context()
 		ctx, cancel := context.WithTimeout(inCtx, 15*time.Second)
@@ -124,7 +123,7 @@ func TestIntegrationBridging(t *testing.T) {
 		// Wa want to bridge this call with originator
 		bridge := NewBridge()
 		// Add us in bridge
-		if err := bridge.AddDialogSession(in); err != nil {
+		if err := bridge.AddDialogMedia(med); err != nil {
 			t.Log("Adding dialog in bridge failed", err)
 			return
 		}
@@ -233,17 +232,22 @@ func TestIntegrationBridgingMix(t *testing.T) {
 
 		in.Trying()
 		in.Ringing()
-		_, _ = in.Answer(AnswerOptions{})
+		med, err := in.Answer(AnswerOptions{})
+		if err != nil {
+			t.Log("Answer failed", err)
+			return
+		}
+		defer med.Close()
 
 		// Add us in bridge
 		t.Log("Adding into bridge", in.ID)
-		if err := bridge.AddDialogSession(in); err != nil {
+		if err := bridge.AddDialogMedia(med); err != nil {
 			t.Log("Adding dialog in bridge failed", err)
 			return
 		}
 		defer func() {
 			t.Log("Removing from bridge", in.ID)
-			bridge.RemoveDialogSession(in)
+			bridge.RemoveDialogMedia(med)
 		}()
 
 		<-in.Context().Done()
@@ -276,7 +280,7 @@ func TestIntegrationBridgingMix(t *testing.T) {
 		for range len(dialogs) {
 			<-dialogExit
 		}
-		assert.Equal(t, 0, len(bridge.dialogs))
+		assert.Equal(t, 0, len(bridge.medias))
 		assert.EqualValues(t, 0, bridge.stateRead())
 	})
 
@@ -290,8 +294,9 @@ func TestIntegrationBridgingMix(t *testing.T) {
 	})
 
 	t.Run("SoundProxied", func(t *testing.T) {
+		dialogsCreated := 0
 		defer func() {
-			for range 2 {
+			for range dialogsCreated {
 				<-dialogExit
 			}
 		}()
@@ -308,12 +313,14 @@ func TestIntegrationBridgingMix(t *testing.T) {
 
 		dialog1, med1, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
 		require.NoError(t, err)
+		dialogsCreated++
 		defer dialog1.Hangup(dialog1.Context())
 		defer dialog1.Close()
 		defer med1.Close()
 
 		dialog2, med2, err := dg.Invite(context.TODO(), sip.Uri{Host: "127.0.0.1", Port: 5090}, InviteOptions{})
 		require.NoError(t, err)
+		dialogsCreated++
 		defer dialog2.Hangup(dialog2.Context())
 		defer dialog2.Close()
 		defer med2.Close()

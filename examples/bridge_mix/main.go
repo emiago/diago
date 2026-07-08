@@ -64,10 +64,10 @@ func BridgeCall(d *diago.Diago, inDialog *diago.DialogServerSession) error {
 		return err
 	}
 	defer med.Close()
-	if err := bridge.AddDialogSession(inDialog); err != nil {
+	if err := bridge.AddDialogMedia(med); err != nil {
 		return err
 	}
 
 	<-inCtx.Done()
-	return bridge.RemoveDialogSession(inDialog)
+	return bridge.RemoveDialogMedia(med)
 }
