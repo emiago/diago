@@ -476,9 +476,11 @@ func (d *DialogServerSession) remoteContactUnsafe() *sip.ContactHeader {
 	return d.InviteRequest.Contact()
 }
 
-// Refer tries todo refer (blind transfer) on call. For more control use ReferOptions
+// Refer tries todo refer (blind transfer) on call. For more control use ReferOptions.
 //
-// NOTE: It is expected that after calling this you are hanguping call to send BYE
+// On REFER rejection (non-202), BYE is sent automatically to prevent dialog leakage.
+// On successful REFER, the default NOTIFY handler sends BYE when status >= 200 arrives.
+// Use ReferOptions with ReferTimeout to guard against missing NOTIFY.
 func (d *DialogServerSession) Refer(ctx context.Context, referTo sip.Uri, headers ...sip.Header) error {
 	// cont := d.InviteRequest.Contact()
 	// return dialogRefer(ctx, d, cont.Address, referTo, headers...)
@@ -488,8 +490,15 @@ func (d *DialogServerSession) Refer(ctx context.Context, referTo sip.Uri, header
 }
 
 type ReferServerOptions struct {
-	Headers  []sip.Header
+	Headers []sip.Header
+	// OnNotify sends notify status code.
+	// If implemented you need to react on different status code and manage dialog lifecycle.
 	OnNotify func(statusCode int)
+	// ReferTimeout is the max duration to wait for a final NOTIFY (status >= 200) after
+	// REFER is accepted. If set and no final NOTIFY arrives within this time, BYE is sent.
+	// Only applies when OnNotify is nil (auto-BYE mode). Zero means no timeout (caller
+	// relies on the default NOTIFY-triggered hangup in dialogHandleReferNotify).
+	ReferTimeout time.Duration
 }
 
 func (d *DialogServerSession) ReferOptions(ctx context.Context, referTo sip.Uri, opts ReferServerOptions) error {
@@ -499,7 +508,36 @@ func (d *DialogServerSession) ReferOptions(ctx context.Context, referTo sip.Uri,
 		d.onReferNotify = opts.OnNotify
 	}
 	d.mu.Unlock()
-	return dialogRefer(ctx, d, cont.Address, referTo, d.InviteResponse.Contact().Address, opts.Headers...)
+
+	err := dialogRefer(ctx, d, cont.Address, referTo, d.InviteResponse.Contact().Address, opts.Headers...)
+	if err != nil {
+		// REFER was rejected (405/488/5xx/6xx). If caller is not handling notifications
+		// themselves, send BYE to prevent dialog leakage.
+		if opts.OnNotify == nil {
+			return errors.Join(err, d.Hangup(ctx))
+		}
+		return err
+	}
+
+	// REFER accepted (202). If caller set a ReferTimeout and is not handling
+	// notifications themselves, start a timer. If no final NOTIFY (>= 200)
+	// arrives within the timeout, send BYE to prevent dialog leakage.
+	if opts.OnNotify == nil && opts.ReferTimeout > 0 {
+		go func() {
+			timer := time.NewTimer(opts.ReferTimeout)
+			defer timer.Stop()
+			select {
+			case <-timer.C:
+				// No final NOTIFY received within timeout — send BYE
+				d.Hangup(context.Background())
+			case <-d.Context().Done():
+				// Dialog ended normally (BYE from remote, or NOTIFY triggered hangup)
+				return
+			}
+		}()
+	}
+
+	return nil
 }
 
 func (d *DialogServerSession) handleReferNotify(req *sip.Request, tx sip.ServerTransaction) {
