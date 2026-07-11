@@ -15,13 +15,10 @@ import (
 const (
 	defaultRTPJitterBufferDelayPackets = 3
 	defaultRTPJitterBufferMaxPackets   = 10
-	maxRTPJitterBufferPackets          = 1<<15 - 1
 )
 
 // RTPJitterBufferOptions configures a fixed RTP jitter buffer.
 type RTPJitterBufferOptions struct {
-	// PacketDuration is the output pacing interval. If unset, 20ms is used.
-	PacketDuration time.Duration
 	// DelayPackets is the initial fixed playout delay in packets. If unset, 3 is used.
 	DelayPackets int
 	// MaxPackets caps buffered packets and the forward reordering window. If unset, 10 is used.
@@ -124,9 +121,10 @@ type RTPJitterBuffer struct {
 }
 
 // NewRTPJitterBuffer creates a fixed jitter buffer over another RTPReader.
-func NewRTPJitterBuffer(reader RTPReader, opts RTPJitterBufferOptions) *RTPJitterBuffer {
-	if opts.PacketDuration <= 0 {
-		opts.PacketDuration = 20 * time.Millisecond
+// It panics if packetDuration is not greater than zero.
+func NewRTPJitterBuffer(reader RTPReader, packetDuration time.Duration, opts RTPJitterBufferOptions) *RTPJitterBuffer {
+	if packetDuration <= 0 {
+		panic("media: RTP jitter buffer packetDuration must be greater than zero")
 	}
 	if opts.DelayPackets <= 0 {
 		opts.DelayPackets = defaultRTPJitterBufferDelayPackets
@@ -136,9 +134,6 @@ func NewRTPJitterBuffer(reader RTPReader, opts RTPJitterBufferOptions) *RTPJitte
 	}
 	if opts.MaxPackets < opts.DelayPackets {
 		opts.MaxPackets = opts.DelayPackets
-	}
-	if opts.MaxPackets > maxRTPJitterBufferPackets {
-		opts.MaxPackets = maxRTPJitterBufferPackets
 	}
 	if opts.DelayPackets > opts.MaxPackets {
 		opts.DelayPackets = opts.MaxPackets
@@ -167,7 +162,7 @@ func NewRTPJitterBuffer(reader RTPReader, opts RTPJitterBufferOptions) *RTPJitte
 
 	return &RTPJitterBuffer{
 		reader:         reader,
-		packetDuration: opts.PacketDuration,
+		packetDuration: packetDuration,
 		delayPackets:   opts.DelayPackets,
 		maxPackets:     opts.MaxPackets,
 		input:          make(chan rtpJitterInput, slotCount),
