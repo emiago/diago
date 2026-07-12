@@ -4,7 +4,10 @@
 package media
 
 import (
+	"fmt"
 	"io"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,6 +19,8 @@ const (
 	defaultRTPJitterBufferDelayPackets = 3
 	defaultRTPJitterBufferMaxPackets   = 10
 )
+
+var rtpJitterDebug = envBool("JITTER_DEBUG")
 
 // RTPJitterBufferOptions configures a fixed RTP jitter buffer.
 type RTPJitterBufferOptions struct {
@@ -116,6 +121,12 @@ type RTPJitterBuffer struct {
 	inputClosed bool
 	// readErr stores the terminal upstream error returned after queued packets drain.
 	readErr error
+	// lastArrivalTime is used only for JITTER_DEBUG receive-side diagnostics.
+	lastArrivalTime time.Time
+	// lastArrivalSeq is the previous RTP sequence observed by readLoop.
+	lastArrivalSeq uint16
+	// lastArrivalSet reports whether receive-side debug arrival state is initialized.
+	lastArrivalSet bool
 	// stats uses atomics so Statistics may run concurrently with ReadRTP.
 	stats rtpJitterBufferStats
 }
@@ -249,10 +260,12 @@ func (j *RTPJitterBuffer) ReadRTP(buf []byte, p *rtp.Packet) (int, error) {
 
 			j.handleSlot(input.slot)
 			if !j.playout && j.queued >= j.delayPackets {
+				j.debugPlayoutStarted("delay_packets")
 				j.startPlayout()
 			}
 
 		case <-initialC:
+			j.debugPlayoutStarted("initial_timer")
 			j.startPlayout()
 
 		case <-playoutC:
@@ -292,6 +305,7 @@ func (j *RTPJitterBuffer) readLoop() {
 		slot.n = n
 		slot.ssrc = slot.packet.SSRC
 		slot.seq = slot.packet.SequenceNumber
+		j.debugArrival(slot)
 		if !j.sendInput(rtpJitterInput{slot: slotIndex}) {
 			return
 		}
@@ -322,11 +336,13 @@ func (j *RTPJitterBuffer) handleSlot(slotIndex int) {
 	if distance < 0 {
 		if j.playout {
 			j.stats.packetsLate.Add(1)
+			j.debugPacketDecision("late", slot, "behind_playout")
 			j.recycleSlot(slotIndex)
 			return
 		}
 		if !j.canMoveExpectedBack(slot.seq) {
 			j.stats.packetsDropped.Add(1)
+			j.debugPacketDecision("dropped", slot, "before_window")
 			j.recycleSlot(slotIndex)
 			return
 		}
@@ -336,6 +352,7 @@ func (j *RTPJitterBuffer) handleSlot(slotIndex int) {
 
 	if int(distance) >= j.maxPackets {
 		j.stats.packetsDropped.Add(1)
+		j.debugPacketDecision("dropped", slot, "beyond_window")
 		j.recycleSlot(slotIndex)
 		return
 	}
@@ -345,8 +362,10 @@ func (j *RTPJitterBuffer) handleSlot(slotIndex int) {
 	if existing >= 0 {
 		if j.slots[existing].seq == slot.seq {
 			j.stats.packetsDuplicate.Add(1)
+			j.debugPacketDecision("duplicate", slot, "same_sequence")
 		} else {
 			j.stats.packetsDropped.Add(1)
+			j.debugPacketDecision("dropped", slot, "slot_collision")
 		}
 		j.recycleSlot(slotIndex)
 		return
@@ -448,6 +467,81 @@ func (j *RTPJitterBuffer) Statistics() RTPJitterBufferStatistics {
 		PacketsDropped:     j.stats.packetsDropped.Load(),
 		SSRCResets:         j.stats.ssrcResets.Load(),
 		LastSequenceNumber: uint16(j.stats.lastSequenceNumber.Load()),
+	}
+}
+
+func (j *RTPJitterBuffer) debugArrival(slot *rtpJitterSlot) {
+	if !rtpJitterDebug {
+		return
+	}
+
+	now := time.Now()
+	if j.lastArrivalSet {
+		arrivalDelta := now.Sub(j.lastArrivalTime)
+		if arrivalDelta > j.packetDuration+j.packetDuration/2 {
+			jitterDebugf("event=delayed_arrival seq=%d prev_seq=%d arrival_delta=%s packet_duration=%s",
+				slot.seq,
+				j.lastArrivalSeq,
+				arrivalDelta,
+				j.packetDuration,
+			)
+		}
+
+		expectedNext := j.lastArrivalSeq + 1
+		if slot.seq != expectedNext {
+			jitterDebugf("event=out_of_sequence seq=%d prev_seq=%d expected_next=%d arrival_delta=%s",
+				slot.seq,
+				j.lastArrivalSeq,
+				expectedNext,
+				arrivalDelta,
+			)
+		}
+	}
+
+	j.lastArrivalTime = now
+	j.lastArrivalSeq = slot.seq
+	j.lastArrivalSet = true
+}
+
+func (j *RTPJitterBuffer) debugPacketDecision(event string, slot *rtpJitterSlot, reason string) {
+	if !rtpJitterDebug {
+		return
+	}
+
+	jitterDebugf("event=%s seq=%d expected_seq=%d queued=%d delay_packets=%d max_packets=%d reason=%s",
+		event,
+		slot.seq,
+		j.expectedSeq,
+		j.queued,
+		j.delayPackets,
+		j.maxPackets,
+		reason,
+	)
+}
+
+func (j *RTPJitterBuffer) debugPlayoutStarted(reason string) {
+	if !rtpJitterDebug {
+		return
+	}
+
+	jitterDebugf("event=playout_started queued=%d delay_packets=%d max_packets=%d reason=%s",
+		j.queued,
+		j.delayPackets,
+		j.maxPackets,
+		reason,
+	)
+}
+
+func jitterDebugf(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "JITTER_DEBUG "+format+"\n", args...)
+}
+
+func envBool(name string) bool {
+	switch strings.ToLower(os.Getenv(name)) {
+	case "1", "true", "yes":
+		return true
+	default:
+		return false
 	}
 }
 
