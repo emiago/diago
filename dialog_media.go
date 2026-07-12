@@ -332,6 +332,42 @@ func WithAudioReaderMediaProps(p *MediaProps) AudioReaderOption {
 	}
 }
 
+// WithAudioReaderJitterBuffer inserts an RTP jitter buffer before the payload reader.
+// Packet duration is derived from the negotiated audio codec.
+func WithAudioReaderJitterBuffer(opts media.RTPJitterBufferOptions) AudioReaderOption {
+	return func(d *DialogMedia) error {
+		if d.mediaSession == nil || d.RTPPacketReader == nil {
+			return fmt.Errorf("no media setup")
+		}
+
+		codec := media.CodecAudioFromSession(d.mediaSession)
+		if codec.SampleDur <= 0 {
+			return fmt.Errorf("invalid audio codec packet duration: %s", codec.SampleDur)
+		}
+
+		reader := d.RTPPacketReader.Reader()
+		if reader == nil {
+			return fmt.Errorf("no RTP reader setup")
+		}
+
+		jitter := media.NewRTPJitterBuffer(reader, codec.SampleDur, opts)
+		d.RTPPacketReader.UpdateReader(jitter)
+
+		// UpdateReader interrupts a potentially blocked RTPSession read. The new
+		// jitter reader uses that same session, so restore normal network reading.
+		if session, ok := reader.(*media.RTPSession); ok {
+			if err := session.Sess.StartRTP(1); err != nil {
+				d.RTPPacketReader.UpdateReader(reader)
+				_ = jitter.Close()
+				return fmt.Errorf("failed to start jitter buffer RTP reader: %w", err)
+			}
+		}
+
+		d.onCloseUnsafe(jitter.Close)
+		return nil
+	}
+}
+
 // WithAudioReaderRTPStats creates RTP Statistics interceptor on audio reader
 func WithAudioReaderRTPStats(hook media.OnRTPReadStats) AudioReaderOption {
 	return func(d *DialogMedia) error {
