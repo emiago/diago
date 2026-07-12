@@ -4,8 +4,11 @@
 package media
 
 import (
+	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
+	"sort"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -319,6 +322,59 @@ func TestRTPJitterBufferOverflow(t *testing.T) {
 	})
 }
 
+func TestRTPJitterBufferRealtimeSimulation(t *testing.T) {
+	const (
+		ssrc        = 1234
+		packetCount = 300
+	)
+	packetDuration := 20 * time.Millisecond
+	reader := &chanRTPReader{packets: make(chan rtp.Packet, packetCount)}
+	jb := NewRTPJitterBuffer(reader, packetDuration, RTPJitterBufferOptions{
+		DelayPackets: 25,
+		MaxPackets:   32,
+	})
+	t.Cleanup(func() {
+		_ = jb.Close()
+	})
+
+	wantPayloads := make(map[uint16][]byte, packetCount)
+	packets := make([]rtp.Packet, 0, packetCount)
+	for seq := uint16(0); seq < packetCount; seq++ {
+		pkt := realtimeJitterRTPPacket(ssrc, seq)
+		wantPayloads[seq] = append([]byte(nil), pkt.Payload...)
+		packets = append(packets, pkt)
+	}
+
+	readResult := make(chan error, 1)
+	go func() {
+		readResult <- readRealtimeJitterPackets(jb, packetCount, wantPayloads)
+	}()
+
+	timedProducerDone := make(chan struct{})
+	go func() {
+		defer close(timedProducerDone)
+		defer close(reader.packets)
+		writeTimedRTPPackets(reader.packets, packets, packetDuration)
+	}()
+
+	select {
+	case err := <-readResult:
+		require.NoError(t, err)
+	case <-time.After(8 * time.Second):
+		_ = jb.Close()
+		t.Fatal("timed out waiting for realtime jitter buffer simulation")
+	}
+
+	<-timedProducerDone
+	stats := jb.Statistics()
+	require.Equal(t, uint64(packetCount), stats.PacketsRead)
+	require.Equal(t, uint64(packetCount), stats.PacketsReleased)
+	require.Equal(t, uint64(0), stats.PacketsLost)
+	require.Equal(t, uint64(0), stats.PacketsLate)
+	require.Equal(t, uint64(0), stats.PacketsDropped)
+	require.Equal(t, uint64(0), stats.PacketsDuplicate)
+}
+
 type benchmarkRTPReader struct {
 	raw  []byte
 	next chan uint16
@@ -419,5 +475,84 @@ func rtpPacket(ssrc uint32, seq uint16) rtp.Packet {
 			SSRC:           ssrc,
 		},
 		Payload: []byte{byte(seq), byte(seq >> 8)},
+	}
+}
+
+func realtimeJitterRTPPacket(ssrc uint32, seq uint16) rtp.Packet {
+	payload := make([]byte, 12)
+	binary.BigEndian.PutUint32(payload[:4], uint32(seq))
+	for i := 4; i < len(payload); i++ {
+		payload[i] = byte((uint32(seq)*31 + uint32(i)) & 0xff)
+	}
+
+	return rtp.Packet{
+		Header: rtp.Header{
+			Version:        2,
+			PayloadType:    8,
+			SequenceNumber: seq,
+			Timestamp:      uint32(seq) * 160,
+			SSRC:           ssrc,
+		},
+		Payload: payload,
+	}
+}
+
+func readRealtimeJitterPackets(jb *RTPJitterBuffer, packetCount int, wantPayloads map[uint16][]byte) error {
+	buf := make([]byte, RTPBufSize)
+	var pkt rtp.Packet
+	for wantSeq := uint16(0); wantSeq < uint16(packetCount); wantSeq++ {
+		if _, err := jb.ReadRTP(buf, &pkt); err != nil {
+			return fmt.Errorf("read sequence %d: %w", wantSeq, err)
+		}
+		if pkt.SequenceNumber != wantSeq {
+			return fmt.Errorf("sequence mismatch: got %d, want %d", pkt.SequenceNumber, wantSeq)
+		}
+		if len(pkt.Payload) < 4 {
+			return fmt.Errorf("payload for sequence %d is too short: %d", wantSeq, len(pkt.Payload))
+		}
+		payloadSeq := binary.BigEndian.Uint32(pkt.Payload[:4])
+		if payloadSeq != uint32(pkt.SequenceNumber) {
+			return fmt.Errorf("payload sequence mismatch: got %d, packet sequence %d", payloadSeq, pkt.SequenceNumber)
+		}
+		if !bytes.Equal(pkt.Payload, wantPayloads[wantSeq]) {
+			return fmt.Errorf("payload bytes mismatch for sequence %d", wantSeq)
+		}
+	}
+	return nil
+}
+
+type timedRTPPacket struct {
+	packet  rtp.Packet
+	arrival time.Duration
+}
+
+func writeTimedRTPPackets(dst chan<- rtp.Packet, packets []rtp.Packet, packetDuration time.Duration) {
+	scheduled := make([]timedRTPPacket, 0, len(packets))
+	for _, pkt := range packets {
+		seq := pkt.SequenceNumber
+		scheduled = append(scheduled, timedRTPPacket{
+			packet:  pkt,
+			arrival: time.Duration(seq)*packetDuration + realtimeJitterDelay(seq),
+		})
+	}
+	sort.SliceStable(scheduled, func(i, j int) bool {
+		return scheduled[i].arrival < scheduled[j].arrival
+	})
+
+	start := time.Now()
+	for _, item := range scheduled {
+		time.Sleep(time.Until(start.Add(item.arrival)))
+		dst <- item.packet
+	}
+}
+
+func realtimeJitterDelay(seq uint16) time.Duration {
+	switch {
+	case seq < 25:
+		return 0
+	case seq < 55:
+		return time.Duration(50+int(seq%8)*20) * time.Millisecond
+	default:
+		return time.Duration(100+int(seq%11)*30) * time.Millisecond
 	}
 }
