@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pion/ice/v4"
 	"github.com/pion/transport/v3/packetio"
 )
 
@@ -50,7 +49,9 @@ func isDTLS(buf []byte) bool {
 // the rest of MediaSession, which is written against net.PacketConn, works
 // over ICE without knowing about it.
 type iceMux struct {
-	conn  *ice.Conn
+	// conn is the nominated ICE pair. It is held as a net.Conn rather than an
+	// *ice.Conn because that is all the mux needs from it.
+	conn  net.Conn
 	raddr net.Addr
 
 	dtls *muxConn
@@ -63,7 +64,7 @@ type iceMux struct {
 
 // newICEMux starts demultiplexing conn. raddr is the remote address ICE
 // nominated and is reported to readers as the packet source.
-func newICEMux(conn *ice.Conn, raddr net.Addr) *iceMux {
+func newICEMux(conn net.Conn, raddr net.Addr) *iceMux {
 	m := &iceMux{conn: conn, raddr: raddr}
 	m.dtls = newMuxConn(m)
 	m.rtp = newMuxConn(m)
