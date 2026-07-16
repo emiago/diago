@@ -33,6 +33,10 @@ type Diago struct {
 	auth      sipgo.DigestAuth
 	mediaConf MediaConfig
 
+	// sessionTimers is the RFC 4028 session-timer policy stamped onto each dialog
+	// at construction.
+	sessionTimers SessionTimerPolicy
+
 	log *slog.Logger
 
 	cache            DialogCachePool
@@ -164,6 +168,16 @@ func WithMediaConfig(conf MediaConfig) DiagoOption {
 	}
 }
 
+// WithSessionTimers sets the RFC 4028 session-timer policy stamped onto each
+// dialog at construction. The policy drives negotiation, the refresh loop and
+// the peer-refresh watchdog. Without this option session timers stay disabled
+// and diago neither advertises nor enforces them.
+func WithSessionTimers(p SessionTimerPolicy) DiagoOption {
+	return func(dg *Diago) {
+		dg.sessionTimers = p
+	}
+}
+
 // WithServer allows providing custom server handle. Consider still it needs to use same UA as diago
 func WithServer(srv *sipgo.Server) DiagoOption {
 	return func(dg *Diago) {
@@ -288,6 +302,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 				externalIP: tran.MediaExternalIP,
 				dtlsConf:   tran.MediaDTLSConf,
 			},
+			sessionTimers: dg.sessionTimers,
 		}
 
 		defer closeAndLog(dWrap, "closing dialog server returned error")
