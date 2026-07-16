@@ -167,6 +167,16 @@ func CodecsFromSDPRead(formats []string, attrs []string, codecsAudio []Codec) (i
 			continue
 		}
 
+		// G.722 is a static payload type like ulaw and alaw above, so a peer may
+		// offer it with no a=rtpmap line. Resolving it from the payload type also
+		// keeps the RFC 3551 clock when a peer advertises the 16 kHz sampling rate
+		// in rtpmap instead.
+		if f == "9" {
+			codecsAudio[n] = CodecAudioG722
+			n++
+			continue
+		}
+
 		pt64, err := strconv.ParseUint(f, 10, 8)
 		if err != nil {
 			rerr = errors.Join(rerr, fmt.Errorf("format type failed to conv to integer, skipping f=%s: %w", f, err))
