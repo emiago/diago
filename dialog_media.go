@@ -83,6 +83,11 @@ type DialogMedia struct {
 	// onReferNotify callback path leaves this nil.
 	referInFlight *referWaiter
 
+	// releaseRTPPort returns this dialog RTP port to the allocator that handed
+	// it out. Nil when no allocator is installed, as the OS takes the port back
+	// when the socket closes. Set next to mediaSession and consumed by Close.
+	releaseRTPPort func()
+
 	onClose       func() error
 	onMediaUpdate func(*DialogMedia)
 
@@ -174,6 +179,8 @@ func (d *DialogMedia) Close() error {
 	d.onClose = nil
 	m := d.mediaSession
 	rtpSess := d.rtpSession
+	releasePort := d.releaseRTPPort
+	d.releaseRTPPort = nil
 
 	d.mu.Unlock()
 
@@ -188,6 +195,14 @@ func (d *DialogMedia) Close() error {
 
 	if m != nil {
 		e3 = m.Close()
+	}
+
+	// After the sockets are closed, never before. An allocator may hold the port
+	// for a drain window so late RTP from this call can not land on the next
+	// call socket, and that window has to start when the wire is actually down.
+	// The closed latch above makes this exactly once.
+	if releasePort != nil {
+		releasePort()
 	}
 	return errors.Join(e1, e2, e3)
 }
@@ -245,9 +260,23 @@ func (d *DialogMedia) initMediaSessionFromConf(conf MediaConfig) error {
 		}
 	}
 
+	// Port 0 leaves the choice to the OS or to the media package port range. An
+	// allocator, when installed, makes it instead, so the port comes from a range
+	// the operator has bounded and opened on the firewall.
+	rtpPort := 0
+	var releasePort func()
+	if alloc := conf.RTPPortAllocator; alloc != nil {
+		port, err := alloc.AllocateRTPPort()
+		if err != nil {
+			return err
+		}
+		rtpPort = port
+		releasePort = func() { alloc.ReleaseRTPPort(port) }
+	}
+
 	sess := &media.MediaSession{
 		Codecs:     slices.Clone(conf.Codecs),
-		Laddr:      net.UDPAddr{IP: bindIP, Port: 0},
+		Laddr:      net.UDPAddr{IP: bindIP, Port: rtpPort},
 		ExternalIP: conf.externalIP,
 		Mode:       sdp.ModeSendrecv,
 		SecureRTP:  conf.secureRTP,
@@ -257,9 +286,15 @@ func (d *DialogMedia) initMediaSessionFromConf(conf MediaConfig) error {
 	}
 
 	if err := sess.Init(); err != nil {
+		// Nothing was bound, so the port goes straight back rather than wait for
+		// a Close that will not come: this dialog has no media session.
+		if releasePort != nil {
+			releasePort()
+		}
 		return err
 	}
 	d.mediaSession = sess
+	d.releaseRTPPort = releasePort
 	return nil
 }
 
@@ -283,8 +318,10 @@ func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransacti
 	d.remoteContactTarget = req.Contact().Clone()
 
 	// When body is not present this can mean client is doing keep alive
-	// Still offer needs to be responded
-	if req.Body() != nil {
+	// Still offer needs to be responded.
+	// Content-Length: 0 can reach us as an empty but non nil body, so length is
+	// checked rather than nilness.
+	if len(req.Body()) > 0 {
 		if err := d.sdpReInviteUnsafe(req.Body()); err != nil {
 			return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestTerminated, "Request Terminated - "+err.Error(), nil))
 		}
@@ -294,6 +331,12 @@ func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransacti
 			d.onMediaUpdate(d)
 			d.mu.Lock()
 		}
+	}
+
+	// A request for an offer can not be answered with an SDP we never built.
+	// The bodied path rejects this inside sdpReInviteUnsafe.
+	if d.mediaSession == nil {
+		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestTerminated, "Request Terminated - no media session present", nil))
 	}
 
 	// Reply with updated SDP
