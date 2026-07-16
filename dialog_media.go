@@ -438,7 +438,7 @@ func WithAudioReaderRTPStats(hook media.OnRTPReadStats) AudioReaderOption {
 // WithAudioReaderDTMF creates DTMF interceptor
 func WithAudioReaderDTMF(r *DTMFReader) AudioReaderOption {
 	return func(d *DialogMedia) error {
-		r.dtmfReader = media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, d.RTPPacketReader, d.getAudioReader())
+		r.dtmfReader = media.NewRTPDTMFReader(dtmfCodec(d.mediaSession), d.RTPPacketReader, d.getAudioReader())
 		r.mediaSession = d.mediaSession
 
 		d.audioReader = r
@@ -527,7 +527,7 @@ func WithAudioWriterRTPStats(hook media.OnRTPWriteStats) AudioWriterOption {
 // WithAudioWriterDTMF adds DTMF into audio pipeline
 func WithAudioWriterDTMF(r *DTMFWriter) AudioWriterOption {
 	return func(d *DialogMedia) error {
-		r.dtmfWriter = media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, d.RTPPacketWriter, d.getAudioWriter())
+		r.dtmfWriter = media.NewRTPDTMFWriter(dtmfCodec(d.mediaSession), d.RTPPacketWriter, d.getAudioWriter())
 		r.mediaSession = d.mediaSession
 		d.audioWriter = r
 		return nil
@@ -796,6 +796,20 @@ func (d *DialogMedia) StartRTP(rw int8, dur time.Duration) error {
 	return d.mediaSession.StartRTP(rw)
 }
 
+// dtmfCodec returns the telephone-event codec DTMF is carried on for this
+// session. It is the negotiated one: telephone-event is a dynamic format, so the
+// number on the wire is the peer's rather than our default (RFC 3264 section
+// 6.1).
+//
+// A session that negotiated no telephone-event keeps the package default, which
+// is the behaviour every caller had before.
+func dtmfCodec(s *media.MediaSession) media.Codec {
+	if codec, ok := media.CodecTelephoneEventFromSession(s); ok {
+		return codec
+	}
+	return media.CodecTelephoneEvent8000
+}
+
 type DTMFReader struct {
 	mediaSession *media.MediaSession
 	dtmfReader   *media.RTPDtmfReader
@@ -810,7 +824,7 @@ func (m *DialogMedia) AudioReaderDTMF() (*DTMFReader, error) {
 		return nil, err
 	}
 	return &DTMFReader{
-		dtmfReader:   media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, m.RTPPacketReader, ar),
+		dtmfReader:   media.NewRTPDTMFReader(dtmfCodec(m.mediaSession), m.RTPPacketReader, ar),
 		mediaSession: m.mediaSession,
 	}, nil
 }
@@ -873,7 +887,7 @@ func (m *DialogMedia) AudioWriterDTMF() (*DTMFWriter, error) {
 	}
 
 	return &DTMFWriter{
-		dtmfWriter:   media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, m.RTPPacketWriter, aw),
+		dtmfWriter:   media.NewRTPDTMFWriter(dtmfCodec(m.mediaSession), m.RTPPacketWriter, aw),
 		mediaSession: m.mediaSession,
 	}, nil
 }

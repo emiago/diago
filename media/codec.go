@@ -76,6 +76,27 @@ func CodecAudioFromList(codecs []Codec) (Codec, bool) {
 	return Codec{}, false
 }
 
+// CodecTelephoneEventFromSession returns the telephone-event codec the session
+// runs on, and whether it has one at all.
+//
+// DTMF must be sent and received on the payload type negotiation settled on.
+// telephone-event is a dynamic format, so each side numbers it independently
+// (RFC 3551 section 3) and an answer echoes the offerer's number (RFC 3264
+// section 6.1). CodecTelephoneEvent8000 therefore only describes our own default
+// numbering, and is not what a peer necessarily puts on the wire.
+//
+// Encoding names are case insensitive (RFC 4566 section 6).
+//
+// NOTE: Not thread safe, same as the rest of the codec accessors.
+func CodecTelephoneEventFromSession(s *MediaSession) (Codec, bool) {
+	for _, codec := range s.activeCodecs() {
+		if strings.EqualFold(codec.Name, CodecTelephoneEvent8000.Name) {
+			return codec, true
+		}
+	}
+	return Codec{}, false
+}
+
 // Deprecated: Use CodecAudioFromSession
 func CodecFromSession(s *MediaSession) Codec {
 	return CodecAudioFromSession(s)
