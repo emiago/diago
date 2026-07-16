@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/emiago/diago/media/sdp"
-	"github.com/emiago/dtls/v3"
 	"github.com/emiago/sipgo/sip"
+	"github.com/pion/dtls/v3"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/srtp/v3"
@@ -158,6 +158,9 @@ type MediaSession struct {
 
 	// DTLS
 	dtlsConn *dtls.Conn
+	// dtlsTr is the transport dtlsConn was built on. It is held so the handshake
+	// can hand the socket back once the keying material is exported.
+	dtlsTr *dtlsKeyExchangeConn
 
 	// ICE
 	iceAgent *ICEAgent
@@ -731,10 +734,11 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 		// dialDTLS builds the DTLS conn over the media transport.
 		dialDTLS := func() error {
 			var err error
+			s.dtlsTr = s.dtlsTransport()
 			if role == "server" {
-				s.dtlsConn, err = dtls.Server(s.dtlsTransport(), &s.Raddr, dtlsConf)
+				s.dtlsConn, err = dtls.Server(s.dtlsTr, &s.Raddr, dtlsConf)
 			} else {
-				s.dtlsConn, err = dtls.Client(s.dtlsTransport(), &s.Raddr, dtlsConf)
+				s.dtlsConn, err = dtls.Client(s.dtlsTr, &s.Raddr, dtlsConf)
 			}
 			if err != nil {
 				return fmt.Errorf("failed to setup dlts %s conn: %w", role, err)
@@ -770,6 +774,13 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			)
 			if err := s.dtlsConn.Handshake(); err != nil {
 				return fmt.Errorf("dtls conn handshake: %w", err)
+			}
+
+			// The exchange is over, so the stack must let the socket go before it
+			// can take a single SRTP packet off it. This is the first statement
+			// after the handshake for that reason: nothing may come between.
+			if err := s.retireDTLS(); err != nil {
+				return err
 			}
 
 			DefaultLogger().Debug("Handshake finished. Checking DTLS State")
@@ -917,6 +928,25 @@ func (s *MediaSession) dtlsTransport() *dtlsKeyExchangeConn {
 		return newDTLSKeyExchangeConn(s.iceMux.dtls)
 	}
 	return newDTLSKeyExchangeConn(s.rtpConn)
+}
+
+// retireDTLS releases the media socket once the handshake is done with it.
+//
+// DTLS-SRTP uses the association for nothing but the key exchange, and the
+// socket it ran on is the one SRTP arrives on. Left alone the stack keeps its
+// read loop parked there and consumes media, which it then discards as a
+// malformed record per RFC 6347 section 4.1.2.7, so the loss is silent.
+//
+// detach comes first, so that the close_notify Close emits is dropped rather
+// than sent: the peer keeps its association. Close is then what retires the
+// read loop and the handshake goroutine, and it cannot reach the socket because
+// detach has already taken it away.
+func (s *MediaSession) retireDTLS() error {
+	s.dtlsTr.detach()
+	if err := s.dtlsConn.Close(); err != nil {
+		return fmt.Errorf("dtls conn close: %w", err)
+	}
+	return nil
 }
 
 // Finalize finalizes negotiation and does verification
