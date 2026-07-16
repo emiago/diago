@@ -310,6 +310,8 @@ func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 		return fmt.Errorf("no media session present")
 	}
 
+	// An inbound re-INVITE carries an offer, whichever side of the dialog we are.
+	d.mediaSession.RemoteSDPIsAnswer = false
 	if err := d.sdpUpdateUnsafe(sdp); err != nil {
 		return err
 	}

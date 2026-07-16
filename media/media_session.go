@@ -25,6 +25,28 @@ import (
 	"github.com/pion/srtp/v3"
 )
 
+// Negotiation failures. Each one means the remote SDP and our configuration have
+// no overlap, which is a property of the peer's offer and not a fault in this
+// process. They are exported so a caller can tell the two apart with errors.Is:
+// an offer we cannot meet should be answered with 488 Not Acceptable Here, while
+// an internal error should not. The wrapped text carries the specifics.
+var (
+	// ErrNoCommonCodec means the audio formats do not intersect: the peer
+	// offered no codec we support, or none that could be parsed.
+	ErrNoCommonCodec = errors.New("no common codec")
+
+	// ErrNoCommonCrypto means the media is negotiable but the keying is not.
+	// The peer asked for secure RTP and no SRTP context could be built from what
+	// it offered. Kept apart from ErrNoCommonCodec because a codec mismatch is a
+	// capability gap while this is a security policy gap.
+	ErrNoCommonCrypto = errors.New("no common crypto")
+
+	// ErrNoCommonMedia means the m= line itself is unusable before codecs are
+	// reached: a transport we do not speak, or an address and port that cannot
+	// carry RTP.
+	ErrNoCommonMedia = errors.New("no common media")
+)
+
 var (
 	// RTPPortStart and RTPPortEnd allows defining rtp port range for media
 	RTPPortStart  = 0
@@ -101,6 +123,16 @@ type MediaSession struct {
 
 	// Codecs are initial list of Codecs that would be used in SDP generation
 	Codecs []Codec
+
+	// RemoteSDPIsAnswer declares that the next body passed to RemoteSDP answers
+	// an offer we made, rather than offering to us. It is a property of the body
+	// and not of the dialog: a UAC offers on its INVITE and answers an inbound
+	// re-INVITE, so the role changes within one session.
+	//
+	// It only decides who we are for SDPCodecPreferLocalOrder, which applies to
+	// the answerer alone. Default false means the body is an offer and we are the
+	// answerer, which is the common case and the previous behaviour.
+	RemoteSDPIsAnswer bool
 
 	sdp []byte
 
@@ -233,6 +265,15 @@ func (s *MediaSession) Init() error {
 		s.SRTPAlg = uint16(srtp.ProtectionProfileAes128CmHmacSha1_80)
 	}
 
+	// A session that already holds a connection and is initialized again is
+	// rebinding: this is Fork followed by a new Laddr, which starts a new
+	// listener below. ExternalIP is the address the OLD socket was reachable on,
+	// so it cannot describe the new one and must be set again by the caller if it
+	// still applies.
+	if s.rtpConn != nil {
+		s.ExternalIP = nil
+	}
+
 	// Try to listen on this ports
 	if err := s.createListeners(&s.Laddr); err != nil {
 		return err
@@ -362,6 +403,16 @@ func (s *MediaSession) Fork() *MediaSession {
 		// means a fork renegotiates over the existing pair rather than
 		// restarting ICE.
 		iceMux: s.iceMux,
+		// ExternalIP is what LocalSDP publishes as the c= address, and LocalSDP
+		// regenerates on every call for a negotiated session. Dropping it here
+		// made the 200 OK answering any re-INVITE advertise the internal bind
+		// address, so the peer sent RTP somewhere it could not route and the call
+		// went one way from the first re-INVITE on, with a clean SIP trace.
+		ExternalIP: s.ExternalIP,
+		// The role carries over so the caller can set it once on the session it
+		// owns. Fork is called inside the re-negotiation path, where the fork
+		// itself is not reachable to configure.
+		RemoteSDPIsAnswer: s.RemoteSDPIsAnswer,
 	}
 	return &cp
 }
@@ -564,7 +615,12 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	//    different entity.  In that case, the version number in the "o=" line
 	//    of the answer is unrelated to the version number in the o line of the
 	//    offer.
-	answerer := s.sessionID == 0
+	// We are the answerer whenever the body being applied is an offer. The caller
+	// tells us which it is, because it cannot be inferred from the session:
+	// s.sessionID == 0 holds both for a UAS applying its first offer and for a
+	// UAC applying the answer to its own INVITE, and Fork carries the session id
+	// forward so a re-INVITE offer no longer looks like a first offer either.
+	answerer := !s.RemoteSDPIsAnswer
 	if s.sessionID != si.SessionID {
 		s.sessionID = si.SessionID
 		s.sessionVersion = si.SessionVersion + 1
@@ -588,7 +644,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	case "UDP/TLS/RTP/SAVPF":
 		// secureRequest = true
 	default:
-		return fmt.Errorf("unsupported media description protocol proto=%s", md.Proto)
+		return fmt.Errorf("%w: unsupported media description protocol proto=%s", ErrNoCommonMedia, md.Proto)
 	}
 	s.remoteProto = md.Proto
 
@@ -604,7 +660,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 		return fmt.Errorf("reading codecs from SDP was not full: %w", err)
 	}
 	if n == 0 {
-		return fmt.Errorf("no codecs found in SDP")
+		return fmt.Errorf("%w: no codecs found in SDP", ErrNoCommonCodec)
 	}
 
 	// https://datatracker.ietf.org/doc/html/rfc3264#section-6.1
@@ -618,13 +674,31 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	//    48, and not 48, 8.  This helps assure that the same codec is used in
 	//    both directions.
 	if s.updateRemoteCodecs(codecs[:n], answerer) == 0 {
-		return fmt.Errorf("no supported codecs found")
+		return fmt.Errorf("%w: no supported codecs found", ErrNoCommonCodec)
 	}
 
 	ci, err := sd.ConnectionInformation()
 	if err != nil {
 		return err
 	}
+
+	// Refuse an RTP destination that cannot carry media instead of latching it.
+	//
+	// Port 0 is not a parse accident, it has a meaning: the stream is rejected
+	// (RFC 3264 section 6). It also absorbs every unparseable port, because
+	// MediaDescription discards strconv's error and leaves the zero value. Both
+	// readings agree there is no audio to carry. A nil IP arrives the same way:
+	// ConnectionInformation only validates the address for the IP4 and IP6
+	// addrtypes, so any other addrtype parses clean and yields no IP at all.
+	// Accepting either built a session pointed at nothing, which fails silently
+	// on first write, so the call answered and then sat mute.
+	if md.Port <= 0 || md.Port > 65535 {
+		return fmt.Errorf("%w: audio media port is not usable port=%d", ErrNoCommonMedia, md.Port)
+	}
+	if ci.IP == nil {
+		return fmt.Errorf("%w: audio connection address is not an IP addrtype=%s", ErrNoCommonMedia, ci.AddressType)
+	}
+
 	s.SetRemoteAddr(&net.UDPAddr{IP: ci.IP, Port: md.Port})
 
 	// Check mode for media direction
@@ -845,7 +919,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	}
 
 	if secureRequest && s.remoteCtxSRTP == nil {
-		return fmt.Errorf("remote requested secure RTP, but no context is created proto=%s", md.Proto)
+		return fmt.Errorf("%w: remote requested secure RTP, but no context is created proto=%s", ErrNoCommonCrypto, md.Proto)
 	}
 	return nil
 }
@@ -960,21 +1034,47 @@ func (s *MediaSession) Finalize() error {
 	return nil
 }
 
+// codecMatch reports whether local and remote describe the same audio format.
+//
+// The payload type is deliberately not compared. For dynamic formats each side
+// picks its own number from 96-127 (RFC 3551 section 3), so comparing numbers
+// drops every format the peer happens to number differently. What identifies a
+// format is its rtpmap: encoding name, clock rate and channel count. Encoding
+// names are case insensitive (RFC 4566 section 6).
+//
+// SampleDur is not compared either: it is ptime, a framing preference rather
+// than part of the format's identity, and the local value is the one we keep.
+func codecMatch(local Codec, remote Codec) bool {
+	return strings.EqualFold(local.Name, remote.Name) &&
+		local.SampleRate == remote.SampleRate &&
+		local.NumChannels == remote.NumChannels
+}
+
+// negotiatedCodec builds the entry for a matched pair. It keeps our local
+// framing but takes the peer's payload type: RFC 3264 section 6.1 says that if a
+// codec was referenced with a specific payload type number in the offer, that
+// same number should be used for it in the answer, and the RTP read path gates
+// on the number the peer actually sends.
+func negotiatedCodec(local Codec, remote Codec) Codec {
+	local.PayloadType = remote.PayloadType
+	return local
+}
+
 func (s *MediaSession) updateRemoteCodecs(codecs []Codec, answerer bool) int {
 	if len(s.Codecs) == 0 {
 		s.Codecs = codecs
 		return len(codecs)
 	}
 
-	DefaultLogger().Debug("Remote Codecs Update", "local", s.Codecs, "remote", codecs)
+	DefaultLogger().Debug("Remote Codecs Update", "local", s.Codecs, "remote", codecs, "answerer", answerer)
 
 	// Some systems may like to answer with local order of preference
 	if SDPCodecPreferLocalOrder > 0 && answerer {
 		filter := make([]Codec, 0, len(codecs))
-		for _, rc := range s.Codecs {
-			for _, c := range codecs {
-				if c == rc {
-					filter = append(filter, c)
+		for _, lc := range s.Codecs {
+			for _, rc := range codecs {
+				if codecMatch(lc, rc) {
+					filter = append(filter, negotiatedCodec(lc, rc))
 					break
 				}
 			}
@@ -983,11 +1083,14 @@ func (s *MediaSession) updateRemoteCodecs(codecs []Codec, answerer bool) int {
 		return len(s.filterCodecs)
 	}
 
-	filter := codecs[:0] // reuse buffer
+	// NOTE: codecs is not reused as the filter buffer. The negotiated entry is
+	// built from the local codec, so writing it back over the remote list would
+	// corrupt entries this loop has not read yet.
+	filter := make([]Codec, 0, len(codecs))
 	for _, rc := range codecs {
-		for _, c := range s.Codecs {
-			if c == rc {
-				filter = append(filter, c)
+		for _, lc := range s.Codecs {
+			if codecMatch(lc, rc) {
+				filter = append(filter, negotiatedCodec(lc, rc))
 				break
 			}
 		}

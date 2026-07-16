@@ -307,6 +307,8 @@ func (d *DialogClientSession) waitAnswerEarly(ctx context.Context, med *DialogMe
 			return nil
 		}
 
+		// A response body answers the offer we sent on the INVITE.
+		sess.RemoteSDPIsAnswer = true
 		if err := sess.RemoteSDP(remoteSDP); err != nil {
 			return err
 		}
@@ -356,6 +358,10 @@ func (d *DialogClientSession) waitAnswer(ctx context.Context, med *DialogMedia, 
 
 func (d *DialogClientSession) applyRemoteSDP(med *DialogMedia, remoteSDP []byte) error {
 	sess := med.mediaSession
+
+	// This body comes from a response, so it answers our offer. checkEarlyMedia
+	// forks the session, and Fork carries the role.
+	sess.RemoteSDPIsAnswer = true
 
 	// Apply SDP on existing (Early) media if it exists
 	if err := med.checkEarlyMedia(remoteSDP); err != errNoRTPSession {
@@ -535,6 +541,8 @@ func (d *DialogClientSession) reInviteMediaSession(ctx context.Context, ms *medi
 		d.remoteContactTarget = res.Contact()
 
 		remoteSDP := res.Body()
+		// The 200 OK answers the offer we sent on the re-INVITE.
+		ms.RemoteSDPIsAnswer = true
 		if err := ms.RemoteSDP(remoteSDP); err != nil {
 			return fmt.Errorf("sdp update media remote SDP applying failed: %w", err)
 		}
@@ -632,6 +640,8 @@ func (d *DialogClientSession) handleReInviteACK(req *sip.Request, tx sip.ServerT
 	if body != nil {
 		// Update media session state under lock, but invoke the app callback after unlock to avoid deadlocks.
 		d.mu.Lock()
+		// A body in the ACK answers the late offer we sent in our 200 OK.
+		d.mediaSession.RemoteSDPIsAnswer = true
 		err := d.sdpUpdateUnsafe(body)
 		onMediaUpdate := d.onMediaUpdate
 		d.mu.Unlock()

@@ -544,6 +544,8 @@ func (d *DialogServerSession) reInviteMediaSession(ctx context.Context, ms *medi
 		d.remoteContactTarget = res.Contact()
 
 		remoteSDP := res.Body()
+		// The 200 OK answers the offer we sent on the re-INVITE.
+		ms.RemoteSDPIsAnswer = true
 		if err := ms.RemoteSDP(remoteSDP); err != nil {
 			return fmt.Errorf("sdp update media remote SDP applying failed: %w", err)
 		}

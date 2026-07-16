@@ -113,6 +113,45 @@ func TestMediaSessionExternalIP(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, connInfo.IP.To4())
 	assert.Equal(t, m.ExternalIP.To4(), connInfo.IP.To4())
+
+	// Every re-negotiation goes through Fork, and LocalSDP regenerates on each
+	// call for a negotiated session. A fork that loses ExternalIP therefore
+	// answers the re-INVITE with the internal bind address, and the peer sends
+	// RTP where it cannot route.
+	f := m.Fork()
+	assert.Equal(t, m.ExternalIP.To4(), f.ExternalIP.To4())
+
+	sdForked := sdp.SessionDescription{}
+	require.NoError(t, sdp.Unmarshal(f.LocalSDP(), &sdForked))
+	connInfoForked, err := sdForked.ConnectionInformation()
+	require.NoError(t, err)
+	assert.Equal(t, m.ExternalIP.To4(), connInfoForked.IP.To4())
+}
+
+// ExternalIP describes how one socket is reached, so a fork that rebinds to a
+// new local address must not keep publishing the old socket's address.
+func TestMediaSessionExternalIPDroppedOnRebind(t *testing.T) {
+	m := &MediaSession{
+		Codecs:     []Codec{CodecAudioAlaw},
+		Laddr:      net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
+		Mode:       sdp.ModeSendrecv,
+		ExternalIP: net.IPv4(1, 1, 1, 1),
+	}
+	require.NoError(t, m.Init())
+	defer m.Close()
+
+	f := m.Fork()
+	f.Laddr = net.UDPAddr{IP: net.IPv4(127, 0, 0, 2), Port: 0}
+	require.NoError(t, f.Init())
+	defer f.Close()
+
+	assert.Nil(t, f.ExternalIP, "the external address of the old socket cannot describe the new one")
+
+	sd := sdp.SessionDescription{}
+	require.NoError(t, sdp.Unmarshal(f.LocalSDP(), &sd))
+	connInfo, err := sd.ConnectionInformation()
+	require.NoError(t, err)
+	assert.Equal(t, net.IPv4(127, 0, 0, 2).To4(), connInfo.IP.To4())
 }
 
 func TestMediaSessionUpdateCodec(t *testing.T) {
