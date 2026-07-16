@@ -188,6 +188,13 @@ type MediaSession struct {
 	// remoteProto is the media protocol from the remote SDP offer (e.g. "RTP/AVP", "RTP/SAVP")
 	remoteProto string
 
+	// dtlsRemoteSetup is the peer's a=setup value (RFC 4145 section 4.1), as read
+	// by RemoteSDP. It is what our own role must be complementary to, so it is
+	// stored rather than consumed on the spot: the advertised role is decided in
+	// LocalSDP and the acted role in RemoteSDP, and both must follow from this one
+	// value or they can contradict each other.
+	dtlsRemoteSetup string
+
 	// DTLS
 	dtlsConn *dtls.Conn
 	// dtlsTr is the transport dtlsConn was built on. It is held so the handshake
@@ -218,6 +225,88 @@ type MediaSession struct {
 // socket layout, and nothing signals ICE for them.
 func (s *MediaSession) iceEnabled() bool {
 	return s.ICEConf != nil && s.SecureRTP == SecureRTPModeDTLS
+}
+
+// The a=setup attribute values this stack signals (RFC 4145 section 4.1). They
+// are named because the advertised value and the DTLS role derived from it must
+// be compared against the same spellings in both directions; a stray literal on
+// one side of that is exactly how the two came apart.
+const (
+	// dtlsSetupActive: this endpoint initiates the connection -- the DTLS client
+	// that sends the ClientHello (RFC 5763 section 5).
+	dtlsSetupActive = "active"
+	// dtlsSetupPassive: this endpoint accepts the connection -- the DTLS server.
+	dtlsSetupPassive = "passive"
+	// dtlsSetupActPass: this endpoint will do either and leaves the choice to the
+	// peer. RFC 5763 section 5 requires an offerer to use it.
+	dtlsSetupActPass = "actpass"
+)
+
+// localDTLSSetup resolves the a=setup role this endpoint advertises and, with
+// it, the DTLS role it must actually play. RFC 4145 section 4.1 defines active
+// as the endpoint that initiates the connection and passive as the one that
+// accepts it; RFC 5763 section 5 maps those onto DTLS as the client that sends
+// the ClientHello and the server that answers it.
+//
+// This is deliberately the only place the role is decided. LocalSDP used to
+// choose what to advertise from whether a remote address happened to be known,
+// while RemoteSDP separately chose what to do from the peer's a=setup -- and the
+// two disagreed. Against an actpass offer we advertised passive, telling the
+// peer to initiate, and then initiated anyway: both endpoints sent a
+// ClientHello, and the peer failed the handshake with UnexpectedMessage having
+// expected a ServerHello to its own.
+func (s *MediaSession) localDTLSSetup() string {
+	// An explicit override wins: the caller has said what it wants to be.
+	if s.DTLSConf.SDPSetupRole != nil {
+		return s.DTLSConf.SDPSetupRole(s.Raddr.IP != nil)
+	}
+
+	switch strings.ToLower(strings.TrimSpace(s.dtlsRemoteSetup)) {
+	case dtlsSetupActive:
+		// The peer initiates, so we accept (RFC 4145 section 4.1).
+		return dtlsSetupPassive
+	case dtlsSetupPassive:
+		// The peer accepts, so we initiate (RFC 4145 section 4.1).
+		return dtlsSetupActive
+	case dtlsSetupActPass:
+		// The peer defers the choice to us. RFC 5763 section 5: "setup:active
+		// allows the answer and the DTLS handshake to occur in parallel. Thus,
+		// setup:active is RECOMMENDED" -- answering passive stalls the handshake
+		// until our answer reaches the peer.
+		return dtlsSetupActive
+	}
+
+	// No remote a=setup to be complementary to: either we are making the offer, or
+	// the offer we are answering carried no a=setup at all.
+	//
+	// Which of those it is comes from whether an offer was applied, never from
+	// whether the remote address is known. Knowing the address means we dialled
+	// someone -- an offerer knows exactly who it is calling -- so reading it as
+	// "we are answering" is precisely the inference that produced a passive
+	// answer to an actpass offer.
+	answering := s.answeringOffer()
+	if s.DTLSRole != DTLSEndpointRoleUnknown {
+		answering = s.DTLSRole == DTLSEndpointRoleAnswerer
+	}
+	if answering {
+		// RFC 4145 section 4.1 makes actpass the default when the attribute is
+		// absent, so answer as though the offer had carried it.
+		return dtlsSetupActive
+	}
+	// RFC 5763 section 5: "The endpoint that is the offerer MUST use the setup
+	// attribute value of setup:actpass".
+	return dtlsSetupActPass
+}
+
+// dtlsActsAsClient reports whether this endpoint sends the ClientHello, which is
+// what advertising active commits us to (RFC 5763 section 5).
+//
+// While offering actpass the choice is still the peer's, so we are not the
+// client yet: RFC 5763 section 5 has the offerer "be prepared to receive a
+// client_hello before it receives the answer", i.e. behave as the server until
+// the answer says otherwise.
+func (s *MediaSession) dtlsActsAsClient() bool {
+	return s.localDTLSSetup() == dtlsSetupActive
 }
 
 // dtlsEndpointRole resolves the signalling role. Without an explicit
@@ -553,25 +642,12 @@ func (s *MediaSession) LocalSDP() []byte {
 		// be a different profile than the one offered, which RFC 3264 section 6
 		// forbids.
 		rtpProfile = "UDP/TLS/RTP/SAVP"
+		// localDTLSSetup is the single source of the role, so what we advertise
+		// here and what RemoteSDP acts as cannot diverge. It also subsumes the
+		// SDPSetupRole override and DTLSRole, both of which it reads.
 		dtlsSet = &dtlsSetup{
-			setup:        "active",
+			setup:        s.localDTLSSetup(),
 			fingerprints: make([]sdpFingerprints, len(s.DTLSConf.Certificates)),
-		}
-		if s.Raddr.IP != nil {
-			// We do have remote IP, so probably we are server
-			//  lets be then passive roll
-			dtlsSet.setup = "passive"
-		}
-
-		// Allow overriding
-		if s.DTLSConf.SDPSetupRole != nil {
-			dtlsSet.setup = s.DTLSConf.SDPSetupRole(s.Raddr.IP != nil)
-		} else if s.DTLSRole != DTLSEndpointRoleUnknown {
-			// An explicit role overrides the remote address heuristic above.
-			dtlsSet.setup = "active"
-			if s.DTLSRole == DTLSEndpointRoleAnswerer {
-				dtlsSet.setup = "passive"
-			}
 		}
 		// DTLS
 		// This is only needed for self signed certificates?
@@ -914,20 +990,24 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 		if setup == "" {
 			return fmt.Errorf("Empty a=setup value attribute for dtls")
 		}
+		switch strings.ToLower(strings.TrimSpace(setup)) {
+		case dtlsSetupActive, dtlsSetupPassive, dtlsSetupActPass:
+		default:
+			return fmt.Errorf("unknown setup value %q", setup)
+		}
+		// Record the peer's role rather than acting on it directly. Our own role
+		// is what governs the handshake, and localDTLSSetup derives that from this
+		// value -- so the role we advertise and the role we play are one decision.
+		// Reading the remote value independently here is what let them contradict
+		// each other: against an actpass offer LocalSDP advertised passive while
+		// this switch made us the client, so both endpoints sent a ClientHello.
+		s.dtlsRemoteSetup = setup
 
 		// THIS may need external or after SIP ACK establishment
 		dtlsConf := s.DTLSConf.ToLibConf(fingerprints)
-		role := "client"
-		switch setup {
-		case "actpass", "passive":
-			// we are client, as remote wants to be server
-		case "active":
-			// we are server as remote wants to be client
-			role = "server"
-
-			// NOTE: setup:active allows the answer and the DTLS handshake to occur in parallel.
-		default:
-			return fmt.Errorf("unknown setup value %q", setup)
+		role := "server"
+		if s.dtlsActsAsClient() {
+			role = "client"
 		}
 
 		// dialDTLS builds the DTLS conn over the media transport.

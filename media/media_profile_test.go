@@ -1,6 +1,7 @@
 package media
 
 import (
+	"net"
 	"testing"
 )
 
@@ -215,5 +216,126 @@ func TestForkCarriesSecurityMode(t *testing.T) {
 		if got.SRTPAlg != 7 {
 			t.Errorf("Fork().SRTPAlg = %d, want 7; the algorithm is a property of the session, not of one exchange", got.SRTPAlg)
 		}
+	}
+}
+
+// TestLocalDTLSSetupIsComplementaryToTheOffer drives the RFC 4145 section 4.1
+// role table. active initiates, passive accepts, so an answer must be the
+// complement of the offer or both endpoints take the same side.
+func TestLocalDTLSSetupIsComplementaryToTheOffer(t *testing.T) {
+	tests := []struct {
+		name   string
+		remote string
+		want   string
+		why    string
+	}{
+		{
+			name:   "peer initiates so we accept",
+			remote: "active",
+			want:   "passive",
+			why:    "RFC 4145 s4.1: active initiates, so the complement accepts",
+		},
+		{
+			name:   "peer accepts so we initiate",
+			remote: "passive",
+			want:   "active",
+			why:    "RFC 4145 s4.1: passive accepts, so the complement initiates",
+		},
+		{
+			// The regression: Asterisk offers actpass. We answered passive (from
+			// the "remote IP is known" heuristic) yet acted as client, so both
+			// endpoints sent a ClientHello and the peer aborted the handshake with
+			// UnexpectedMessage.
+			name:   "peer defers the choice so we take it",
+			remote: "actpass",
+			want:   "active",
+			why:    "RFC 5763 s5: setup:active is RECOMMENDED; passive stalls the handshake until the answer lands",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Raddr is set, which is what used to force passive regardless.
+			s := &MediaSession{
+				SecureRTP:       SecureRTPModeDTLS,
+				dtlsRemoteSetup: tt.remote,
+				Raddr:           net.UDPAddr{IP: net.ParseIP("194.102.34.49"), Port: 19132},
+			}
+			if got := s.localDTLSSetup(); got != tt.want {
+				t.Errorf("localDTLSSetup() = %q, want %q (offer was %q)\n%s", got, tt.want, tt.remote, tt.why)
+			}
+		})
+	}
+}
+
+// TestOffererAdvertisesActpass pins RFC 5763 s5: "The endpoint that is the
+// offerer MUST use the setup attribute value of setup:actpass". With no offer
+// applied there is nothing to be complementary to, and the peer must be left
+// free to choose.
+func TestOffererAdvertisesActpass(t *testing.T) {
+	s := &MediaSession{SecureRTP: SecureRTPModeDTLS}
+	if got := s.localDTLSSetup(); got != "actpass" {
+		t.Errorf("localDTLSSetup() = %q with no offer applied, want \"actpass\"", got)
+	}
+
+	// A known remote address means we are dialling someone, not that we are
+	// answering them. The old heuristic read it as "we are the server".
+	s.Raddr = net.UDPAddr{IP: net.ParseIP("194.102.34.49"), Port: 19132}
+	if got := s.localDTLSSetup(); got != "actpass" {
+		t.Errorf("localDTLSSetup() = %q, want \"actpass\"; a known remote address is not an offer to answer", got)
+	}
+}
+
+// TestAdvertisedRoleAndActedRoleAgree is the invariant the bug broke, stated
+// directly: whatever a=setup we put in the SDP commits us to a DTLS role, and
+// the role we play must be that one. Advertising passive while sending the
+// ClientHello is the contradiction that produced Alert Fatal: UnexpectedMessage.
+func TestAdvertisedRoleAndActedRoleAgree(t *testing.T) {
+	for _, remote := range []string{"active", "passive", "actpass", ""} {
+		s := &MediaSession{
+			SecureRTP:       SecureRTPModeDTLS,
+			dtlsRemoteSetup: remote,
+			Raddr:           net.UDPAddr{IP: net.ParseIP("194.102.34.49"), Port: 19132},
+		}
+		advertised := s.localDTLSSetup()
+		actsAsClient := s.dtlsActsAsClient()
+
+		switch advertised {
+		case "active":
+			if !actsAsClient {
+				t.Errorf("remote=%q: advertised active but does not send the ClientHello; the peer waits forever", remote)
+			}
+		case "passive":
+			if actsAsClient {
+				t.Errorf("remote=%q: advertised passive but sends the ClientHello; both endpoints are clients", remote)
+			}
+		case "actpass":
+			// Still the peer's choice, so we must not preempt it: RFC 5763 s5 has
+			// the offerer ready to receive a ClientHello before the answer.
+			if actsAsClient {
+				t.Errorf("remote=%q: advertised actpass but already acts as client before the peer chose", remote)
+			}
+		default:
+			t.Errorf("remote=%q: advertised %q, which is not an RFC 4145 setup value", remote, advertised)
+		}
+	}
+}
+
+// TestSDPSetupRoleOverrideStillWins pins that the explicit escape hatch is not
+// swallowed by the derivation. Nothing in the runtime sets it today, but it is
+// public API and a caller that reaches for it means it.
+func TestSDPSetupRoleOverrideStillWins(t *testing.T) {
+	s := &MediaSession{
+		SecureRTP:       SecureRTPModeDTLS,
+		dtlsRemoteSetup: "actpass", // would otherwise derive active
+		DTLSConf: DTLSConfig{
+			SDPSetupRole: func(bool) string { return "passive" },
+		},
+	}
+	if got := s.localDTLSSetup(); got != "passive" {
+		t.Errorf("localDTLSSetup() = %q, want %q from the explicit override", got, "passive")
+	}
+	if s.dtlsActsAsClient() {
+		t.Error("override says passive but the session acts as client; the override must govern both")
 	}
 }
