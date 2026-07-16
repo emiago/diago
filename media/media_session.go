@@ -413,6 +413,16 @@ func (s *MediaSession) Fork() *MediaSession {
 		// owns. Fork is called inside the re-negotiation path, where the fork
 		// itself is not reachable to configure.
 		RemoteSDPIsAnswer: s.RemoteSDPIsAnswer,
+		// The security mode and its algorithm are properties of the negotiated
+		// session, not of one exchange within it, so a fork that drops them
+		// silently downgrades. LocalSDP keys every secure branch off SecureRTP, so
+		// a zeroed fork answers a re-INVITE on an encrypted call with plain
+		// RTP/AVP and no crypto -- and iceEnabled() is ICEConf != nil &&
+		// SecureRTP == DTLS, so the same zero also drops ICE from the answer while
+		// ICEConf above suggests it was carried. A peer is entitled to read that
+		// answer as a downgrade attack and drop the call.
+		SecureRTP: s.SecureRTP,
+		SRTPAlg:   s.SRTPAlg,
 	}
 	return &cp
 }
@@ -453,6 +463,18 @@ func (s *MediaSession) SetRemoteAddr(raddr *net.UDPAddr) {
 
 // LocalSDP generates SDP based on local settings and remote SDP
 // It should never be called in parallel to RemoteSDP, as it is expected serial process
+// answeringOffer reports whether the body LocalSDP is about to build answers an
+// offer we have already applied, as opposed to making an offer of our own.
+//
+// LocalSDP serves both roles, and the two have different rules: an answer's
+// profile is dictated by the offer (RFC 3264 section 6), while an offer's is
+// ours to choose. remoteProto is only set by RemoteSDP, and RemoteSDPIsAnswer
+// tells us whether what it applied was an offer or the answer to our own -- so
+// the pair distinguishes the roles without the caller having to say.
+func (s *MediaSession) answeringOffer() bool {
+	return s.remoteProto != "" && !s.RemoteSDPIsAnswer
+}
+
 func (s *MediaSession) LocalSDP() []byte {
 	if len(s.sdp) > 0 {
 		// If media session is static then just return sdp.
@@ -502,9 +524,16 @@ func (s *MediaSession) LocalSDP() []byte {
 					localSDES.tag = s.srtpRemoteTag
 				}
 
-				// NOTE: For some compatibility reasons (like asterisk) it would be required that this stays on RTP/AVP
-				// When the remote offer uses RTP/SAVP, we must mirror it per RFC 3264
-				if !RTPProfileSAVPDisable || s.remoteProto == "RTP/SAVP" {
+				// Offering only. Answering mirrors the offer instead, below --
+				// RTPProfileSAVPDisable cannot express the answer's profile
+				// because the answer's profile is not ours to choose.
+				//
+				// NOTE: For some compatibility reasons (like asterisk) it would be
+				// required that this stays on RTP/AVP.
+				if s.answeringOffer() {
+					return nil
+				}
+				if !RTPProfileSAVPDisable {
 					rtpProfile = "RTP/SAVP"
 				}
 				return nil
@@ -517,6 +546,12 @@ func (s *MediaSession) LocalSDP() []byte {
 
 	var dtlsSet *dtlsSetup
 	if s.SecureRTP == 2 {
+		// Offering only; answering mirrors the offer below. RFC 5764 names the
+		// DTLS-SRTP profiles UDP/TLS/RTP/SAVP(F), so that is what we offer, but a
+		// peer is free to signal DTLS-SRTP under the plain RTP/SAVP(F) name with
+		// a=fingerprint -- and answering such an offer with UDP/TLS/RTP/SAVP would
+		// be a different profile than the one offered, which RFC 3264 section 6
+		// forbids.
 		rtpProfile = "UDP/TLS/RTP/SAVP"
 		dtlsSet = &dtlsSetup{
 			setup:        "active",
@@ -561,6 +596,19 @@ func (s *MediaSession) LocalSDP() []byte {
 
 	}
 
+	// RFC 3264 section 6: "the answer MUST contain the same [...] transport
+	// protocol as the offer". Whatever the branches above chose is the profile we
+	// would OFFER; when we are answering, the choice is not ours to make and the
+	// offer's profile wins outright.
+	//
+	// This is last so it governs every branch. Before it, an RTP/SAVPF offer was
+	// answered UDP/TLS/RTP/SAVP and an RTP/AVP offer could be answered RTP/SAVP --
+	// each a different protocol than the one offered, which a strict peer is
+	// entitled to reject outright and a lenient one merely tolerates.
+	if s.answeringOffer() {
+		rtpProfile = s.remoteProto
+	}
+
 	var iceSet *iceSetup
 	if s.iceAgent != nil {
 		ufrag, pwd := s.iceAgent.Credentials()
@@ -596,6 +644,70 @@ func (s *MediaSession) LocalSDP() []byte {
 // RemoteSDP applies remote SDP.
 // NOTE: It must called ONCE or single thread while negotiation happening.
 // For multi negotiation Fork Must be called before
+// rtpProfile is an m= transport protocol decomposed into the axes it is built
+// from, so callers reason about properties rather than string equality.
+type rtpProfile struct {
+	// secure is the S in SAVP: media is protected with SRTP (RFC 3711).
+	secure bool
+	// feedback is the F in AVPF: the profile carries RTCP feedback (RFC 4585).
+	// It is orthogonal to secure and to dtls, and carries no keying meaning.
+	feedback bool
+	// dtls is the "UDP/TLS/" prefix: keys come from a DTLS association
+	// (RFC 5764). Its absence does NOT mean "not DTLS" -- a peer may signal
+	// DTLS-SRTP under the plain RTP/SAVP(F) name with a=fingerprint, so the
+	// fingerprint attribute is authoritative for keying, not this bit.
+	dtls bool
+}
+
+// parseRTPProfile decomposes an m= transport protocol into its axes. It reports
+// false for a protocol outside the RTP profile family, which is the only thing
+// this media stack can answer.
+//
+// Matching is case-insensitive and tolerates surrounding whitespace: SDP tokens
+// are defined uppercase (RFC 4566), but rejecting a call over a peer's casing is
+// a worse failure than accepting it, and being liberal here costs nothing.
+func parseRTPProfile(proto string) (rtpProfile, bool) {
+	p := strings.ToUpper(strings.TrimSpace(proto))
+
+	var prof rtpProfile
+	if rest, found := strings.CutPrefix(p, "UDP/TLS/"); found {
+		prof.dtls = true
+		p = rest
+	}
+
+	switch p {
+	case "RTP/AVP":
+	case "RTP/AVPF":
+		prof.feedback = true
+	case "RTP/SAVP":
+		prof.secure = true
+	case "RTP/SAVPF":
+		prof.secure = true
+		prof.feedback = true
+	default:
+		return rtpProfile{}, false
+	}
+
+	// UDP/TLS/ is the DTLS-SRTP keying prefix, so it is only meaningful over a
+	// secured profile; UDP/TLS/RTP/AVP is not a thing any peer may offer.
+	if prof.dtls && !prof.secure {
+		return rtpProfile{}, false
+	}
+	return prof, true
+}
+
+// sdpHasFingerprint reports whether the SDP carries a DTLS certificate
+// fingerprint, which is what marks an offer as DTLS-keyed (RFC 5763 section 5,
+// RFC 4572 section 5) regardless of the profile name it was offered under.
+func sdpHasFingerprint(attrs []string) bool {
+	for _, a := range attrs {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(a)), "fingerprint:") {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	sd := sdp.SessionDescription{}
 	if err := sdp.Unmarshal(sdpReceived, &sd); err != nil {
@@ -631,22 +743,38 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 		return err
 	}
 
-	// Confirm it is supported profile
-	secureRequest := false
-	switch md.Proto {
-	case "RTP/AVP":
-	case "RTP/SAVP":
-		secureRequest = true
-	case "UDP/TLS/RTP/SAVP":
-	case "UDP/TLS/RTP/SAVPF":
-		// secureRequest = true
-	default:
+	attrs := sd.Values("a")
+
+	// Confirm it is supported profile.
+	//
+	// The m= proto is not an opaque token to match against a list, it is two
+	// orthogonal axes over an optional DTLS association (RFC 4566 section 5.14):
+	// S = secured with SRTP (RFC 3711), F = the AVPF feedback profile (RFC 4585),
+	// and a "UDP/TLS/" prefix meaning the keys come from a DTLS association
+	// (RFC 5764). Parsing the axes rather than enumerating the products is what
+	// keeps a profile we have not literally seen before classified correctly
+	// instead of rejected.
+	prof, ok := parseRTPProfile(md.Proto)
+	if !ok {
 		return fmt.Errorf("%w: unsupported media description protocol proto=%s", ErrNoCommonMedia, md.Proto)
 	}
+
+	// A secured profile says the media MUST be protected. It does NOT say how the
+	// keys arrive -- that is signalled by attributes, not by the proto:
+	//   a=fingerprint + a=setup -> DTLS-SRTP, keys from the handshake (RFC 5763
+	//                              section 5, RFC 5764)
+	//   a=crypto                -> SDES, keys inline in the SDP (RFC 4568)
+	//
+	// This split is the whole point. RFC 5764 named the DTLS profiles
+	// UDP/TLS/RTP/SAVP(F), but a peer may equally signal DTLS-SRTP under the
+	// plain RTP/SAVP(F) name and carry a=fingerprint -- deciding the keying
+	// mechanism from the proto token alone misreads that offer as SDES and then
+	// rejects it for having no a=crypto, which is a bug against the peer's
+	// perfectly legal SDP rather than a property of any one peer.
+	secureRequest := prof.secure && !prof.dtls && !sdpHasFingerprint(attrs)
 	s.remoteProto = md.Proto
 
 	codecs := make([]Codec, len(md.Formats))
-	attrs := sd.Values("a")
 	n, err := CodecsFromSDPRead(md.Formats, attrs, codecs)
 	if err != nil {
 		if n == 0 {
