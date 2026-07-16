@@ -21,6 +21,27 @@ var (
 	DTLSDebug bool
 )
 
+// Secure RTP modes for MediaSession.SecureRTP.
+const (
+	SecureRTPModeNone = 0
+	SecureRTPModeSDES = 1
+	SecureRTPModeDTLS = 2
+)
+
+// DTLSEndpointRole is the offer/answer role of this endpoint.
+//
+// It decides two things that RFC 5763 and RFC 8445 tie to the same signalling
+// role: the default a=setup value, and which side is the controlling ICE agent.
+// DTLSEndpointRoleUnknown lets MediaSession infer the role from whether a
+// remote address is already known.
+type DTLSEndpointRole int
+
+const (
+	DTLSEndpointRoleUnknown DTLSEndpointRole = iota
+	DTLSEndpointRoleOfferer
+	DTLSEndpointRoleAnswerer
+)
+
 const (
 	ServerClientAuthNoCert      = int(dtls.NoClientCert)
 	ServerClientAuthRequireCert = int(dtls.RequestClientCert)
