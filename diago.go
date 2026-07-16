@@ -188,12 +188,18 @@ type MediaConfig struct {
 // here, so neither can quietly drop a field the other still carries.
 func (dg *Diago) mediaConfForTransport(tran *Transport) MediaConfig {
 	return MediaConfig{
-		Codecs:     dg.mediaConf.Codecs,
-		secureRTP:  tran.MediaSRTP,
-		bindIP:     tran.mediaBindIP,
-		externalIP: tran.MediaExternalIP,
-		DTLSConfig: dg.dtlsConfForTransport(tran),
-		ICEConfig:  dg.mediaConf.ICEConfig,
+		Codecs:       dg.mediaConf.Codecs,
+		SecureRTPAlg: dg.mediaConf.SecureRTPAlg,
+		// A dialog binds through the allocator the caller installed on Diago.
+		// initMediaSessionFromConf reads it from the per dialog config, so a
+		// config that does not carry it leaves every dialog on the OS chosen
+		// port while the allocator sits unused.
+		RTPPortAllocator: dg.mediaConf.RTPPortAllocator,
+		secureRTP:        tran.MediaSRTP,
+		bindIP:           tran.mediaBindIP,
+		externalIP:       tran.MediaExternalIP,
+		DTLSConfig:       dg.dtlsConfForTransport(tran),
+		ICEConfig:        dg.mediaConf.ICEConfig,
 	}
 }
 
