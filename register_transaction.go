@@ -42,7 +42,8 @@ type RegisterOptions struct {
 	RetryInterval time.Duration
 	AllowHeaders  []string
 
-	OnRegistered func()
+	OnRegistered          func()
+	OnRegisterStateChange func(bool, error)
 
 	// Useragent default will be used on what is provided as NewUA()
 	// UserAgent         string
@@ -96,11 +97,17 @@ func newRegisterTransaction(client *sipgo.Client, recipient sip.Uri, contact sip
 
 func (t *RegisterTransaction) Register(ctx context.Context) error {
 	if err := t.register(ctx); err != nil {
+		if t.opts.OnRegisterStateChange != nil {
+			t.opts.OnRegisterStateChange(false, err)
+		}
 		return err
 	}
 
 	if t.opts.OnRegistered != nil {
 		t.opts.OnRegistered()
+	}
+	if t.opts.OnRegisterStateChange != nil {
+		t.opts.OnRegisterStateChange(true, nil)
 	}
 	return nil
 }
@@ -187,7 +194,14 @@ func (t *RegisterTransaction) reregisterLoop(ctx context.Context, retry time.Dur
 		expiry := t.expiry
 		err := t.Qualify(ctx)
 		if err != nil {
+			if t.opts.OnRegisterStateChange != nil {
+				t.opts.OnRegisterStateChange(false, nil)
+			}
 			return err
+		} else {
+			if t.opts.OnRegisterStateChange != nil {
+				t.opts.OnRegisterStateChange(true, nil)
+			}
 		}
 
 		if t.expiry != expiry {
