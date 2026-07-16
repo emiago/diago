@@ -139,6 +139,27 @@ func (conf *DTLSConfig) ToLibConf(fingerprints []sdpFingerprints) *dtls.Config {
 	return config
 }
 
+// dtlsKeyExchangeConn lends the media socket to the DTLS stack.
+//
+// RFC 5764 section 5.1.2 multiplexes the handshake onto the transport that
+// carries media, so the socket belongs to MediaSession and merely serves DTLS
+// for the length of the exchange. The DTLS stack does not know that: every one
+// of its teardown paths, whether a fatal alert, a handshake timeout or a peer
+// close_notify, ends in a Close of its underlying conn. Under ICE that conn is
+// one stream of a mux whose Close releases the nominated pair, so an alert on
+// the handshake would silence RTP and RTCP for the rest of the call.
+type dtlsKeyExchangeConn struct {
+	net.PacketConn
+}
+
+func newDTLSKeyExchangeConn(conn net.PacketConn) *dtlsKeyExchangeConn {
+	return &dtlsKeyExchangeConn{PacketConn: conn}
+}
+
+// Close is deliberately a no-op. The socket outlives the DTLS association and
+// is closed by MediaSession.Close, which is what owns it.
+func (c *dtlsKeyExchangeConn) Close() error { return nil }
+
 func dtlsServer(conn net.PacketConn, raddr net.Addr, certificates []tls.Certificate) (*dtls.Conn, error) {
 	conf := DTLSConfig{
 		Certificates: certificates,

@@ -205,7 +205,7 @@ func TestRemoteICERequiresRTCPMux(t *testing.T) {
 // TestDTLSTransportSelection asserts the DTLS handshake runs on the DTLS
 // stream once ICE is up, and on the RTP socket otherwise. Handing DTLS the RTP
 // stream under ICE would starve the handshake, since records are routed away
-// from it.
+// from it. Either socket is only lent to the DTLS stack, never surrendered.
 func TestDTLSTransportSelection(t *testing.T) {
 	t.Run("without ice uses rtp socket", func(t *testing.T) {
 		s := newICEBindSession(t)
@@ -213,7 +213,7 @@ func TestDTLSTransportSelection(t *testing.T) {
 		require.NoError(t, s.createListeners(&s.Laddr))
 		t.Cleanup(func() { _ = s.Close() })
 
-		assert.Equal(t, s.rtpConn, s.dtlsTransport())
+		assert.Equal(t, s.rtpConn, s.dtlsTransport().PacketConn)
 	})
 
 	t.Run("with ice uses dtls stream of mux", func(t *testing.T) {
@@ -223,8 +223,21 @@ func TestDTLSTransportSelection(t *testing.T) {
 		t.Cleanup(func() { _ = s.iceMux.Close() })
 
 		s.rtpConn = s.iceMux.rtp
-		assert.Equal(t, s.iceMux.dtls, s.dtlsTransport())
-		assert.NotEqual(t, s.rtpConn, s.dtlsTransport(),
+		assert.Equal(t, s.iceMux.dtls, s.dtlsTransport().PacketConn)
+		assert.NotEqual(t, s.rtpConn, s.dtlsTransport().PacketConn,
 			"DTLS must not read the RTP stream, records are routed away from it")
+	})
+
+	// The socket belongs to MediaSession, so no DTLS teardown may close it.
+	t.Run("close does not reach the session socket", func(t *testing.T) {
+		s := newICEBindSession(t)
+		s.ICEConf = nil
+		require.NoError(t, s.createListeners(&s.Laddr))
+		t.Cleanup(func() { _ = s.Close() })
+
+		require.NoError(t, s.dtlsTransport().Close())
+
+		_, err := s.rtpConn.WriteTo([]byte{0x80, 8}, &s.Laddr)
+		assert.NoError(t, err, "RTP socket must still be usable after a DTLS close")
 	})
 }

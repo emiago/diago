@@ -910,11 +910,13 @@ func (s *MediaSession) startICE() error {
 // ICE that is the RTP socket, which is what carries SRTP afterwards. With ICE
 // it is the DTLS stream of the mux, since the handshake shares the nominated
 // pair with media and has to be separated from it.
-func (s *MediaSession) dtlsTransport() net.PacketConn {
+//
+// Either way the conn is only lent to the DTLS stack: see dtlsKeyExchangeConn.
+func (s *MediaSession) dtlsTransport() *dtlsKeyExchangeConn {
 	if s.iceMux != nil {
-		return s.iceMux.dtls
+		return newDTLSKeyExchangeConn(s.iceMux.dtls)
 	}
-	return s.rtpConn
+	return newDTLSKeyExchangeConn(s.rtpConn)
 }
 
 // Finalize finalizes negotiation and does verification
