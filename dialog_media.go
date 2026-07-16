@@ -274,6 +274,13 @@ func (d *DialogMedia) initMediaSessionFromConf(conf MediaConfig) error {
 		releasePort = func() { alloc.ReleaseRTPPort(port) }
 	}
 
+	// The session takes DTLS by value, so an unset config is the zero one. That
+	// keeps a caller that never touched DTLS on the path it had before.
+	var dtlsConf media.DTLSConfig
+	if conf.DTLSConfig != nil {
+		dtlsConf = *conf.DTLSConfig
+	}
+
 	sess := &media.MediaSession{
 		Codecs:     slices.Clone(conf.Codecs),
 		Laddr:      net.UDPAddr{IP: bindIP, Port: rtpPort},
@@ -282,7 +289,8 @@ func (d *DialogMedia) initMediaSessionFromConf(conf MediaConfig) error {
 		SecureRTP:  conf.secureRTP,
 		SRTPAlg:    conf.SecureRTPAlg,
 		RTPNAT:     conf.rtpNAT,
-		DTLSConf:   conf.dtlsConf,
+		DTLSConf:   dtlsConf,
+		ICEConf:    conf.ICEConfig,
 	}
 
 	if err := sess.Init(); err != nil {

@@ -144,6 +144,26 @@ type MediaConfig struct {
 	// Experimental
 	SecureRTPAlg uint16
 
+	// DTLSConfig is the DTLS-SRTP config every media session built from this
+	// config starts from. It is the Diago wide counterpart of
+	// Transport.MediaDTLSConf and, being a pointer, is opt in: when set it wins
+	// over the transport's own MediaDTLSConf, and nil leaves each transport
+	// supplying it as before.
+	//
+	// It configures DTLS but does not switch it on. That stays per transport,
+	// with MediaSRTP = media.SecureRTPModeDTLS.
+	DTLSConfig *media.DTLSConfig
+
+	// ICEConfig enables ICE (RFC 8445) on every media session built from this
+	// config. An ICE session binds a single socket and forces rtcp-mux, because
+	// ICE nominates one candidate pair.
+	//
+	// It is only honoured on transports that also set
+	// MediaSRTP = media.SecureRTPModeDTLS, the WebRTC media profile, as the media
+	// package negotiates ICE only there. Nil keeps the plain two socket layout,
+	// which is the previous behaviour.
+	ICEConfig *media.ICEConfig
+
 	// RTPPortAllocator, when non nil, chooses the local RTP port that every media
 	// session built from this config binds, instead of leaving the choice to the
 	// OS. It supersedes the media package RTPPortStart/RTPPortEnd globals, which
@@ -160,7 +180,33 @@ type MediaConfig struct {
 	bindIP     net.IP
 	externalIP net.IP
 	rtpNAT     int
-	dtlsConf   media.DTLSConfig
+}
+
+// mediaConfForTransport builds the media config a dialog running on tran starts
+// from. The transport supplies the media binding and the SRTP mode, the Diago
+// wide MediaConfig the rest. Both the server and the client dialog go through
+// here, so neither can quietly drop a field the other still carries.
+func (dg *Diago) mediaConfForTransport(tran *Transport) MediaConfig {
+	return MediaConfig{
+		Codecs:     dg.mediaConf.Codecs,
+		secureRTP:  tran.MediaSRTP,
+		bindIP:     tran.mediaBindIP,
+		externalIP: tran.MediaExternalIP,
+		DTLSConfig: dg.dtlsConfForTransport(tran),
+		ICEConfig:  dg.mediaConf.ICEConfig,
+	}
+}
+
+// dtlsConfForTransport resolves the DTLS config a dialog on tran starts from.
+// A Diago wide DTLSConfig is opt in and wins; otherwise the transport keeps
+// supplying its own MediaDTLSConf, which is always a value and so cannot say
+// "unset". The transport config is copied so a dialog cannot mutate it.
+func (dg *Diago) dtlsConfForTransport(tran *Transport) *media.DTLSConfig {
+	if dg.mediaConf.DTLSConfig != nil {
+		return dg.mediaConf.DTLSConfig
+	}
+	conf := tran.MediaDTLSConf
+	return &conf
 }
 
 // RTPPortAllocator hands out and takes back local RTP ports for media sessions.
@@ -317,13 +363,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			DialogServerSession: dialog,
 			DialogMedia:         DialogMedia{},
 			// TODO we may actually just build media session with this conf here
-			mediaConf: MediaConfig{
-				Codecs:     dg.mediaConf.Codecs,
-				secureRTP:  tran.MediaSRTP,
-				bindIP:     tran.mediaBindIP,
-				externalIP: tran.MediaExternalIP,
-				dtlsConf:   tran.MediaDTLSConf,
-			},
+			mediaConf:     dg.mediaConfForTransport(tran),
 			sessionTimers: dg.sessionTimers,
 		}
 
@@ -717,13 +757,7 @@ func (dg *Diago) newSipDialog(recipient sip.Uri, tran *Transport, opts NewDialog
 	}
 	d.Init()
 
-	d.mediaConfig = MediaConfig{
-		Codecs:     dg.mediaConf.Codecs,
-		secureRTP:  tran.MediaSRTP,
-		bindIP:     tran.mediaBindIP,
-		externalIP: tran.MediaExternalIP,
-		dtlsConf:   tran.MediaDTLSConf,
-	}
+	d.mediaConfig = dg.mediaConfForTransport(tran)
 
 	// This should be run on ACK
 	d.OnState(func(s sip.DialogState) {
