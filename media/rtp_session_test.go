@@ -4,6 +4,7 @@
 package media
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -361,4 +362,37 @@ func TestRTPSessionSourceLockProtection(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, uint16(4), pkt.SequenceNumber)
+}
+
+// TestRTPSessionWriteUnknownPayloadType asserts the session survives a write with
+// a payload type that is not in the codec list. The lookup failure must release
+// the RTCP lock it took, so a later write can still make progress.
+func TestRTPSessionWriteUnknownPayloadType(t *testing.T) {
+	rtpSess := fakeSession(9876, 1234, nil, &bytes.Buffer{}, nil, &bytes.Buffer{})
+	rtpSess.rtcpTicker = time.NewTicker(time.Hour) // DO NOT TICK
+
+	pkt := rtp.Packet{
+		Header: rtp.Header{
+			Version:     2,
+			PayloadType: 111, // not in Codecs
+			SSRC:        1234,
+		},
+		Payload: []byte{1, 2, 3},
+	}
+
+	err := rtpSess.WriteRTP(&pkt)
+	require.Error(t, err)
+
+	// The failed write must not have left rtcpMU held.
+	done := make(chan error, 1)
+	go func() {
+		done <- rtpSess.WriteRTP(&pkt)
+	}()
+
+	select {
+	case err := <-done:
+		require.Error(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("WriteRTP blocked on rtcpMU held by the previous failed write")
+	}
 }
