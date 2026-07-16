@@ -466,10 +466,7 @@ func (s *MediaSession) LocalSDP() []byte {
 		connIP = ip
 	}
 
-	codecs := s.Codecs
-	if len(s.filterCodecs) > 0 {
-		codecs = s.filterCodecs
-	}
+	codecs := s.activeCodecs()
 
 	var localSDES sdesInline
 	rtpProfile := "RTP/AVP"
@@ -1053,8 +1050,10 @@ func codecMatch(local Codec, remote Codec) bool {
 // negotiatedCodec builds the entry for a matched pair. It keeps our local
 // framing but takes the peer's payload type: RFC 3264 section 6.1 says that if a
 // codec was referenced with a specific payload type number in the offer, that
-// same number should be used for it in the answer, and the RTP read path gates
-// on the number the peer actually sends.
+// same number should be used for it in the answer.
+//
+// This is the only place the peer's number is recorded, so it is what the RTP
+// paths must gate on. They reach it through activeCodecs.
 func negotiatedCodec(local Codec, remote Codec) Codec {
 	local.PayloadType = remote.PayloadType
 	return local
@@ -1103,6 +1102,26 @@ func (s *MediaSession) updateRemoteCodecs(codecs []Codec, answerer bool) int {
 // NOTE: Not thread safe, should be called after negotiation Only!
 func (s *MediaSession) CommonCodecs() []Codec {
 	return s.filterCodecs
+}
+
+// activeCodecs returns the codecs this session runs on: what negotiation settled
+// on once it has, and the local list until then.
+//
+// The distinction matters for dynamic formats, whose payload type is the peer's
+// number rather than ours (RFC 3264 section 6.1). Only the negotiated entries
+// carry that number, so the local list can not answer what is on the wire.
+//
+// The fallback is not just for the offer: Fork clones Codecs but deliberately
+// not filterCodecs, so a re-negotiating session passes through here with nothing
+// negotiated yet and must keep running on its local list.
+//
+// NOTE: Not thread safe. Negotiation writes filterCodecs, so this must not be
+// called in parallel with RemoteSDP.
+func (s *MediaSession) activeCodecs() []Codec {
+	if len(s.filterCodecs) > 0 {
+		return s.filterCodecs
+	}
+	return s.Codecs
 }
 
 // Listen creates listeners instead
