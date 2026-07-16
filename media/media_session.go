@@ -1551,35 +1551,65 @@ type iceSetup struct {
 	rtcpMux    bool
 }
 
+// formatRTPMap renders the a=rtpmap line describing codec, followed by its
+// a=fmtp line where the format defines one.
+//
+// Dynamic formats are keyed by encoding name rather than by payload type. Each
+// side picks its own number from 96-127 for them (RFC 3551 section 3) and an
+// answer echoes the number the offerer used (RFC 3264 section 6.1), so a
+// negotiated codec arrives here carrying the peer's number. What identifies the
+// format is the encoding name (RFC 4855 section 3), and only the number is
+// rendered from the codec. Keying on the number instead described a peer's
+// telephone-event at 96 as opus, and dropped opus' fmtp at every number but 96.
+//
+// Static formats stay keyed by number: the RTP/AVP registry freezes those
+// assignments (RFC 3551 section 6) and they can not be renumbered. They are
+// checked after the dynamic names so that a peer mapping a dynamic format onto a
+// static number is still described by what it is.
+func formatRTPMap(codec Codec) []string {
+	switch {
+	case strings.EqualFold(codec.Name, CodecAudioOpus.Name):
+		return []string{
+			// RFC 7587 section 7 fixes the rtpmap clock at 48000 and the encoding
+			// parameters at 2 for opus, whatever the stream actually carries. It
+			// declares the decoder's capability, not that the stream is stereo.
+			fmt.Sprintf("a=rtpmap:%d opus/48000/2", codec.PayloadType),
+			// Providing 0 when FEC cannot be used on the receiving side is RECOMMENDED.
+			// https://datatracker.ietf.org/doc/html/rfc7587
+			fmt.Sprintf("a=fmtp:%d useinbandfec=0", codec.PayloadType),
+		}
+	case strings.EqualFold(codec.Name, CodecTelephoneEvent8000.Name):
+		return []string{
+			// The canonical form carries no encoding parameters suffix, which the
+			// generic default below would append.
+			fmt.Sprintf("a=rtpmap:%d telephone-event/8000", codec.PayloadType),
+			// Events 0-16 are the DTMF digits, * and # (RFC 4733 section 3.2).
+			fmt.Sprintf("a=fmtp:%d 0-16", codec.PayloadType),
+		}
+	}
+
+	switch codec.PayloadType {
+	case CodecAudioUlaw.PayloadType:
+		return []string{"a=rtpmap:0 PCMU/8000"}
+	case CodecAudioAlaw.PayloadType:
+		return []string{"a=rtpmap:8 PCMA/8000"}
+	case CodecAudioG722.PayloadType:
+		// Clock is 8000 per RFC 3551 and the encoding parameters suffix is
+		// omitted. The generic default below would append the channel count and
+		// some peers do not match the non canonical form.
+		return []string{"a=rtpmap:9 G722/8000"}
+	}
+
+	return []string{fmt.Sprintf("a=rtpmap:%d %s/%d/%d", codec.PayloadType, codec.Name, codec.SampleRate, codec.NumChannels)}
+}
+
 func generateSDPForAudio(sessionID uint64, sessionVersion uint64, rtpProfile string, originIP net.IP, connectionIP net.IP, rtpPort int, mode string, codecs []Codec, sdes sdesInline, dtlsSet *dtlsSetup, iceSet *iceSetup) []byte {
 	// ntpTime := GetCurrentNTPTimestamp()
 
 	fmts := make([]string, len(codecs))
 	formatsMap := []string{}
 	for i, f := range codecs {
-		// TODO should we just go generic
-		switch f.PayloadType {
-		case CodecAudioUlaw.PayloadType:
-			formatsMap = append(formatsMap, "a=rtpmap:0 PCMU/8000")
-		case CodecAudioAlaw.PayloadType:
-			formatsMap = append(formatsMap, "a=rtpmap:8 PCMA/8000")
-		case CodecAudioG722.PayloadType:
-			// Clock is 8000 per RFC 3551 and the encoding parameters suffix is
-			// omitted. The generic default below would append the channel count and
-			// some peers do not match the non canonical form.
-			formatsMap = append(formatsMap, "a=rtpmap:9 G722/8000")
-		case CodecAudioOpus.PayloadType:
-			formatsMap = append(formatsMap, "a=rtpmap:96 opus/48000/2")
-			// Providing 0 when FEC cannot be used on the receiving side is RECOMMENDED.
-			// https://datatracker.ietf.org/doc/html/rfc7587
-			formatsMap = append(formatsMap, "a=fmtp:96 useinbandfec=0")
-		case CodecTelephoneEvent8000.PayloadType:
-			formatsMap = append(formatsMap, "a=rtpmap:101 telephone-event/8000")
-			formatsMap = append(formatsMap, "a=fmtp:101 0-16")
-		default:
-			s := fmt.Sprintf("a=rtpmap:%d %s/%d/%d", f.PayloadType, f.Name, f.SampleRate, f.NumChannels)
-			formatsMap = append(formatsMap, s)
-		}
+		formatsMap = append(formatsMap, formatRTPMap(f)...)
 		fmts[i] = strconv.Itoa(int(f.PayloadType))
 	}
 
