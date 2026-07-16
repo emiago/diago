@@ -568,6 +568,9 @@ func (d *DialogClientSession) reInviteKeepAlive(ctx context.Context) error {
 
 // Refer tries todo refer (blind transfer) on call. For more control use ReferOptions
 //
+// It blocks until the transfer outcome is known: the terminal sipfrag NOTIFY, or
+// a 30s deadline. A transfer that did not succeed returns *ReferFailureError.
+//
 // NOTE: It is expected that after calling this you are hanguping call to send BYE
 func (d *DialogClientSession) Refer(ctx context.Context, referTo sip.Uri, headers ...sip.Header) error {
 	// cont := d.InviteRequest.Contact()
@@ -581,9 +584,14 @@ type ReferClientOptions struct {
 	Headers []sip.Header
 	// OnNotify sends notify status code.
 	// If implemented you need to react on different status code.
+	// Setting this returns from refer as soon as it is accepted, leaving the
+	// transfer outcome to the callback.
 	OnNotify func(statusCode int)
 }
 
+// ReferOptions sends a REFER. With OnNotify set it returns once the REFER is
+// accepted and reports outcomes to the callback. Without one it blocks for the
+// transfer outcome and returns *ReferFailureError if it did not succeed.
 func (d *DialogClientSession) ReferOptions(ctx context.Context, referTo sip.Uri, opts ReferClientOptions) error {
 	d.mu.Lock()
 	cont := d.remoteContactUnsafe()
@@ -591,7 +599,7 @@ func (d *DialogClientSession) ReferOptions(ctx context.Context, referTo sip.Uri,
 		d.onReferNotify = opts.OnNotify
 	}
 	d.mu.Unlock()
-	return dialogRefer(ctx, d, cont.Address, referTo, d.InviteResponse.Contact().Address, opts.Headers...)
+	return dialogRefer(ctx, d, cont.Address, referTo, d.InviteResponse.Contact().Address, opts.OnNotify == nil, opts.Headers...)
 }
 
 func (d *DialogClientSession) handleReferNotify(req *sip.Request, tx sip.ServerTransaction) {
