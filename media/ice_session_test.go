@@ -186,10 +186,19 @@ func TestRemoteICERequiresCredentials(t *testing.T) {
 // TestRemoteICERequiresRTCPMux asserts a peer that will not mux RTCP is
 // rejected. An ICE session has one nominated pair and therefore no second port
 // to put RTCP on, so accepting the call would leave RTCP nowhere to go.
+//
+// The session is bound first, on purpose. listenICE sets rtcpMux for every ICE
+// session to record our own intent, so a check written against that field
+// would pass here while never firing in production. The remote's answer has to
+// be tracked on its own.
 func TestRemoteICERequiresRTCPMux(t *testing.T) {
 	s := newICEBindSession(t)
+	require.NoError(t, s.createListeners(&s.Laddr))
+	t.Cleanup(func() { _ = s.Close() })
+	require.True(t, s.rtcpMux, "bind records our own intent to mux")
+
 	err := s.remoteICE([]string{"ice-ufrag:remote01", "ice-pwd:remotepwd0123456789"})
-	require.Error(t, err)
+	require.Error(t, err, "a remote that did not offer rtcp-mux must be rejected")
 	assert.Contains(t, err.Error(), "rtcp-mux")
 }
 

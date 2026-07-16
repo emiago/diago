@@ -843,6 +843,11 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 // attributes and feeds them to the agent. Connectivity checks are not started
 // here: they belong to Finalize, once the offer/answer exchange is complete.
 func (s *MediaSession) remoteICE(attrs []string) error {
+	// Tracked separately from s.rtcpMux: that one records our own intent and
+	// listenICE has already set it for every ICE session, so it says nothing
+	// about what the remote agreed to.
+	remoteRTCPMux := false
+
 	for _, v := range attrs {
 		switch {
 		case strings.HasPrefix(v, "ice-ufrag:"):
@@ -856,7 +861,7 @@ func (s *MediaSession) remoteICE(attrs []string) error {
 				DefaultLogger().Warn("Skipping bad ICE candidate", "attr", v, "error", err)
 			}
 		case v == "rtcp-mux":
-			s.rtcpMux = true
+			remoteRTCPMux = true
 		}
 	}
 
@@ -864,7 +869,7 @@ func (s *MediaSession) remoteICE(attrs []string) error {
 		return fmt.Errorf("sdp: ICE enabled but remote sent no ice-ufrag/ice-pwd")
 	}
 
-	if !s.rtcpMux {
+	if !remoteRTCPMux {
 		// An ICE session has a single nominated pair and therefore no second
 		// port to put RTCP on. A peer that refuses rtcp-mux cannot be served.
 		return fmt.Errorf("sdp: ICE requires rtcp-mux, remote did not offer it")
