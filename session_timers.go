@@ -186,13 +186,13 @@ type sessionTimerOffer struct {
 // parseSessionTimerOffer reads Session-Expires and Min-SE off a request. sipgo
 // carries no typed accessors for these headers, so they are read generically and
 // parsed here. A malformed or out-of-range value is treated as absent rather
-// than as an error: RFC 4028 §7.4 has the receiver ignore what it cannot parse,
-// and a timer header is never worth failing an otherwise valid INVITE over.
+// than as an error: a timer header is never worth failing an otherwise valid
+// INVITE over.
 // ok is false when the peer sent no Session-Expires at all (timer-unaware).
 func parseSessionTimerOffer(req *sip.Request) (offer sessionTimerOffer, ok bool) {
 	h := req.GetHeader("Session-Expires")
 	if h == nil {
-		// Compact form of Session-Expires per RFC 4028 §7.1.
+		// Compact form of Session-Expires per RFC 4028 §4.
 		h = req.GetHeader("x")
 	}
 	if h == nil {
