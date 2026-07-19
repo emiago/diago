@@ -782,7 +782,8 @@ func (dg *Diago) Register(ctx context.Context, recipient sip.Uri, opts RegisterO
 
 	// Unregister
 	defer func() {
-		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 		err := t.Unregister(ctx)
 		if err != nil {
 			dg.log.Error("Failed to unregister", "error", err)
