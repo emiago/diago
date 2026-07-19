@@ -198,11 +198,7 @@ func (w *RTPPacketWriter) Writer() RTPWriter {
 	return w.writer
 }
 
-// UpdateRTPSession updates rtp writer from current rtp session due to REINVITE
-// It is expected that this is now new RTP Session and it is expected tha:
-// - Statistics will be reset (SSRC=0) -> Fresh Start of Quality monitoring
-// - Should not lead inacurate reporting
-// - In case CODEC change than RTP should reset stats anyway
+// UpdateRTPSession updates the RTP writer when a new RTP session is created.
 func (w *RTPPacketWriter) UpdateRTPSession(rtpSess *RTPSession) {
 	w.mu.Lock()
 	defer w.mu.Unlock()

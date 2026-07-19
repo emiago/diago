@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/fakes"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
@@ -239,6 +240,54 @@ func TestRTPSessionClose(t *testing.T) {
 	neterr, ok := err.(net.Error)
 	require.True(t, ok)
 	require.True(t, neterr.Timeout())
+}
+
+type pipePacketConn struct {
+	net.Conn
+}
+
+func (c *pipePacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
+	n, err := c.Conn.Read(p)
+	return n, c.Conn.RemoteAddr(), err
+}
+
+func (c *pipePacketConn) WriteTo(p []byte, _ net.Addr) (int, error) {
+	return len(p), nil
+}
+
+func TestRTPSessionFork(t *testing.T) {
+	rtpConn, rtpPeer := net.Pipe()
+	rtcpConn, rtcpPeer := net.Pipe()
+	t.Cleanup(func() {
+		_ = rtpPeer.Close()
+		_ = rtcpPeer.Close()
+	})
+
+	sess := &MediaSession{
+		Codecs:    []Codec{CodecAudioUlaw},
+		Mode:      sdp.ModeSendrecv,
+		Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234},
+		Raddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9876},
+		rtcpRaddr: net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9877},
+		rtpConn:   &pipePacketConn{Conn: rtpConn},
+		rtcpConn:  &pipePacketConn{Conn: rtcpConn},
+	}
+	rtpSess := NewRTPSession(sess)
+	rtpSess.readStats.PacketsCount = 7
+
+	require.NoError(t, rtpSess.MonitorBackground())
+	require.NoError(t, rtpSess.MonitorClose())
+
+	candidate := sess.Fork()
+
+	candidate.SetRemoteAddr(&sess.Raddr)
+	fork := rtpSess.Fork(candidate)
+	// Confirm Forking works
+	assert.Equal(t, uint64(7), fork.ReadStats().PacketsCount)
+
+	// Start monitor
+	require.NoError(t, fork.MonitorBackground())
+	require.NoError(t, fork.MonitorClose())
 }
 
 func TestRTTCalc(t *testing.T) {

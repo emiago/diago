@@ -103,7 +103,7 @@ func (d *DialogMedia) Close() error {
 	}
 
 	if rtpSess != nil {
-		e2 = rtpSess.Close()
+		e2 = rtpSess.MonitorClose()
 	}
 
 	if m != nil {
@@ -252,64 +252,36 @@ func (d *DialogMedia) sdpUpdateUnsafe(sdp []byte) error {
 		return fmt.Errorf("sdp update media remote SDP applying failed: %w", err)
 	}
 
-	// TODO remove this with call mediaUpdateUnsafe
-	// Stop existing rtp
-	if d.rtpSession != nil {
-		if err := d.rtpSession.Close(); err != nil {
-			return err
-		}
-	}
-
-	rtpSess := media.NewRTPSession(msess)
-	// d.onCloseUnsafe(func() error {
-	// 	return rtpSess.Close()
-	// })
-
-	if err := rtpSess.MonitorBackground(); err != nil {
-		rtpSess.Close()
-		return err
-	}
-
-	d.RTPPacketReader.UpdateRTPSession(rtpSess)
-	d.RTPPacketWriter.UpdateRTPSession(rtpSess)
-
-	// update the reference
-	d.mediaSession = msess
-	d.rtpSession = rtpSess
-	return nil
+	return d.replaceRTPSessionUnsafe(msess)
 }
 
 func (d *DialogMedia) mediaUpdateUnsafe(msess *media.MediaSession) error {
-	// Stop existing rtp
-	if d.rtpSession != nil {
-		if err := d.rtpSession.Close(); err != nil {
-			return err
-		}
-	}
+	return d.replaceRTPSessionUnsafe(msess)
+}
 
-	rtpSess := media.NewRTPSession(msess)
-	if err := rtpSess.MonitorBackground(); err != nil {
-		rtpSess.Close()
+// replaceRTPSessionUnsafe replaces the RTP session after the old monitor has
+// fully stopped. A fork preserves statistics and shared connections; a new
+// session is used when media connections were recreated.
+func (d *DialogMedia) replaceRTPSessionUnsafe(msess *media.MediaSession) error {
+	oldRTPSess := d.rtpSession
+	if oldRTPSess == nil {
+		return fmt.Errorf("RTP Session is nil while trying to update it")
+	}
+	// This will block until read  RTCP is closed fully, which we need before starting new one
+	if err := oldRTPSess.MonitorClose(); err != nil {
 		return err
 	}
 
-	// d.onCloseUnsafe(func() error {
-	// 	return rtpSess.Close()
-	// })
+	// Same as media, we are forking RTP Session
+	rtpSess := oldRTPSess.Fork(msess)
+	if err := rtpSess.MonitorBackground(); err != nil {
+		return errors.Join(err, rtpSess.Close())
+	}
 
-	// Make sure any current reader is not consuming old media session
+	// Make sure any current reader is not consuming old media session.
 	d.RTPPacketReader.UpdateRTPSession(rtpSess)
 	d.RTPPacketWriter.UpdateRTPSession(rtpSess)
 
-	// If connection IP changed close
-	// TODO can we make this better?
-	if !d.mediaSession.Laddr.IP.Equal(msess.Laddr.IP) || d.mediaSession.Laddr.Port != msess.Laddr.Port {
-		if err := d.mediaSession.Close(); err != nil {
-			return err
-		}
-	}
-
-	// update the reference
 	d.mediaSession = msess
 	d.rtpSession = rtpSess
 	return nil

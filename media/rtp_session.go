@@ -39,6 +39,9 @@ var (
 
 	// RTPSourceLock enables source locking after IP changes
 	RTPSourceLock bool
+
+	errRTPSessionClosed         = errors.New("rtp session is closed")
+	errRTPSessionMonitorStarted = errors.New("rtp session monitor already started")
 )
 
 type RTPSession struct {
@@ -49,6 +52,8 @@ type RTPSession struct {
 	// All below fields should not be updated without rtcpMu Lock
 	rtcpTicker *time.Ticker
 	rtcpClosed chan struct{}
+	monitorWG  sync.WaitGroup
+	monitorRun bool
 	readStats  RTPReadStats
 	writeStats RTPWriteStats
 
@@ -94,6 +99,8 @@ type RTPReadStats struct {
 
 	// Round TRIP Time based on LSR and DLSR
 	RTT time.Duration
+
+	clockReset bool
 }
 
 /*
@@ -156,20 +163,65 @@ func NewRTPSession(sess *MediaSession) *RTPSession {
 	}
 }
 
-func (s *RTPSession) Close() error {
+// Fork creates a new RTP session lifecycle for a forked media session while
+// preserving RTP and RTCP statistics.
+func (s *RTPSession) Fork(sess *MediaSession) *RTPSession {
+	s.rtcpMU.Lock()
+	defer s.rtcpMU.Unlock()
+
+	fork := NewRTPSession(sess)
+	fork.readStats = s.readStats
+	fork.writeStats = s.writeStats
+	fork.onReadRTCP = s.onReadRTCP
+	fork.onWriteRTCP = s.onWriteRTCP
+	fork.sourceLock = s.sourceLock
+	fork.sourceLockPackets = s.sourceLockPackets
+	if s.sourceLockAddr != nil {
+		addr := *s.sourceLockAddr
+		fork.sourceLockAddr = &addr
+	}
+
+	oldCodec := CodecAudioFromSession(s.Sess)
+	newCodec := CodecAudioFromSession(sess)
+	if oldCodec.SampleRate != newCodec.SampleRate {
+		fork.readStats.SampleRate = newCodec.SampleRate
+		fork.readStats.firstRTPTime = time.Time{}
+		fork.readStats.firstRTPTimestamp = 0
+		fork.readStats.jitter = 0
+		fork.readStats.transit = 0
+		fork.readStats.clockReset = true
+		fork.writeStats.sampleRate = newCodec.SampleRate
+	}
+
+	return fork
+}
+
+func (s *RTPSession) close(wait bool) error {
 	s.rtcpMU.Lock()
 	closed := s.closed
 	s.closed = true
-	s.rtcpMU.Unlock()
-
-	// Stop monitor routing
 	if !closed {
 		close(s.rtcpClosed)
 	}
-	// Below is safe to call again
 	s.rtcpTicker.Stop()
-	err := s.Sess.rtcpConn.SetDeadline(time.Now())
+	rtcpConn := s.Sess.rtcpConn
+	s.rtcpMU.Unlock()
+
+	err := rtcpConn.SetDeadline(time.Now())
+	if wait {
+		s.monitorWG.Wait()
+	}
 	return err
+}
+
+// MonitorClose stops RTCP monitoring and waits until all monitor goroutines
+// have exited. The RTP/RTCP connections remain open for a replacement fork.
+func (s *RTPSession) MonitorClose() error {
+	return s.close(true)
+}
+
+func (s *RTPSession) Close() error {
+	return s.close(false)
 }
 
 func (s *RTPSession) OnReadRTCP(f func(pkt rtcp.Packet, rtpStats RTPReadStats)) {
@@ -184,12 +236,28 @@ func (s *RTPSession) OnWriteRTCP(f func(pkt rtcp.Packet, rtpStats RTPWriteStats)
 	s.onWriteRTCP = f
 }
 
+func (s *RTPSession) startMonitor(goroutines int) error {
+	s.rtcpMU.Lock()
+	defer s.rtcpMU.Unlock()
+
+	if s.monitorRun {
+		return errRTPSessionMonitorStarted
+	}
+	if s.closed {
+		return errRTPSessionClosed
+	}
+	s.monitorRun = true
+	s.monitorWG.Add(goroutines)
+	return nil
+}
+
 // ReadRTP reads RTP
 // NOTE: For RTCP we may read some properties of media session. Do not run this until
 // full media session is negotiated. For updating media, media session forking must be done!
 func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
+	sess := s.Sess
 	for {
-		n, err = s.Sess.ReadRTP(b, readPkt)
+		n, err = sess.ReadRTP(b, readPkt)
 		if err != nil {
 			return n, err
 		}
@@ -206,7 +274,7 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 			continue
 		}
 
-		if s.sourceLock && !s.sourceLockProtection(readPkt, s.Sess.ReadRTPFromAddr) {
+		if s.sourceLock && !s.sourceLockProtection(readPkt, sess.ReadRTPFromAddr) {
 			DefaultLogger().Debug("RTP Source lock protection learning. Skipping", "pkt.ssrc", readPkt.SSRC, "pkt.seq", readPkt.SequenceNumber)
 			continue
 		}
@@ -226,9 +294,9 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 		// We expect that SSRC only changed but MULTI RTP stream per one session is not supported
 		// NOTE: Reading codecs may be in a race while establishing session but it is expected
 		// that caller should not run reading while session is established
-		codec := s.Sess.Codecs[0]
+		codec := sess.Codecs[0]
 		if codec.PayloadType != readPkt.PayloadType {
-			for _, c := range s.Sess.Codecs {
+			for _, c := range sess.Codecs {
 				if c.PayloadType == readPkt.PayloadType {
 					codec = c
 					break
@@ -252,7 +320,12 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 	} else {
 		stats.lastSeq.UpdateSeq(readPkt.SequenceNumber)
 
-		if readPkt.Marker {
+		if stats.clockReset {
+			stats.firstRTPTime = now
+			stats.firstRTPTimestamp = readPkt.Timestamp
+			stats.transit = 0
+			stats.clockReset = false
+		} else if readPkt.Marker {
 			// Reset our firstRTPtime to improve jitter calc
 			stats.firstRTPTime = now
 			stats.firstRTPTimestamp = readPkt.Timestamp
@@ -319,7 +392,8 @@ func (s *RTPSession) ReadRTPRaw(buf []byte) (int, error) {
 }
 
 func (s *RTPSession) WriteRTP(pkt *rtp.Packet) error {
-	if err := s.Sess.WriteRTP(pkt); err != nil {
+	sess := s.Sess
+	if err := sess.WriteRTP(pkt); err != nil {
 		return err
 	}
 
@@ -329,7 +403,7 @@ func (s *RTPSession) WriteRTP(pkt *rtp.Packet) error {
 	if writeStats.SSRC != pkt.SSRC {
 		codec, err := func() (Codec, error) {
 			// Find codec from promoted list of codecs
-			for _, c := range s.Sess.Codecs {
+			for _, c := range sess.Codecs {
 				if c.PayloadType == pkt.PayloadType {
 					return c, nil
 				}
@@ -369,12 +443,17 @@ func (s *RTPSession) WriteStats() RTPWriteStats {
 
 // Monitor starts reading RTCP and monitoring media quality
 func (s *RTPSession) Monitor() error {
-	if s.Sess.Raddr.IP == nil || s.Sess.rtcpRaddr.IP == nil {
+	sess := s.Sess
+	if sess.Raddr.IP == nil || sess.rtcpRaddr.IP == nil {
 		return fmt.Errorf("raddr of RTP is not present. You must call this after RemoteSDP is parsed")
+	}
+	if err := s.startMonitor(1); err != nil {
+		return err
 	}
 
 	errchan := make(chan error)
 	go func() {
+		defer s.monitorWG.Done()
 		errchan <- s.readRTCP()
 	}()
 
@@ -397,13 +476,18 @@ func (s *RTPSession) Monitor() error {
 // MonitorBackground is helper to keep monitoring in background
 // MUST Be called after session REMOTE SDP is parsed
 func (s *RTPSession) MonitorBackground() error {
-	if s.Sess.Raddr.IP == nil || s.Sess.rtcpRaddr.IP == nil {
+	sess := s.Sess
+	if sess.Raddr.IP == nil || sess.rtcpRaddr.IP == nil {
 		return fmt.Errorf("raddr of RTP is not present. Is RemoteSDP called. Monitor RTP Session failed")
+	}
+
+	if err := s.startMonitor(2); err != nil {
+		return err
 	}
 
 	log := DefaultLogger()
 	go func() {
-		sess := s.Sess
+		defer s.monitorWG.Done()
 		log.Debug("RTCP reader started", "laddr", sess.rtcpConn.LocalAddr().String())
 		if err := s.readRTCP(); err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
@@ -422,7 +506,7 @@ func (s *RTPSession) MonitorBackground() error {
 	}()
 
 	go func() {
-		sess := s.Sess
+		defer s.monitorWG.Done()
 		log.Debug("RTCP writer started", "raddr", sess.rtcpRaddr.String())
 		for {
 			var now time.Time
@@ -450,8 +534,21 @@ func (s *RTPSession) readRTCP() error {
 	sess := s.Sess
 	// TODO use sync pool here
 	buf := make([]byte, 1600)
-	rtcpBuf := make([]rtcp.Packet, 5)          // What would be more correct value?
-	sess.rtcpConn.SetReadDeadline(time.Time{}) // For now make sure we are not getting timeout
+	rtcpBuf := make([]rtcp.Packet, 5) // What would be more correct value?
+
+	// Serialize clearing the read deadline with MonitorClose. Otherwise a
+	// monitor goroutine that starts late could clear the deadline after the
+	// stop signal and block forever on the shared RTCP connection.
+	s.rtcpMU.Lock()
+	var err error
+	if !s.closed {
+		err = sess.rtcpConn.SetReadDeadline(time.Time{}) // For now make sure we are not getting timeout
+	}
+	s.rtcpMU.Unlock()
+	if err != nil {
+		return err
+	}
+
 	for {
 		n, err := sess.ReadRTCP(buf, rtcpBuf)
 		if err != nil {
@@ -525,13 +622,14 @@ func (s *RTPSession) readReceptionReport(rr rtcp.ReceptionReport, now time.Time)
 }
 
 func (s *RTPSession) writeRTCP(now time.Time) error {
+	sess := s.Sess
 
 	var pkt rtcp.Packet
 
 	// If there is no writer in session (a=recvonly) then generate only receiver report
 	// otherwise always go with sender report with reception reports
 	s.rtcpMU.Lock()
-	if s.Sess.Mode == sdp.ModeRecvonly {
+	if sess.Mode == sdp.ModeRecvonly {
 		if s.readStats.SSRC == 0 {
 			s.rtcpMU.Unlock()
 			return nil
@@ -566,7 +664,7 @@ func (s *RTPSession) writeRTCP(now time.Time) error {
 		s.rtcpMU.Unlock()
 	}
 
-	return s.Sess.WriteRTCP(pkt)
+	return sess.WriteRTCP(pkt)
 }
 
 func (s *RTPSession) parseReceiverReport(receiverReport *rtcp.ReceiverReport, now time.Time, ssrc uint32) {
