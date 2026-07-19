@@ -121,12 +121,30 @@ type ConnectionInformation struct {
 	Range       int
 }
 
+// ConnectionInformation returns the connection information that applies to the
+// media stream. Per RFC 4566 section 5.7 a c= inside the media section overrides
+// the session level one, so the last c= wins. Line order alone cannot bind a c=
+// to its section, so this is only sound while the body carries a single m= line,
+// which MediaDescription already requires per RFC 3264. Bodies with more media
+// lines are rejected here as well rather than answering with an address that may
+// belong to another stream.
 func (sd SessionDescription) ConnectionInformation() (ci ConnectionInformation, err error) {
-	v := sd.Value("c")
-	if v == "" {
+	if len(sd.Values("m")) > 1 {
+		return ci, fmt.Errorf("more than 1 media line")
+	}
+
+	values := sd.Values("c")
+	if len(values) == 0 {
 		return ci, fmt.Errorf("Connection information does not exists")
 	}
+	v := values[len(values)-1]
+
 	fields := strings.Fields(v)
+	if len(fields) < 3 {
+		// Body comes from remote peer. Indexing unchecked turns a truncated
+		// c= line into a panic.
+		return ci, fmt.Errorf("sdp - not enough fields in connection information c=%s", v)
+	}
 	ci.NetworkType = fields[0]
 	ci.AddressType = fields[1]
 	addr := strings.Split(fields[2], "/")
@@ -251,8 +269,10 @@ func nextLine(reader *bytes.Buffer) (line string, err error) {
 
 	lenline := len(line)
 
-	// Be tolerant for CRLF
-	if line[lenline-2] == '\r' {
+	// Be tolerant for CRLF.
+	// A bare LF line arrives here as a 1 byte string, so the length must be
+	// checked or this indexes -1 on a body any remote peer can send.
+	if lenline >= 2 && line[lenline-2] == '\r' {
 		return line[:lenline-2], nil
 	}
 
