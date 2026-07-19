@@ -188,7 +188,7 @@ func TestPeerRefreshWatchdog_GraceResolvesViaPolicy(t *testing.T) {
 // TestSessionTimerNegotiate exercises the pure, role-agnostic RFC 4028
 // negotiation: the Min-SE floor, the advertise-fallback when nothing is offered,
 // the half refresh interval with anti-storm clamp, honoring the peer's
-// refresher, electing ourselves when the peer omits one, and
+// refresher, the PreferUASRefresher tiebreaker only when the peer omits one, and
 // the below-floor 422 signal.
 func TestSessionTimerNegotiate(t *testing.T) {
 	tests := []struct {
@@ -201,8 +201,8 @@ func TestSessionTimerNegotiate(t *testing.T) {
 		want             sessionTimerDecision
 	}{
 		{
-			name:    "none offered uses advertise-fallback, uas elected, we refresh",
-			policy:  SessionTimerPolicy{},
+			name:    "none offered uses advertise-fallback, uas tiebreaker, we refresh",
+			policy:  SessionTimerPolicy{PreferUASRefresher: true},
 			ourRole: refresherUAS,
 			want: sessionTimerDecision{
 				Negotiated: defaultSessionExpires,
@@ -215,7 +215,7 @@ func TestSessionTimerNegotiate(t *testing.T) {
 			name:             "peer refresher honored over our preference",
 			offeredSE:        u32(1200),
 			offeredRefresher: refresherUAC,
-			policy:           SessionTimerPolicy{},
+			policy:           SessionTimerPolicy{PreferUASRefresher: true},
 			ourRole:          refresherUAS,
 			want: sessionTimerDecision{
 				Negotiated: 1200 * time.Second,
@@ -225,13 +225,9 @@ func TestSessionTimerNegotiate(t *testing.T) {
 			},
 		},
 		{
-			// RFC 4028 section 9 requires the 2xx to name a refresher. Leaving it
-			// unset would arm the watchdog against a peer that was never asked to
-			// refresh, so it would hang up at the interval plus grace on a
-			// perfectly healthy session.
-			name:      "no peer refresher -> the UAS elects itself",
+			name:      "no peer refresher, PreferUAS true -> uas tiebreaker",
 			offeredSE: u32(1800),
-			policy:    SessionTimerPolicy{},
+			policy:    SessionTimerPolicy{PreferUASRefresher: true},
 			ourRole:   refresherUAS,
 			want: sessionTimerDecision{
 				Negotiated: 1800 * time.Second,
@@ -241,9 +237,21 @@ func TestSessionTimerNegotiate(t *testing.T) {
 			},
 		},
 		{
+			name:      "no peer refresher, PreferUAS false -> neutral, not forced uas",
+			offeredSE: u32(1800),
+			policy:    SessionTimerPolicy{PreferUASRefresher: false},
+			ourRole:   refresherUAS,
+			want: sessionTimerDecision{
+				Negotiated: 1800 * time.Second,
+				Interval:   900 * time.Second,
+				Refresher:  "",
+				WeRefresh:  false,
+			},
+		},
+		{
 			name:      "offer below floor -> below-floor 422 signal, negotiated reports the floor",
 			offeredSE: u32(30),
-			policy:    SessionTimerPolicy{},
+			policy:    SessionTimerPolicy{PreferUASRefresher: true},
 			ourRole:   refresherUAS,
 			want: sessionTimerDecision{
 				Negotiated: defaultMinSE,
@@ -257,7 +265,7 @@ func TestSessionTimerNegotiate(t *testing.T) {
 			name:         "peer Min-SE raises the floor above ours",
 			offeredSE:    u32(1800),
 			offeredMinSE: u32(120),
-			policy:       SessionTimerPolicy{},
+			policy:       SessionTimerPolicy{PreferUASRefresher: true},
 			ourRole:      refresherUAS,
 			want: sessionTimerDecision{
 				Negotiated: 1800 * time.Second,
@@ -270,7 +278,7 @@ func TestSessionTimerNegotiate(t *testing.T) {
 			name:         "peer Min-SE above the offer raises the negotiated interval",
 			offeredSE:    u32(100),
 			offeredMinSE: u32(600),
-			policy:       SessionTimerPolicy{},
+			policy:       SessionTimerPolicy{PreferUASRefresher: true},
 			ourRole:      refresherUAS,
 			want: sessionTimerDecision{
 				Negotiated: 600 * time.Second,
@@ -282,7 +290,7 @@ func TestSessionTimerNegotiate(t *testing.T) {
 		},
 		{
 			name:    "configurable DefaultSE advertise-fallback is used, not the constant",
-			policy:  SessionTimerPolicy{DefaultSE: 600 * time.Second},
+			policy:  SessionTimerPolicy{DefaultSE: 600 * time.Second, PreferUASRefresher: true},
 			ourRole: refresherUAS,
 			want: sessionTimerDecision{
 				Negotiated: 600 * time.Second,
@@ -474,7 +482,7 @@ func TestTimerAnswer(t *testing.T) {
 			// uas, we are not the refresher, so the decision is to arm the watchdog.
 			name:            "honor peer refresher=uac -> arm watchdog",
 			se:              "1800;refresher=uac",
-			policy:          SessionTimerPolicy{Enabled: true},
+			policy:          SessionTimerPolicy{Enabled: true, PreferUASRefresher: true},
 			wantStatus:      200,
 			wantSE:          "1800;refresher=uac",
 			wantSupported:   true,
@@ -483,11 +491,11 @@ func TestTimerAnswer(t *testing.T) {
 			wantArmWatchdog: true,
 		},
 		{
-			// Peer omitted the refresher: the UAS elects
+			// Peer omitted the refresher: the PreferUASRefresher tiebreaker elects
 			// uas, we are the refresher, so the decision is to start the loop.
-			name:            "omitted refresher -> uas elected, start loop",
+			name:            "omitted refresher, PreferUAS -> refresher=uas, start loop",
 			se:              "1800",
-			policy:          SessionTimerPolicy{Enabled: true},
+			policy:          SessionTimerPolicy{Enabled: true, PreferUASRefresher: true},
 			wantStatus:      200,
 			wantSE:          "1800;refresher=uas",
 			wantSupported:   true,
@@ -500,7 +508,7 @@ func TestTimerAnswer(t *testing.T) {
 			// no loop and no watchdog.
 			name:       "offer below floor -> 422 Min-SE, no loop/watchdog",
 			se:         "30",
-			policy:     SessionTimerPolicy{Enabled: true},
+			policy:     SessionTimerPolicy{Enabled: true, PreferUASRefresher: true},
 			wantStatus: 422,
 			wantMinSE:  "90",
 			wantAnswer: false,
@@ -510,7 +518,7 @@ func TestTimerAnswer(t *testing.T) {
 			// no watchdog, answered normally and never rejected.
 			name:          "no timer support -> graceful no-op",
 			se:            "",
-			policy:        SessionTimerPolicy{Enabled: true},
+			policy:        SessionTimerPolicy{Enabled: true, PreferUASRefresher: true},
 			wantStatus:    200,
 			wantSE:        "",
 			wantSupported: false,
@@ -519,7 +527,7 @@ func TestTimerAnswer(t *testing.T) {
 		{
 			name:          "timers disabled -> no headers",
 			se:            "1800",
-			policy:        SessionTimerPolicy{Enabled: false},
+			policy:        SessionTimerPolicy{Enabled: false, PreferUASRefresher: true},
 			wantStatus:    200,
 			wantSE:        "",
 			wantSupported: false,
@@ -591,7 +599,7 @@ func TestTimerAnswer(t *testing.T) {
 // is what the dialog construction path reads. Without the option timers stay
 // disabled, preserving the existing behavior for callers that never opt in.
 func TestWithSessionTimers(t *testing.T) {
-	policy := SessionTimerPolicy{Enabled: true, DefaultSE: 600 * time.Second}
+	policy := SessionTimerPolicy{Enabled: true, DefaultSE: 600 * time.Second, PreferUASRefresher: true}
 
 	dg := &Diago{}
 	WithSessionTimers(policy)(dg)

@@ -61,6 +61,11 @@ type SessionTimerPolicy struct {
 	// defaultMinSE. The effective floor is max(MinSE, the peer's offered Min-SE).
 	MinSE time.Duration
 
+	// PreferUASRefresher is a tiebreaker applied only when the peer omits a
+	// refresher: true elects "uas", false stays neutral. When the peer offers a
+	// refresher it is always honored and this never overrides it.
+	PreferUASRefresher bool
+
 	// WatchdogGrace is the tolerance added to the negotiated interval before the
 	// peer-refresh watchdog hangs up on a missed refresh. Zero falls back to
 	// defaultWatchdogGrace.
@@ -102,9 +107,9 @@ func watchdogGrace(policy SessionTimerPolicy) time.Duration {
 // negotiate is a pure, role-agnostic RFC 4028 session-timer negotiation. Given a
 // peer's offered Session-Expires, Min-SE and refresher plus our policy it floors
 // the interval by Min-SE, falls back to the advertise-fallback when nothing is
-// offered, halves for the refresh cadence, honors the peer's refresher and
-// elects ourRole when the peer omits one, and flags a below-floor offer for a
-// 422 reply. ourRole only decides WeRefresh, so the same
+// offered, halves for the refresh cadence, honors the peer's refresher (using
+// PreferUASRefresher only as a tiebreaker when the peer omits one) and flags a
+// below-floor offer for a 422 reply. ourRole only decides WeRefresh, so the same
 // function serves the UAS answer path and a future UAC client path unchanged.
 //
 // All inputs are bounded uint32 deltas, so the duration arithmetic cannot
@@ -155,14 +160,11 @@ func negotiate(offeredSE *uint32, offeredMinSE *uint32, offeredRefresher string,
 		interval = minRefreshInterval
 	}
 
-	// Honor the peer's offered refresher, and elect ourselves when it omits one.
-	// RFC 4028 section 9 requires the 2xx to name a refresher, and leaving it
-	// unset would arm the watchdog against a peer that was never asked to
-	// refresh -- it would then hang up at the interval plus grace on a healthy
-	// session.
+	// Honor the peer's offered refresher. Only tiebreak with PreferUASRefresher
+	// when the peer omitted one; false stays neutral and never forces "uas".
 	refresher := offeredRefresher
-	if refresher == "" {
-		refresher = ourRole
+	if refresher == "" && policy.PreferUASRefresher {
+		refresher = refresherUAS
 	}
 
 	return sessionTimerDecision{
@@ -184,13 +186,13 @@ type sessionTimerOffer struct {
 // parseSessionTimerOffer reads Session-Expires and Min-SE off a request. sipgo
 // carries no typed accessors for these headers, so they are read generically and
 // parsed here. A malformed or out-of-range value is treated as absent rather
-// than as an error: RFC 4028 §7.4 has the receiver ignore what it cannot parse,
-// and a timer header is never worth failing an otherwise valid INVITE over.
+// than as an error: a timer header is never worth failing an otherwise valid
+// INVITE over.
 // ok is false when the peer sent no Session-Expires at all (timer-unaware).
 func parseSessionTimerOffer(req *sip.Request) (offer sessionTimerOffer, ok bool) {
 	h := req.GetHeader("Session-Expires")
 	if h == nil {
-		// Compact form of Session-Expires per RFC 4028 §7.1.
+		// Compact form of Session-Expires per RFC 4028 §4.
 		h = req.GetHeader("x")
 	}
 	if h == nil {
