@@ -28,13 +28,15 @@ type MediaSession struct {
 	peerConnection *webrtc.PeerConnection
 	peerConnected  context.Context
 
-	writer *RTPWriterTrack
-	reader *RTPReaderTrack
+	writer           *RTPWriterTrack
+	reader           *RTPReaderTrack
+	pendingRTPReader *rtpNilReader
 
 	RTPPacketReader *media.RTPPacketReader
 	RTPPacketWriter *media.RTPPacketWriter
 
-	mu sync.Mutex
+	mu     sync.Mutex
+	closed bool
 }
 
 func (m *MediaSession) Init(webrtcConfig webrtc.Configuration) error {
@@ -93,8 +95,22 @@ func (m *MediaSession) Fork() *MediaSession {
 }
 
 func (m *MediaSession) Close() error {
-	if m.peerConnection != nil {
-		return m.peerConnection.Close()
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return nil
+	}
+	m.closed = true
+	pendingReader := m.pendingRTPReader
+	m.pendingRTPReader = nil
+	peerConnection := m.peerConnection
+	m.mu.Unlock()
+
+	if pendingReader != nil {
+		pendingReader.Close()
+	}
+	if peerConnection != nil {
+		return peerConnection.Close()
 	}
 	return nil
 }
@@ -107,7 +123,20 @@ func (m *MediaSession) Codec() media.Codec {
 }
 
 func (m *MediaSession) RTPReaderReady() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.reader != nil
+}
+
+func (m *MediaSession) setPendingRTPReader(reader *rtpNilReader) {
+	m.mu.Lock()
+	if !m.closed {
+		m.pendingRTPReader = reader
+		m.mu.Unlock()
+		return
+	}
+	m.mu.Unlock()
+	reader.Close()
 }
 
 // CommonCodecs returns common codecs if negotiation is finished, that is Local and Remote SDP are exchanged.
@@ -467,6 +496,7 @@ func (m *MediaSession) setupTracks(log *slog.Logger) error {
 
 	// We are using own packetizer to send or read rtp
 	nilReader := newRTPNilReader()
+	m.setPendingRTPReader(nilReader)
 	rtpReader := media.NewRTPPacketReader(nilReader, codec)
 	log.Info("Setting rtp packet reader", "codec", codec)
 	peerConnection.OnTrack(func(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) { //nolint: revive
@@ -484,6 +514,9 @@ func (m *MediaSession) setupTracks(log *slog.Logger) error {
 		rtpReader.UpdateReader(ioReader)
 		m.mu.Lock()
 		m.reader = ioReader
+		if m.pendingRTPReader == nilReader {
+			m.pendingRTPReader = nil
+		}
 		m.mu.Unlock()
 		nilReader.Close()
 	})
