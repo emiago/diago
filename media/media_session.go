@@ -145,6 +145,13 @@ type MediaSession struct {
 	// remoteProto is the media protocol from the remote SDP offer (e.g. "RTP/AVP", "RTP/SAVP")
 	remoteProto string
 
+	// srtpAuthFailures counts packets discarded for failing SRTP authentication
+	// (RFC 3711 section 3.3). They are normal in small numbers -- media in flight
+	// before a handshake settles, or a stray datagram to a port named in the SDP --
+	// so the count is the diagnostic, not any single occurrence. A count that
+	// climbs with the stream means the keys disagree.
+	srtpAuthFailures atomic.Uint64
+
 	// DTLS
 	dtlsConn *dtls.Conn
 
@@ -811,20 +818,51 @@ func (s *MediaSession) listenRTPandRTCP(laddr *net.UDPAddr) error {
 
 // ReadRTP reads data from network and parses to pkt
 // buffer is passed in order to avoid extra allocs
+//
+// A packet that fails SRTP authentication is discarded and the read continues,
+// per RFC 3711 section 3.3: "If the authentication tag is not valid, the packet
+// MUST be discarded from further processing and the event SHOULD be logged." The
+// discard is the packet's, never the session's -- surfacing it as a read error
+// let one unauthenticated datagram end the media of a healthy call, because a
+// caller cannot tell "this packet was not for us" from "this socket is gone" and
+// reasonably stops reading on either.
+//
+// Undecryptable packets on a live stream are ordinary, not exceptional: a peer
+// that starts sending the instant it answers puts media in flight before its own
+// handshake completes, and anyone at all can send a datagram to a port whose
+// number is in the SDP. Neither is a reason to stop listening to the peer.
 func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	if len(buf) < RTPBufSize {
 		return 0, io.ErrShortBuffer
 	}
 
-	n, from, err := m.rtpConn.ReadFrom(buf)
-	if err != nil {
-		return 0, err
-	}
+	var n int
+	var from net.Addr
+	for {
+		var err error
+		n, from, err = m.rtpConn.ReadFrom(buf)
+		if err != nil {
+			// A transport error IS the session's: there is nothing left to read.
+			return 0, err
+		}
 
-	if m.remoteCtxSRTP != nil {
+		if m.remoteCtxSRTP == nil {
+			if err := RTPUnmarshal(buf[:n], pkt); err != nil {
+				return n, err
+			}
+			break
+		}
+
 		decrypted, err := m.remoteCtxSRTP.DecryptRTP(buf, buf[:n], &pkt.Header)
 		if err != nil {
-			return n, fmt.Errorf("Read SRTP Decrypt error: %w", err)
+			m.srtpAuthFailures.Add(1)
+			DefaultLogger().Debug("SRTP: discarding packet that failed authentication",
+				"from", from.String(),
+				"bytes", n,
+				"total_discarded", m.srtpAuthFailures.Load(),
+				"error", err,
+			)
+			continue
 		}
 		if len(decrypted) > len(buf) {
 			DefaultLogger().Warn("Growing Decrypted RTP buffer", "diff", len(decrypted)-len(buf))
@@ -837,10 +875,7 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 		if err := rtpUnmarshalPayload(buf, pkt); err != nil {
 			return n, fmt.Errorf("rtp unmarshal failed: %w", err)
 		}
-	} else {
-		if err := RTPUnmarshal(buf[:n], pkt); err != nil {
-			return n, err
-		}
+		break
 	}
 
 	logRTPRead(m, from, pkt)
@@ -872,7 +907,9 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 		return 0, nil
 	}
 
-	return n, err
+	// The loop above only breaks on a packet that read, decrypted and parsed, so
+	// reaching here is unconditionally success.
+	return n, nil
 }
 
 // return parsed rtp
