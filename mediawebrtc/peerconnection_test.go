@@ -1,12 +1,72 @@
 package mediawebrtc
 
 import (
+	"errors"
+	"io"
 	"testing"
+	"time"
 
 	"github.com/emiago/diago/media"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMediaSessionCloseUnblocksPendingRTPRead(t *testing.T) {
+	pendingReader := newRTPNilReader()
+	sess := MediaSession{pendingRTPReader: pendingReader}
+
+	readDone := make(chan error, 1)
+	go func() {
+		_, err := pendingReader.ReadRTP(nil, &rtp.Packet{})
+		readDone <- err
+	}()
+
+	require.NoError(t, sess.Close())
+	require.NoError(t, sess.Close())
+
+	select {
+	case err := <-readDone:
+		require.ErrorIs(t, err, io.EOF)
+	case <-time.After(time.Second):
+		t.Fatal("pending RTP read did not unblock")
+	}
+}
+
+func TestMediaSessionClosesPendingRTPReaderRegisteredAfterClose(t *testing.T) {
+	sess := MediaSession{}
+	require.NoError(t, sess.Close())
+
+	pendingReader := newRTPNilReader()
+	sess.setPendingRTPReader(pendingReader)
+
+	_, err := pendingReader.ReadRTP(nil, &rtp.Packet{})
+	require.ErrorIs(t, err, io.EOF)
+}
+
+func TestRTPPacketReaderRetriesAfterTrackBecomesReady(t *testing.T) {
+	pendingReader := newRTPNilReader()
+	nextReader := &stubRTPReader{err: errors.New("track reader called")}
+	reader := media.NewRTPPacketReader(pendingReader, media.CodecAudioUlaw)
+
+	readDone := make(chan error, 1)
+	go func() {
+		_, err := reader.Read(make([]byte, media.RTPBufSize))
+		readDone <- err
+	}()
+
+	reader.UpdateReader(nextReader)
+	pendingReader.Close()
+	require.ErrorIs(t, <-readDone, nextReader.err)
+}
+
+type stubRTPReader struct {
+	err error
+}
+
+func (r *stubRTPReader) ReadRTP([]byte, *rtp.Packet) (int, error) {
+	return 0, r.err
+}
 
 func TestMediaNegotiaton(t *testing.T) {
 	ctx := t.Context()
