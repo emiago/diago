@@ -4,6 +4,7 @@
 package media
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -361,4 +362,132 @@ func TestRTPSessionSourceLockProtection(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, uint16(4), pkt.SequenceNumber)
+}
+
+// TestRTPSessionWriteUnknownPayloadType asserts the session survives a write with
+// a payload type that is not in the codec list. The lookup failure must release
+// the RTCP lock it took, so a later write can still make progress.
+func TestRTPSessionWriteUnknownPayloadType(t *testing.T) {
+	rtpSess := fakeSession(9876, 1234, nil, &bytes.Buffer{}, nil, &bytes.Buffer{})
+	rtpSess.rtcpTicker = time.NewTicker(time.Hour) // DO NOT TICK
+
+	pkt := rtp.Packet{
+		Header: rtp.Header{
+			Version:     2,
+			PayloadType: 111, // not in Codecs
+			SSRC:        1234,
+		},
+		Payload: []byte{1, 2, 3},
+	}
+
+	err := rtpSess.WriteRTP(&pkt)
+	require.Error(t, err)
+
+	// The failed write must not have left rtcpMU held.
+	done := make(chan error, 1)
+	go func() {
+		done <- rtpSess.WriteRTP(&pkt)
+	}()
+
+	select {
+	case err := <-done:
+		require.Error(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("WriteRTP blocked on rtcpMU held by the previous failed write")
+	}
+}
+
+// readOneRTP feeds pkt to a session and returns what ReadRTP made of it.
+func readOneRTP(t *testing.T, rtpSess *RTPSession, pkt *rtp.Packet) (int, *rtp.Packet) {
+	t.Helper()
+	raw, err := pkt.Marshal()
+	require.NoError(t, err)
+
+	rtpSess.Sess.rtpConn.(*fakes.UDPConn).Reader = bytes.NewReader(raw)
+
+	readPkt := rtp.Packet{}
+	n, err := rtpSess.ReadRTP(make([]byte, 1600), &readPkt)
+	require.NoError(t, err)
+	return n, &readPkt
+}
+
+func negotiatedRTPSession(t *testing.T) *RTPSession {
+	t.Helper()
+	rtpSess := fakeSession(9876, 1234, nil, &bytes.Buffer{}, nil, &bytes.Buffer{})
+	rtpSess.rtcpTicker = time.NewTicker(time.Hour) // DO NOT TICK
+
+	// We offered opus at our own 96, the peer answered with 111, so 111 is what
+	// goes on the wire in both directions.
+	opus96 := CodecAudioOpus
+	opus111 := CodecAudioOpus
+	opus111.PayloadType = 111
+
+	rtpSess.Sess.Codecs = []Codec{opus96, CodecTelephoneEvent8000}
+	rtpSess.Sess.filterCodecs = []Codec{opus111}
+	return rtpSess
+}
+
+// The read path must accept the payload type negotiation settled on. Gating on
+// the local codec list dropped every packet of a call whose dynamic format the
+// peer numbered differently (RFC 3551 section 3, RFC 3264 section 6.1), and the
+// guard returned before recording the SSRC, so it re-fired on each packet: a
+// permanent one way blackhole with no error raised anywhere.
+func TestRTPSessionReadGatesOnNegotiatedCodecs(t *testing.T) {
+	rtpSess := negotiatedRTPSession(t)
+
+	pkt := &rtp.Packet{
+		Header:  rtp.Header{Version: 2, PayloadType: 111, SSRC: 111222, SequenceNumber: 1},
+		Payload: make([]byte, 20),
+	}
+	n, readPkt := readOneRTP(t, rtpSess, pkt)
+
+	require.NotZero(t, n, "the negotiated payload type must be read, not dropped")
+	assert.EqualValues(t, 111, readPkt.PayloadType)
+
+	stats := rtpSess.ReadStats()
+	assert.EqualValues(t, 111222, stats.SSRC, "the source must be recorded, or the guard re-fires per packet")
+	assert.EqualValues(t, 48000, stats.SampleRate, "stats must carry opus' clock, resolved from the negotiated codec")
+}
+
+// A payload type that is in the local list but was not negotiated is not part of
+// this session and must not be accepted.
+func TestRTPSessionReadRejectsUnnegotiatedPayloadType(t *testing.T) {
+	rtpSess := negotiatedRTPSession(t)
+
+	// 96 is our local opus constant, but the peer numbered opus 111.
+	pkt := &rtp.Packet{
+		Header:  rtp.Header{Version: 2, PayloadType: 96, SSRC: 111222, SequenceNumber: 1},
+		Payload: make([]byte, 20),
+	}
+	n, _ := readOneRTP(t, rtpSess, pkt)
+	assert.Zero(t, n, "96 was never negotiated for this session")
+}
+
+// Before negotiation there is nothing to filter on, so the local list stands.
+// Fork clones Codecs but deliberately not filterCodecs, so a re-INVITE lands
+// here too and must not go silent.
+func TestRTPSessionReadFallsBackToLocalCodecsBeforeNegotiation(t *testing.T) {
+	rtpSess := fakeSession(9876, 1234, nil, &bytes.Buffer{}, nil, &bytes.Buffer{})
+	rtpSess.rtcpTicker = time.NewTicker(time.Hour)
+	rtpSess.Sess.Codecs = []Codec{CodecAudioAlaw}
+	require.Empty(t, rtpSess.Sess.filterCodecs)
+
+	pkt := &rtp.Packet{
+		Header:  rtp.Header{Version: 2, PayloadType: 8, SSRC: 111222, SequenceNumber: 1},
+		Payload: make([]byte, 160),
+	}
+	n, _ := readOneRTP(t, rtpSess, pkt)
+	assert.NotZero(t, n, "with no negotiated set the local codecs must still be honoured")
+}
+
+// The write path resolves the codec for its statistics from the same set.
+func TestRTPSessionWriteGatesOnNegotiatedCodecs(t *testing.T) {
+	rtpSess := negotiatedRTPSession(t)
+
+	pkt := rtp.Packet{
+		Header:  rtp.Header{Version: 2, PayloadType: 111, SSRC: 1234},
+		Payload: []byte{1, 2, 3},
+	}
+	require.NoError(t, rtpSess.WriteRTP(&pkt), "writing the negotiated payload type must not fail")
+	assert.EqualValues(t, 48000, rtpSess.WriteStats().sampleRate)
 }

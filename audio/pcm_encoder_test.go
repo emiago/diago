@@ -163,3 +163,26 @@ func TestPCM16ToByte(t *testing.T) {
 	samplesByteToInt16(bytearr, outputPcm)
 	assert.Equal(t, pcm, outputPcm)
 }
+
+// Static formats can not be renumbered (RFC 3551 section 6), but the codec is
+// still selected by what it is. This is the control for the everyday PSTN path.
+func TestPCMCodecInitStaticCodecs(t *testing.T) {
+	for _, codec := range []media.Codec{media.CodecAudioUlaw, media.CodecAudioAlaw} {
+		dec := PCMDecoder{}
+		require.NoError(t, dec.Init(codec), "%s must decode", codec.Name)
+		require.NotNil(t, dec.DecoderTo)
+
+		enc := PCMEncoder{}
+		require.NoError(t, enc.Init(codec), "%s must encode", codec.Name)
+		require.NotNil(t, enc.EncoderTo)
+	}
+}
+
+// A format this layer has no implementation for is still rejected.
+func TestPCMCodecInitUnsupportedCodec(t *testing.T) {
+	dec := PCMDecoder{}
+	require.Error(t, dec.Init(media.CodecAudioG722))
+
+	enc := PCMEncoder{}
+	require.Error(t, enc.Init(media.CodecAudioG722))
+}

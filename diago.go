@@ -33,6 +33,10 @@ type Diago struct {
 	auth      sipgo.DigestAuth
 	mediaConf MediaConfig
 
+	// sessionTimers is the RFC 4028 session-timer policy stamped onto each dialog
+	// at construction.
+	sessionTimers SessionTimerPolicy
+
 	log *slog.Logger
 
 	cache            DialogCachePool
@@ -139,16 +143,90 @@ type MediaConfig struct {
 	// Currently supported Single. Check media.SRTP... constants
 	// Experimental
 	SecureRTPAlg uint16
+
+	// DTLSConfig is the DTLS-SRTP config every media session built from this
+	// config starts from. It is the Diago wide counterpart of
+	// Transport.MediaDTLSConf and, being a pointer, is opt in: when set it wins
+	// over the transport's own MediaDTLSConf, and nil leaves each transport
+	// supplying it as before.
+	//
+	// It configures DTLS but does not switch it on. That stays per transport,
+	// with MediaSRTP = media.SecureRTPModeDTLS.
+	DTLSConfig *media.DTLSConfig
+
+	// ICEConfig enables ICE (RFC 8445) on every media session built from this
+	// config. An ICE session binds a single socket and forces rtcp-mux, because
+	// ICE nominates one candidate pair.
+	//
+	// It is only honoured on transports that also set
+	// MediaSRTP = media.SecureRTPModeDTLS, the WebRTC media profile, as the media
+	// package negotiates ICE only there. Nil keeps the plain two socket layout,
+	// which is the previous behaviour.
+	ICEConfig *media.ICEConfig
+
+	// RTPPortAllocator, when non nil, chooses the local RTP port that every media
+	// session built from this config binds, instead of leaving the choice to the
+	// OS. It supersedes the media package RTPPortStart/RTPPortEnd globals, which
+	// can express only one range per process and only a linear scan over it.
+	// An allocator is per Diago and opaque, so a pool, tiers or a drain window
+	// are all possible without this package knowing about them.
+	//
+	// Nil leaves port selection to the OS or to the media package globals, which
+	// is the previous behaviour.
+	RTPPortAllocator RTPPortAllocator
+
 	// Used internally
 	secureRTP  int // 0 - none, 1 - sdes
 	bindIP     net.IP
 	externalIP net.IP
 	rtpNAT     int
-	dtlsConf   media.DTLSConfig
+}
 
-	// TODO, For now it is global on media package
-	// RTPPortStart int
-	// RTPPortEnd   int
+// mediaConfForTransport builds the media config a dialog running on tran starts
+// from. The transport supplies the media binding and the SRTP mode, the Diago
+// wide MediaConfig the rest. Both the server and the client dialog go through
+// here, so neither can quietly drop a field the other still carries.
+func (dg *Diago) mediaConfForTransport(tran *Transport) MediaConfig {
+	return MediaConfig{
+		Codecs:       dg.mediaConf.Codecs,
+		SecureRTPAlg: dg.mediaConf.SecureRTPAlg,
+		// A dialog binds through the allocator the caller installed on Diago.
+		// initMediaSessionFromConf reads it from the per dialog config, so a
+		// config that does not carry it leaves every dialog on the OS chosen
+		// port while the allocator sits unused.
+		RTPPortAllocator: dg.mediaConf.RTPPortAllocator,
+		secureRTP:        tran.MediaSRTP,
+		bindIP:           tran.mediaBindIP,
+		externalIP:       tran.MediaExternalIP,
+		DTLSConfig:       dg.dtlsConfForTransport(tran),
+		ICEConfig:        dg.mediaConf.ICEConfig,
+	}
+}
+
+// dtlsConfForTransport resolves the DTLS config a dialog on tran starts from.
+// A Diago wide DTLSConfig is opt in and wins; otherwise the transport keeps
+// supplying its own MediaDTLSConf, which is always a value and so cannot say
+// "unset". The transport config is copied so a dialog cannot mutate it.
+func (dg *Diago) dtlsConfForTransport(tran *Transport) *media.DTLSConfig {
+	if dg.mediaConf.DTLSConfig != nil {
+		return dg.mediaConf.DTLSConfig
+	}
+	conf := tran.MediaDTLSConf
+	return &conf
+}
+
+// RTPPortAllocator hands out and takes back local RTP ports for media sessions.
+//
+// AllocateRTPPort returns an even port whose RTCP companion, port+1, the
+// allocator must consider taken as well, as MediaSession binds the pair. An
+// error surfaces as the media session init failure.
+//
+// ReleaseRTPPort is called exactly once per successful allocation, from
+// DialogMedia.Close, after the sockets are closed. It must tolerate a port it
+// does not recognise, as it runs on teardown and so on error paths.
+type RTPPortAllocator interface {
+	AllocateRTPPort() (int, error)
+	ReleaseRTPPort(port int)
 }
 
 func (conf *MediaConfig) update(codecs []media.Codec, rtpNAT int) {
@@ -161,6 +239,16 @@ func (conf *MediaConfig) update(codecs []media.Codec, rtpNAT int) {
 func WithMediaConfig(conf MediaConfig) DiagoOption {
 	return func(dg *Diago) {
 		dg.mediaConf = conf
+	}
+}
+
+// WithSessionTimers sets the RFC 4028 session-timer policy stamped onto each
+// dialog at construction. The policy drives negotiation, the refresh loop and
+// the peer-refresh watchdog. Without this option session timers stay disabled
+// and diago neither advertises nor enforces them.
+func WithSessionTimers(p SessionTimerPolicy) DiagoOption {
+	return func(dg *Diago) {
+		dg.sessionTimers = p
 	}
 }
 
@@ -281,13 +369,8 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 			DialogServerSession: dialog,
 			DialogMedia:         DialogMedia{},
 			// TODO we may actually just build media session with this conf here
-			mediaConf: MediaConfig{
-				Codecs:     dg.mediaConf.Codecs,
-				secureRTP:  tran.MediaSRTP,
-				bindIP:     tran.mediaBindIP,
-				externalIP: tran.MediaExternalIP,
-				dtlsConf:   tran.MediaDTLSConf,
-			},
+			mediaConf:     dg.mediaConfForTransport(tran),
+			sessionTimers: dg.sessionTimers,
 		}
 
 		defer closeAndLog(dWrap, "closing dialog server returned error")
@@ -680,13 +763,7 @@ func (dg *Diago) newSipDialog(recipient sip.Uri, tran *Transport, opts NewDialog
 	}
 	d.Init()
 
-	d.mediaConfig = MediaConfig{
-		Codecs:     dg.mediaConf.Codecs,
-		secureRTP:  tran.MediaSRTP,
-		bindIP:     tran.mediaBindIP,
-		externalIP: tran.MediaExternalIP,
-		dtlsConf:   tran.MediaDTLSConf,
-	}
+	d.mediaConfig = dg.mediaConfForTransport(tran)
 
 	// This should be run on ACK
 	d.OnState(func(s sip.DialogState) {

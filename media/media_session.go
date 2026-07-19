@@ -4,6 +4,7 @@
 package media
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
@@ -17,11 +18,33 @@ import (
 	"time"
 
 	"github.com/emiago/diago/media/sdp"
-	"github.com/emiago/dtls/v3"
 	"github.com/emiago/sipgo/sip"
+	"github.com/pion/dtls/v3"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/srtp/v3"
+)
+
+// Negotiation failures. Each one means the remote SDP and our configuration have
+// no overlap, which is a property of the peer's offer and not a fault in this
+// process. They are exported so a caller can tell the two apart with errors.Is:
+// an offer we cannot meet should be answered with 488 Not Acceptable Here, while
+// an internal error should not. The wrapped text carries the specifics.
+var (
+	// ErrNoCommonCodec means the audio formats do not intersect: the peer
+	// offered no codec we support, or none that could be parsed.
+	ErrNoCommonCodec = errors.New("no common codec")
+
+	// ErrNoCommonCrypto means the media is negotiable but the keying is not.
+	// The peer asked for secure RTP and no SRTP context could be built from what
+	// it offered. Kept apart from ErrNoCommonCodec because a codec mismatch is a
+	// capability gap while this is a security policy gap.
+	ErrNoCommonCrypto = errors.New("no common crypto")
+
+	// ErrNoCommonMedia means the m= line itself is unusable before codecs are
+	// reached: a transport we do not speak, or an address and port that cannot
+	// carry RTP.
+	ErrNoCommonMedia = errors.New("no common media")
 )
 
 var (
@@ -101,6 +124,16 @@ type MediaSession struct {
 	// Codecs are initial list of Codecs that would be used in SDP generation
 	Codecs []Codec
 
+	// RemoteSDPIsAnswer declares that the next body passed to RemoteSDP answers
+	// an offer we made, rather than offering to us. It is a property of the body
+	// and not of the dialog: a UAC offers on its INVITE and answers an inbound
+	// re-INVITE, so the role changes within one session.
+	//
+	// It only decides who we are for SDPCodecPreferLocalOrder, which applies to
+	// the answerer alone. Default false means the body is an offer and we are the
+	// answerer, which is the common case and the previous behaviour.
+	RemoteSDPIsAnswer bool
+
 	sdp []byte
 
 	// Mode is sdp mode. Check consts sdp.ModeRecvOnly etc...
@@ -118,6 +151,16 @@ type MediaSession struct {
 
 	// DTLSConf used for DTLS
 	DTLSConf DTLSConfig
+
+	// ICEConf enables ICE (RFC 8445) on this session. It is only honoured
+	// together with SecureRTP = SecureRTPModeDTLS, which is the WebRTC media
+	// profile. An ICE session binds one socket instead of two and forces
+	// rtcp-mux, because ICE nominates a single candidate pair.
+	ICEConf *ICEConfig
+
+	// DTLSRole forces the offer/answer role instead of inferring it from
+	// whether a remote address is known. Check DTLSEndpointRole.
+	DTLSRole DTLSEndpointRole
 
 	// mode set after negotiation
 	mode string
@@ -147,11 +190,47 @@ type MediaSession struct {
 
 	// DTLS
 	dtlsConn *dtls.Conn
+	// dtlsTr is the transport dtlsConn was built on. It is held so the handshake
+	// can hand the socket back once the keying material is exported.
+	dtlsTr *dtlsKeyExchangeConn
+
+	// ICE
+	iceAgent *ICEAgent
+	// iceUDPConn is the single socket an ICE session binds. Ownership passes
+	// to iceAgent once its UDP mux wraps it.
+	iceUDPConn *net.UDPConn
+	// iceMux splits the nominated ICE pair into DTLS, RTP and RTCP. It is
+	// installed once connectivity checks pass, and rtpConn/rtcpConn then point
+	// into it.
+	iceMux         *iceMux
+	rtcpMux        bool
+	remoteICEUfrag string
+	remoteICEPwd   string
 
 	onFinalize func() error
 
 	sessionID      uint64
 	sessionVersion uint64
+}
+
+// iceEnabled reports whether this session negotiates ICE. ICE is only
+// supported on the DTLS profile: the SDES and plain RTP paths keep the two
+// socket layout, and nothing signals ICE for them.
+func (s *MediaSession) iceEnabled() bool {
+	return s.ICEConf != nil && s.SecureRTP == SecureRTPModeDTLS
+}
+
+// dtlsEndpointRole resolves the signalling role. Without an explicit
+// DTLSRole it is inferred the same way LocalSDP picks a=setup: knowing the
+// remote address already means we are answering.
+func (s *MediaSession) dtlsEndpointRole() DTLSEndpointRole {
+	if s.DTLSRole != DTLSEndpointRoleUnknown {
+		return s.DTLSRole
+	}
+	if s.Raddr.IP != nil {
+		return DTLSEndpointRoleAnswerer
+	}
+	return DTLSEndpointRoleOfferer
 }
 
 func NewMediaSession(ip net.IP, port int) (s *MediaSession, e error) {
@@ -186,11 +265,52 @@ func (s *MediaSession) Init() error {
 		s.SRTPAlg = uint16(srtp.ProtectionProfileAes128CmHmacSha1_80)
 	}
 
+	// A session that already holds a connection and is initialized again is
+	// rebinding: this is Fork followed by a new Laddr, which starts a new
+	// listener below. ExternalIP is the address the OLD socket was reachable on,
+	// so it cannot describe the new one and must be set again by the caller if it
+	// still applies.
+	if s.rtpConn != nil {
+		s.ExternalIP = nil
+	}
+
 	// Try to listen on this ports
 	if err := s.createListeners(&s.Laddr); err != nil {
 		return err
 	}
 
+	if s.iceEnabled() {
+		// Candidates must be gathered before LocalSDP can offer them, so the
+		// agent is built here rather than lazily during negotiation.
+		if err := s.initICE(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// initICE builds the ICE agent over the session socket and gathers candidates.
+//
+// A failure is fatal for the session. There is no second transport to fall
+// back to: an ICE session binds no RTP or RTCP socket of its own, so carrying
+// on without an agent would leave it with no media path at all.
+func (s *MediaSession) initICE() error {
+	agent, err := NewICEAgent(*s.ICEConf)
+	if err != nil {
+		_ = s.iceUDPConn.Close()
+		s.iceUDPConn = nil
+		return fmt.Errorf("media session: ice agent: %w", err)
+	}
+
+	// From here the agent owns the socket through its UDP mux, and releasing
+	// the agent is what releases the socket.
+	if err := agent.Init(context.Background(), s.iceUDPConn); err != nil {
+		_ = agent.Close()
+		s.iceUDPConn = nil
+		return fmt.Errorf("media session: ice init: %w", err)
+	}
+	s.iceAgent = agent
 	return nil
 }
 
@@ -273,13 +393,33 @@ func (s *MediaSession) Fork() *MediaSession {
 		sessionID:      s.sessionID,
 		sessionVersion: s.sessionVersion,
 		DTLSConf:       s.DTLSConf,
+		ICEConf:        s.ICEConf,
+		DTLSRole:       s.DTLSRole,
+		rtcpMux:        s.rtcpMux,
+		// The mux is shared like rtpConn and rtcpConn above, so a renegotiated
+		// session keeps sending DTLS to the right stream. The agent is
+		// deliberately not carried over: it owns the socket, and a fork closing
+		// it would tear down the media of the session it was forked from. That
+		// means a fork renegotiates over the existing pair rather than
+		// restarting ICE.
+		iceMux: s.iceMux,
+		// ExternalIP is what LocalSDP publishes as the c= address, and LocalSDP
+		// regenerates on every call for a negotiated session. Dropping it here
+		// made the 200 OK answering any re-INVITE advertise the internal bind
+		// address, so the peer sent RTP somewhere it could not route and the call
+		// went one way from the first re-INVITE on, with a clean SIP trace.
+		ExternalIP: s.ExternalIP,
+		// The role carries over so the caller can set it once on the session it
+		// owns. Fork is called inside the re-negotiation path, where the fork
+		// itself is not reachable to configure.
+		RemoteSDPIsAnswer: s.RemoteSDPIsAnswer,
 	}
 	return &cp
 }
 
 func (s *MediaSession) Close() error {
 	// panic("calling close")
-	var e1, e2 error
+	var e1, e2, e3 error
 	if s.rtcpConn != nil {
 		e1 = s.rtcpConn.Close()
 	}
@@ -287,7 +427,17 @@ func (s *MediaSession) Close() error {
 	if s.rtpConn != nil {
 		e2 = s.rtpConn.Close()
 	}
-	return errors.Join(e1, e2)
+
+	// The agent holds the session socket through its UDP mux and it owns the
+	// gathering and connectivity check goroutines, so it must be released on
+	// every path. A session that failed before Finalize never installed
+	// rtpConn, so the closes above do not cover it.
+	if s.iceAgent != nil {
+		e3 = s.iceAgent.Close()
+		s.iceAgent = nil
+		s.iceUDPConn = nil
+	}
+	return errors.Join(e1, e2, e3)
 }
 
 // SetRemoteAddr is helper to set Raddr and rtcp address.
@@ -316,10 +466,7 @@ func (s *MediaSession) LocalSDP() []byte {
 		connIP = ip
 	}
 
-	codecs := s.Codecs
-	if len(s.filterCodecs) > 0 {
-		codecs = s.filterCodecs
-	}
+	codecs := s.activeCodecs()
 
 	var localSDES sdesInline
 	rtpProfile := "RTP/AVP"
@@ -384,6 +531,12 @@ func (s *MediaSession) LocalSDP() []byte {
 		// Allow overriding
 		if s.DTLSConf.SDPSetupRole != nil {
 			dtlsSet.setup = s.DTLSConf.SDPSetupRole(s.Raddr.IP != nil)
+		} else if s.DTLSRole != DTLSEndpointRoleUnknown {
+			// An explicit role overrides the remote address heuristic above.
+			dtlsSet.setup = "active"
+			if s.DTLSRole == DTLSEndpointRoleAnswerer {
+				dtlsSet.setup = "passive"
+			}
 		}
 		// DTLS
 		// This is only needed for self signed certificates?
@@ -408,6 +561,22 @@ func (s *MediaSession) LocalSDP() []byte {
 
 	}
 
+	var iceSet *iceSetup
+	if s.iceAgent != nil {
+		ufrag, pwd := s.iceAgent.Credentials()
+		candidates := s.iceAgent.Candidates()
+		attrs := make([]string, 0, len(candidates))
+		for _, c := range candidates {
+			attrs = append(attrs, iceCandidateSDP(c))
+		}
+		iceSet = &iceSetup{
+			ufrag:      ufrag,
+			pwd:        pwd,
+			candidates: attrs,
+			rtcpMux:    s.rtcpMux,
+		}
+	}
+
 	if s.sessionID == 0 {
 		s.sessionID = GetCurrentNTPTimestamp()
 		s.sessionVersion = s.sessionID
@@ -421,7 +590,7 @@ func (s *MediaSession) LocalSDP() []byte {
 		mode = s.Mode
 	}
 
-	return generateSDPForAudio(s.sessionID, s.sessionVersion, rtpProfile, ip, connIP, rtpPort, mode, codecs, localSDES, dtlsSet)
+	return generateSDPForAudio(s.sessionID, s.sessionVersion, rtpProfile, ip, connIP, rtpPort, mode, codecs, localSDES, dtlsSet, iceSet)
 }
 
 // RemoteSDP applies remote SDP.
@@ -443,7 +612,12 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	//    different entity.  In that case, the version number in the "o=" line
 	//    of the answer is unrelated to the version number in the o line of the
 	//    offer.
-	answerer := s.sessionID == 0
+	// We are the answerer whenever the body being applied is an offer. The caller
+	// tells us which it is, because it cannot be inferred from the session:
+	// s.sessionID == 0 holds both for a UAS applying its first offer and for a
+	// UAC applying the answer to its own INVITE, and Fork carries the session id
+	// forward so a re-INVITE offer no longer looks like a first offer either.
+	answerer := !s.RemoteSDPIsAnswer
 	if s.sessionID != si.SessionID {
 		s.sessionID = si.SessionID
 		s.sessionVersion = si.SessionVersion + 1
@@ -467,7 +641,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	case "UDP/TLS/RTP/SAVPF":
 		// secureRequest = true
 	default:
-		return fmt.Errorf("unsupported media description protocol proto=%s", md.Proto)
+		return fmt.Errorf("%w: unsupported media description protocol proto=%s", ErrNoCommonMedia, md.Proto)
 	}
 	s.remoteProto = md.Proto
 
@@ -483,7 +657,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 		return fmt.Errorf("reading codecs from SDP was not full: %w", err)
 	}
 	if n == 0 {
-		return fmt.Errorf("no codecs found in SDP")
+		return fmt.Errorf("%w: no codecs found in SDP", ErrNoCommonCodec)
 	}
 
 	// https://datatracker.ietf.org/doc/html/rfc3264#section-6.1
@@ -497,13 +671,31 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	//    48, and not 48, 8.  This helps assure that the same codec is used in
 	//    both directions.
 	if s.updateRemoteCodecs(codecs[:n], answerer) == 0 {
-		return fmt.Errorf("no supported codecs found")
+		return fmt.Errorf("%w: no supported codecs found", ErrNoCommonCodec)
 	}
 
 	ci, err := sd.ConnectionInformation()
 	if err != nil {
 		return err
 	}
+
+	// Refuse an RTP destination that cannot carry media instead of latching it.
+	//
+	// Port 0 is not a parse accident, it has a meaning: the stream is rejected
+	// (RFC 3264 section 6). It also absorbs every unparseable port, because
+	// MediaDescription discards strconv's error and leaves the zero value. Both
+	// readings agree there is no audio to carry. A nil IP arrives the same way:
+	// ConnectionInformation only validates the address for the IP4 and IP6
+	// addrtypes, so any other addrtype parses clean and yields no IP at all.
+	// Accepting either built a session pointed at nothing, which fails silently
+	// on first write, so the call answered and then sat mute.
+	if md.Port <= 0 || md.Port > 65535 {
+		return fmt.Errorf("%w: audio media port is not usable port=%d", ErrNoCommonMedia, md.Port)
+	}
+	if ci.IP == nil {
+		return fmt.Errorf("%w: audio connection address is not an IP addrtype=%s", ErrNoCommonMedia, ci.AddressType)
+	}
+
 	s.SetRemoteAddr(&net.UDPAddr{IP: ci.IP, Port: md.Port})
 
 	// Check mode for media direction
@@ -559,6 +751,12 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 
 	}
 
+	if s.iceEnabled() {
+		if err := s.remoteICE(attrs); err != nil {
+			return err
+		}
+	}
+
 	// Check for DTLS
 	if len(s.DTLSConf.Certificates) > 0 || s.SecureRTP == 2 {
 		setup := ""
@@ -595,29 +793,50 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 		switch setup {
 		case "actpass", "passive":
 			// we are client, as remote wants to be server
-			// if s.dtlsConn == nil {
-			// 	panic("No dtls connection")
-			// }
-			s.dtlsConn, err = dtls.Client(s.rtpConn, &s.Raddr, dtlsConf)
-			if err != nil {
-				return fmt.Errorf("failed to setup dlts client conn: %w", err)
-			}
-
 		case "active":
-			role = "server"
 			// we are server as remote wants to be client
-			s.dtlsConn, err = dtls.Server(s.rtpConn, &s.Raddr, dtlsConf)
-			if err != nil {
-				return fmt.Errorf("failed to setup dlts server conn: %w", err)
-			}
-			// return nil
+			role = "server"
 
 			// NOTE: setup:active allows the answer and the DTLS handshake to occur in parallel.
 		default:
 			return fmt.Errorf("unknown setup value %q", setup)
 		}
 
+		// dialDTLS builds the DTLS conn over the media transport.
+		dialDTLS := func() error {
+			var err error
+			s.dtlsTr = s.dtlsTransport()
+			if role == "server" {
+				s.dtlsConn, err = dtls.Server(s.dtlsTr, &s.Raddr, dtlsConf)
+			} else {
+				s.dtlsConn, err = dtls.Client(s.dtlsTr, &s.Raddr, dtlsConf)
+			}
+			if err != nil {
+				return fmt.Errorf("failed to setup dlts %s conn: %w", role, err)
+			}
+			return nil
+		}
+
+		// Without ICE the transport already exists, so the conn is built now:
+		// a server conn must be able to buffer a ClientHello that arrives
+		// between our answer and Finalize. An ICE session has no transport
+		// until connectivity checks nominate a pair, so it defers this.
+		if !s.iceEnabled() {
+			if err := dialDTLS(); err != nil {
+				return err
+			}
+		}
+
 		s.onFinalize = func() error {
+			if s.iceEnabled() {
+				if err := s.startICE(); err != nil {
+					return err
+				}
+				if err := dialDTLS(); err != nil {
+					return err
+				}
+			}
+
 			DefaultLogger().Debug("Starting dtls handshake",
 				"setup", setup,
 				"role", role,
@@ -626,6 +845,13 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			)
 			if err := s.dtlsConn.Handshake(); err != nil {
 				return fmt.Errorf("dtls conn handshake: %w", err)
+			}
+
+			// The exchange is over, so the stack must let the socket go before it
+			// can take a single SRTP packet off it. This is the first statement
+			// after the handshake for that reason: nothing may come between.
+			if err := s.retireDTLS(); err != nil {
+				return err
 			}
 
 			DefaultLogger().Debug("Handshake finished. Checking DTLS State")
@@ -690,7 +916,106 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	}
 
 	if secureRequest && s.remoteCtxSRTP == nil {
-		return fmt.Errorf("remote requested secure RTP, but no context is created proto=%s", md.Proto)
+		return fmt.Errorf("%w: remote requested secure RTP, but no context is created proto=%s", ErrNoCommonCrypto, md.Proto)
+	}
+	return nil
+}
+
+// remoteICE reads the remote ICE credentials and candidates out of the SDP
+// attributes and feeds them to the agent. Connectivity checks are not started
+// here: they belong to Finalize, once the offer/answer exchange is complete.
+func (s *MediaSession) remoteICE(attrs []string) error {
+	// Tracked separately from s.rtcpMux: that one records our own intent and
+	// listenICE has already set it for every ICE session, so it says nothing
+	// about what the remote agreed to.
+	remoteRTCPMux := false
+
+	for _, v := range attrs {
+		switch {
+		case strings.HasPrefix(v, "ice-ufrag:"):
+			s.remoteICEUfrag = strings.TrimSpace(v[len("ice-ufrag:"):])
+		case strings.HasPrefix(v, "ice-pwd:"):
+			s.remoteICEPwd = strings.TrimSpace(v[len("ice-pwd:"):])
+		case strings.HasPrefix(v, "candidate:"):
+			if err := s.iceAgent.AddRemoteCandidate(strings.TrimSpace(v)); err != nil {
+				// One malformed candidate must not fail the session: ICE can
+				// still nominate a pair from the others.
+				DefaultLogger().Warn("Skipping bad ICE candidate", "attr", v, "error", err)
+			}
+		case v == "rtcp-mux":
+			remoteRTCPMux = true
+		}
+	}
+
+	if s.remoteICEUfrag == "" || s.remoteICEPwd == "" {
+		return fmt.Errorf("sdp: ICE enabled but remote sent no ice-ufrag/ice-pwd")
+	}
+
+	if !remoteRTCPMux {
+		// An ICE session has a single nominated pair and therefore no second
+		// port to put RTCP on. A peer that refuses rtcp-mux cannot be served.
+		return fmt.Errorf("sdp: ICE requires rtcp-mux, remote did not offer it")
+	}
+
+	s.iceAgent.SetRemoteCredentials(s.remoteICEUfrag, s.remoteICEPwd)
+	return nil
+}
+
+// startICE runs connectivity checks and installs the nominated pair as the
+// session transport.
+//
+// The offerer is the controlling agent (RFC 8445 section 6.1). Once a pair is
+// nominated, rtpConn and rtcpConn become views on the one ICE connection, so
+// the rest of MediaSession reads and writes over ICE without further changes.
+func (s *MediaSession) startICE() error {
+	ctx, cancel := context.WithTimeout(context.Background(), ICEConnectTimeout)
+	defer cancel()
+
+	controlling := s.dtlsEndpointRole() == DTLSEndpointRoleOfferer
+	conn, raddr, err := s.iceAgent.Connect(ctx, controlling)
+	if err != nil {
+		return err
+	}
+
+	s.SetRemoteAddr(raddr)
+	// SetRemoteAddr puts RTCP on port+1. Under rtcp-mux it shares the RTP
+	// address, and with ICE that is the only address the pair accepts.
+	s.rtcpRaddr = *raddr
+
+	s.iceMux = newICEMux(conn, raddr)
+	s.rtpConn = s.iceMux.rtp
+	s.rtcpConn = s.iceMux.rtcp
+	return nil
+}
+
+// dtlsTransport returns the packet conn the DTLS handshake runs over. Without
+// ICE that is the RTP socket, which is what carries SRTP afterwards. With ICE
+// it is the DTLS stream of the mux, since the handshake shares the nominated
+// pair with media and has to be separated from it.
+//
+// Either way the conn is only lent to the DTLS stack: see dtlsKeyExchangeConn.
+func (s *MediaSession) dtlsTransport() *dtlsKeyExchangeConn {
+	if s.iceMux != nil {
+		return newDTLSKeyExchangeConn(s.iceMux.dtls)
+	}
+	return newDTLSKeyExchangeConn(s.rtpConn)
+}
+
+// retireDTLS releases the media socket once the handshake is done with it.
+//
+// DTLS-SRTP uses the association for nothing but the key exchange, and the
+// socket it ran on is the one SRTP arrives on. Left alone the stack keeps its
+// read loop parked there and consumes media, which it then discards as a
+// malformed record per RFC 6347 section 4.1.2.7, so the loss is silent.
+//
+// detach comes first, so that the close_notify Close emits is dropped rather
+// than sent: the peer keeps its association. Close is then what retires the
+// read loop and the handshake goroutine, and it cannot reach the socket because
+// detach has already taken it away.
+func (s *MediaSession) retireDTLS() error {
+	s.dtlsTr.detach()
+	if err := s.dtlsConn.Close(); err != nil {
+		return fmt.Errorf("dtls conn close: %w", err)
 	}
 	return nil
 }
@@ -706,21 +1031,49 @@ func (s *MediaSession) Finalize() error {
 	return nil
 }
 
+// codecMatch reports whether local and remote describe the same audio format.
+//
+// The payload type is deliberately not compared. For dynamic formats each side
+// picks its own number from 96-127 (RFC 3551 section 3), so comparing numbers
+// drops every format the peer happens to number differently. What identifies a
+// format is its rtpmap: encoding name, clock rate and channel count. Encoding
+// names are case insensitive (RFC 4566 section 6).
+//
+// SampleDur is not compared either: it is ptime, a framing preference rather
+// than part of the format's identity, and the local value is the one we keep.
+func codecMatch(local Codec, remote Codec) bool {
+	return strings.EqualFold(local.Name, remote.Name) &&
+		local.SampleRate == remote.SampleRate &&
+		local.NumChannels == remote.NumChannels
+}
+
+// negotiatedCodec builds the entry for a matched pair. It keeps our local
+// framing but takes the peer's payload type: RFC 3264 section 6.1 says that if a
+// codec was referenced with a specific payload type number in the offer, that
+// same number should be used for it in the answer.
+//
+// This is the only place the peer's number is recorded, so it is what the RTP
+// paths must gate on. They reach it through activeCodecs.
+func negotiatedCodec(local Codec, remote Codec) Codec {
+	local.PayloadType = remote.PayloadType
+	return local
+}
+
 func (s *MediaSession) updateRemoteCodecs(codecs []Codec, answerer bool) int {
 	if len(s.Codecs) == 0 {
 		s.Codecs = codecs
 		return len(codecs)
 	}
 
-	DefaultLogger().Debug("Remote Codecs Update", "local", s.Codecs, "remote", codecs)
+	DefaultLogger().Debug("Remote Codecs Update", "local", s.Codecs, "remote", codecs, "answerer", answerer)
 
 	// Some systems may like to answer with local order of preference
 	if SDPCodecPreferLocalOrder > 0 && answerer {
 		filter := make([]Codec, 0, len(codecs))
-		for _, rc := range s.Codecs {
-			for _, c := range codecs {
-				if c == rc {
-					filter = append(filter, c)
+		for _, lc := range s.Codecs {
+			for _, rc := range codecs {
+				if codecMatch(lc, rc) {
+					filter = append(filter, negotiatedCodec(lc, rc))
 					break
 				}
 			}
@@ -729,11 +1082,14 @@ func (s *MediaSession) updateRemoteCodecs(codecs []Codec, answerer bool) int {
 		return len(s.filterCodecs)
 	}
 
-	filter := codecs[:0] // reuse buffer
+	// NOTE: codecs is not reused as the filter buffer. The negotiated entry is
+	// built from the local codec, so writing it back over the remote list would
+	// corrupt entries this loop has not read yet.
+	filter := make([]Codec, 0, len(codecs))
 	for _, rc := range codecs {
-		for _, c := range s.Codecs {
-			if c == rc {
-				filter = append(filter, c)
+		for _, lc := range s.Codecs {
+			if codecMatch(lc, rc) {
+				filter = append(filter, negotiatedCodec(lc, rc))
 				break
 			}
 		}
@@ -748,12 +1104,32 @@ func (s *MediaSession) CommonCodecs() []Codec {
 	return s.filterCodecs
 }
 
+// activeCodecs returns the codecs this session runs on: what negotiation settled
+// on once it has, and the local list until then.
+//
+// The distinction matters for dynamic formats, whose payload type is the peer's
+// number rather than ours (RFC 3264 section 6.1). Only the negotiated entries
+// carry that number, so the local list can not answer what is on the wire.
+//
+// The fallback is not just for the offer: Fork clones Codecs but deliberately
+// not filterCodecs, so a re-negotiating session passes through here with nothing
+// negotiated yet and must keep running on its local list.
+//
+// NOTE: Not thread safe. Negotiation writes filterCodecs, so this must not be
+// called in parallel with RemoteSDP.
+func (s *MediaSession) activeCodecs() []Codec {
+	if len(s.filterCodecs) > 0 {
+		return s.filterCodecs
+	}
+	return s.Codecs
+}
+
 // Listen creates listeners instead
 func (s *MediaSession) createListeners(laddr *net.UDPAddr) error {
 	// var err error
 
 	if laddr.Port != 0 {
-		return s.listenRTPandRTCP(laddr)
+		return s.listen(laddr)
 	}
 
 	if laddr.Port == 0 && RTPPortStart > 0 && RTPPortEnd > RTPPortStart {
@@ -762,7 +1138,7 @@ func (s *MediaSession) createListeners(laddr *net.UDPAddr) error {
 		var err error
 		for ; port < RTPPortEnd; port += 2 {
 			laddr.Port = port
-			err = s.listenRTPandRTCP(laddr)
+			err = s.listen(laddr)
 			if err == nil {
 				break
 			}
@@ -781,13 +1157,42 @@ func (s *MediaSession) createListeners(laddr *net.UDPAddr) error {
 	// We are always in race with other services so only try to offset to reduce retries
 	var err error
 	for retries := 0; retries < 10; retries += 1 {
-		err = s.listenRTPandRTCP(laddr)
+		err = s.listen(laddr)
 		if err == nil {
 			break
 		}
 	}
 
 	return err
+}
+
+// listen binds the session sockets. It is the per attempt step of
+// createListeners, which retries it across a port range.
+func (s *MediaSession) listen(laddr *net.UDPAddr) error {
+	if s.iceEnabled() {
+		return s.listenICE(laddr)
+	}
+	return s.listenRTPandRTCP(laddr)
+}
+
+// listenICE binds the single socket an ICE session uses.
+//
+// ICE nominates one candidate pair, so RTP, RTCP and the DTLS handshake all
+// share one port. That makes rtcp-mux (RFC 5761) mandatory rather than
+// optional, and it is why no RTCP socket is bound here. The socket is only
+// held on iceUDPConn until the agent's UDP mux takes ownership of it; the
+// agent gathers its host candidate from this very socket, which is what keeps
+// the SDP m=audio port and the host candidate port identical.
+func (s *MediaSession) listenICE(laddr *net.UDPAddr) error {
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: laddr.IP, Port: laddr.Port})
+	if err != nil {
+		return err
+	}
+	s.iceUDPConn = conn
+	// Update laddr as it can be empheral
+	s.Laddr = *conn.LocalAddr().(*net.UDPAddr)
+	s.rtcpMux = true
+	return nil
 }
 
 func (s *MediaSession) listenRTPandRTCP(laddr *net.UDPAddr) error {
@@ -1157,30 +1562,73 @@ type dtlsSetup struct {
 	fingerprints []sdpFingerprints
 }
 
-func generateSDPForAudio(sessionID uint64, sessionVersion uint64, rtpProfile string, originIP net.IP, connectionIP net.IP, rtpPort int, mode string, codecs []Codec, sdes sdesInline, dtlsSet *dtlsSetup) []byte {
+type iceSetup struct {
+	ufrag string
+	pwd   string
+	// candidates are rendered a=candidate values, without the "a=" prefix
+	candidates []string
+	rtcpMux    bool
+}
+
+// formatRTPMap renders the a=rtpmap line describing codec, followed by its
+// a=fmtp line where the format defines one.
+//
+// Dynamic formats are keyed by encoding name rather than by payload type. Each
+// side picks its own number from 96-127 for them (RFC 3551 section 3) and an
+// answer echoes the number the offerer used (RFC 3264 section 6.1), so a
+// negotiated codec arrives here carrying the peer's number. What identifies the
+// format is the encoding name (RFC 4855 section 3), and only the number is
+// rendered from the codec. Keying on the number instead described a peer's
+// telephone-event at 96 as opus, and dropped opus' fmtp at every number but 96.
+//
+// Static formats stay keyed by number: the RTP/AVP registry freezes those
+// assignments (RFC 3551 section 6) and they can not be renumbered. They are
+// checked after the dynamic names so that a peer mapping a dynamic format onto a
+// static number is still described by what it is.
+func formatRTPMap(codec Codec) []string {
+	switch {
+	case strings.EqualFold(codec.Name, CodecAudioOpus.Name):
+		return []string{
+			// RFC 7587 section 7 fixes the rtpmap clock at 48000 and the encoding
+			// parameters at 2 for opus, whatever the stream actually carries. It
+			// declares the decoder's capability, not that the stream is stereo.
+			fmt.Sprintf("a=rtpmap:%d opus/48000/2", codec.PayloadType),
+			// Providing 0 when FEC cannot be used on the receiving side is RECOMMENDED.
+			// https://datatracker.ietf.org/doc/html/rfc7587
+			fmt.Sprintf("a=fmtp:%d useinbandfec=0", codec.PayloadType),
+		}
+	case strings.EqualFold(codec.Name, CodecTelephoneEvent8000.Name):
+		return []string{
+			// The canonical form carries no encoding parameters suffix, which the
+			// generic default below would append.
+			fmt.Sprintf("a=rtpmap:%d telephone-event/8000", codec.PayloadType),
+			// Events 0-16 are the DTMF digits, * and # (RFC 4733 section 3.2).
+			fmt.Sprintf("a=fmtp:%d 0-16", codec.PayloadType),
+		}
+	}
+
+	switch codec.PayloadType {
+	case CodecAudioUlaw.PayloadType:
+		return []string{"a=rtpmap:0 PCMU/8000"}
+	case CodecAudioAlaw.PayloadType:
+		return []string{"a=rtpmap:8 PCMA/8000"}
+	case CodecAudioG722.PayloadType:
+		// Clock is 8000 per RFC 3551 and the encoding parameters suffix is
+		// omitted. The generic default below would append the channel count and
+		// some peers do not match the non canonical form.
+		return []string{"a=rtpmap:9 G722/8000"}
+	}
+
+	return []string{fmt.Sprintf("a=rtpmap:%d %s/%d/%d", codec.PayloadType, codec.Name, codec.SampleRate, codec.NumChannels)}
+}
+
+func generateSDPForAudio(sessionID uint64, sessionVersion uint64, rtpProfile string, originIP net.IP, connectionIP net.IP, rtpPort int, mode string, codecs []Codec, sdes sdesInline, dtlsSet *dtlsSetup, iceSet *iceSetup) []byte {
 	// ntpTime := GetCurrentNTPTimestamp()
 
 	fmts := make([]string, len(codecs))
 	formatsMap := []string{}
 	for i, f := range codecs {
-		// TODO should we just go generic
-		switch f.PayloadType {
-		case CodecAudioUlaw.PayloadType:
-			formatsMap = append(formatsMap, "a=rtpmap:0 PCMU/8000")
-		case CodecAudioAlaw.PayloadType:
-			formatsMap = append(formatsMap, "a=rtpmap:8 PCMA/8000")
-		case CodecAudioOpus.PayloadType:
-			formatsMap = append(formatsMap, "a=rtpmap:96 opus/48000/2")
-			// Providing 0 when FEC cannot be used on the receiving side is RECOMMENDED.
-			// https://datatracker.ietf.org/doc/html/rfc7587
-			formatsMap = append(formatsMap, "a=fmtp:96 useinbandfec=0")
-		case CodecTelephoneEvent8000.PayloadType:
-			formatsMap = append(formatsMap, "a=rtpmap:101 telephone-event/8000")
-			formatsMap = append(formatsMap, "a=fmtp:101 0-16")
-		default:
-			s := fmt.Sprintf("a=rtpmap:%d %s/%d/%d", f.PayloadType, f.Name, f.SampleRate, f.NumChannels)
-			formatsMap = append(formatsMap, s)
-		}
+		formatsMap = append(formatsMap, formatRTPMap(f)...)
 		fmts[i] = strconv.Itoa(int(f.PayloadType))
 	}
 
@@ -1217,6 +1665,19 @@ func generateSDPForAudio(sessionID uint64, sessionVersion uint64, rtpProfile str
 				continue
 			}
 			s = append(s, fmt.Sprintf("a=fingerprint:%s %s", d.alg, d.fingerprint))
+		}
+	}
+
+	if iceSet != nil {
+		s = append(s, "a=ice-ufrag:"+iceSet.ufrag)
+		s = append(s, "a=ice-pwd:"+iceSet.pwd)
+		for _, c := range iceSet.candidates {
+			s = append(s, "a="+c)
+		}
+		if iceSet.rtcpMux {
+			// An ICE session has one nominated pair, so RTCP has no port of
+			// its own to advertise.
+			s = append(s, "a=rtcp-mux")
 		}
 	}
 
