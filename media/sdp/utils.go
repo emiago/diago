@@ -36,6 +36,9 @@ func GenerateForAudio(originIP net.IP, connectionIP net.IP, rtpPort int, mode st
 			formatsMap = append(formatsMap, "a=rtpmap:0 PCMU/8000")
 		case FORMAT_TYPE_ALAW:
 			formatsMap = append(formatsMap, "a=rtpmap:8 PCMA/8000")
+		case FORMAT_TYPE_G722:
+			// Clock is 8000 per RFC 3551, see generateSDPForAudio.
+			formatsMap = append(formatsMap, "a=rtpmap:9 G722/8000")
 		case FORMAT_TYPE_OPUS:
 			formatsMap = append(formatsMap, "a=rtpmap:96 opus/48000/2")
 			// Providing 0 when FEC cannot be used on the receiving side is RECOMMENDED.
