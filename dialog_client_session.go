@@ -307,6 +307,8 @@ func (d *DialogClientSession) waitAnswerEarly(ctx context.Context, med *DialogMe
 			return nil
 		}
 
+		// A response body answers the offer we sent on the INVITE.
+		sess.RemoteSDPIsAnswer = true
 		if err := sess.RemoteSDP(remoteSDP); err != nil {
 			return err
 		}
@@ -356,6 +358,10 @@ func (d *DialogClientSession) waitAnswer(ctx context.Context, med *DialogMedia, 
 
 func (d *DialogClientSession) applyRemoteSDP(med *DialogMedia, remoteSDP []byte) error {
 	sess := med.mediaSession
+
+	// This body comes from a response, so it answers our offer. checkEarlyMedia
+	// forks the session, and Fork carries the role.
+	sess.RemoteSDPIsAnswer = true
 
 	// Apply SDP on existing (Early) media if it exists
 	if err := med.checkEarlyMedia(remoteSDP); err != errNoRTPSession {
@@ -535,6 +541,8 @@ func (d *DialogClientSession) reInviteMediaSession(ctx context.Context, ms *medi
 		d.remoteContactTarget = res.Contact()
 
 		remoteSDP := res.Body()
+		// The 200 OK answers the offer we sent on the re-INVITE.
+		ms.RemoteSDPIsAnswer = true
 		if err := ms.RemoteSDP(remoteSDP); err != nil {
 			return fmt.Errorf("sdp update media remote SDP applying failed: %w", err)
 		}
@@ -568,6 +576,9 @@ func (d *DialogClientSession) reInviteKeepAlive(ctx context.Context) error {
 
 // Refer tries todo refer (blind transfer) on call. For more control use ReferOptions
 //
+// It blocks until the transfer outcome is known: the terminal sipfrag NOTIFY, or
+// a 30s deadline. A transfer that did not succeed returns *ReferFailureError.
+//
 // NOTE: It is expected that after calling this you are hanguping call to send BYE
 func (d *DialogClientSession) Refer(ctx context.Context, referTo sip.Uri, headers ...sip.Header) error {
 	// cont := d.InviteRequest.Contact()
@@ -581,9 +592,14 @@ type ReferClientOptions struct {
 	Headers []sip.Header
 	// OnNotify sends notify status code.
 	// If implemented you need to react on different status code.
+	// Setting this returns from refer as soon as it is accepted, leaving the
+	// transfer outcome to the callback.
 	OnNotify func(statusCode int)
 }
 
+// ReferOptions sends a REFER. With OnNotify set it returns once the REFER is
+// accepted and reports outcomes to the callback. Without one it blocks for the
+// transfer outcome and returns *ReferFailureError if it did not succeed.
 func (d *DialogClientSession) ReferOptions(ctx context.Context, referTo sip.Uri, opts ReferClientOptions) error {
 	d.mu.Lock()
 	cont := d.remoteContactUnsafe()
@@ -591,7 +607,7 @@ func (d *DialogClientSession) ReferOptions(ctx context.Context, referTo sip.Uri,
 		d.onReferNotify = opts.OnNotify
 	}
 	d.mu.Unlock()
-	return dialogRefer(ctx, d, cont.Address, referTo, d.InviteResponse.Contact().Address, opts.Headers...)
+	return dialogRefer(ctx, d, cont.Address, referTo, d.InviteResponse.Contact().Address, opts.OnNotify == nil, opts.Headers...)
 }
 
 func (d *DialogClientSession) handleReferNotify(req *sip.Request, tx sip.ServerTransaction) {
@@ -624,6 +640,8 @@ func (d *DialogClientSession) handleReInviteACK(req *sip.Request, tx sip.ServerT
 	if body != nil {
 		// Update media session state under lock, but invoke the app callback after unlock to avoid deadlocks.
 		d.mu.Lock()
+		// A body in the ACK answers the late offer we sent in our 200 OK.
+		d.mediaSession.RemoteSDPIsAnswer = true
 		err := d.sdpUpdateUnsafe(body)
 		onMediaUpdate := d.onMediaUpdate
 		d.mu.Unlock()

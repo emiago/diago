@@ -20,6 +20,12 @@ var (
 	CodecAudioAlaw          = Codec{PayloadType: 8, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "PCMA"}
 	CodecAudioOpus          = Codec{PayloadType: 96, SampleRate: 48000, SampleDur: 20 * time.Millisecond, NumChannels: 2, Name: "opus"}
 	CodecTelephoneEvent8000 = Codec{PayloadType: 101, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "telephone-event"}
+
+	// CodecAudioG722 SampleRate is 8000 and not 16000. RFC 3551 section 4.5.2 froze
+	// the G.722 RTP clock at 8000 even though the codec samples at 16 kHz. The clock
+	// drives SampleTimestamp(), so 16000 here would advance the RTP timestamp at
+	// twice the wire rate. The 16 kHz sampling rate is a decoder concern only.
+	CodecAudioG722 = Codec{PayloadType: 9, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "G722"}
 )
 
 type Codec struct {
@@ -70,6 +76,27 @@ func CodecAudioFromList(codecs []Codec) (Codec, bool) {
 	return Codec{}, false
 }
 
+// CodecTelephoneEventFromSession returns the telephone-event codec the session
+// runs on, and whether it has one at all.
+//
+// DTMF must be sent and received on the payload type negotiation settled on.
+// telephone-event is a dynamic format, so each side numbers it independently
+// (RFC 3551 section 3) and an answer echoes the offerer's number (RFC 3264
+// section 6.1). CodecTelephoneEvent8000 therefore only describes our own default
+// numbering, and is not what a peer necessarily puts on the wire.
+//
+// Encoding names are case insensitive (RFC 4566 section 6).
+//
+// NOTE: Not thread safe, same as the rest of the codec accessors.
+func CodecTelephoneEventFromSession(s *MediaSession) (Codec, bool) {
+	for _, codec := range s.activeCodecs() {
+		if strings.EqualFold(codec.Name, CodecTelephoneEvent8000.Name) {
+			return codec, true
+		}
+	}
+	return Codec{}, false
+}
+
 // Deprecated: Use CodecAudioFromSession
 func CodecFromSession(s *MediaSession) Codec {
 	return CodecAudioFromSession(s)
@@ -88,6 +115,8 @@ func CodecAudioFromPayloadType(payloadType uint8) (Codec, error) {
 		return CodecAudioAlaw, nil
 	case sdp.FORMAT_TYPE_ULAW:
 		return CodecAudioUlaw, nil
+	case sdp.FORMAT_TYPE_G722:
+		return CodecAudioG722, nil
 	case sdp.FORMAT_TYPE_OPUS:
 		return CodecAudioOpus, nil
 	case sdp.FORMAT_TYPE_TELEPHONE_EVENT:
@@ -104,6 +133,8 @@ func mapSupportedCodec(f string) Codec {
 		return CodecAudioAlaw
 	case sdp.FORMAT_TYPE_ULAW:
 		return CodecAudioUlaw
+	case sdp.FORMAT_TYPE_G722:
+		return CodecAudioG722
 	case sdp.FORMAT_TYPE_OPUS:
 		return CodecAudioOpus
 	case sdp.FORMAT_TYPE_TELEPHONE_EVENT:
@@ -153,6 +184,16 @@ func CodecsFromSDPRead(formats []string, attrs []string, codecsAudio []Codec) (i
 
 		if f == "8" {
 			codecsAudio[n] = CodecAudioAlaw
+			n++
+			continue
+		}
+
+		// G.722 is a static payload type like ulaw and alaw above, so a peer may
+		// offer it with no a=rtpmap line. Resolving it from the payload type also
+		// keeps the RFC 3551 clock when a peer advertises the 16 kHz sampling rate
+		// in rtpmap instead.
+		if f == "9" {
+			codecsAudio[n] = CodecAudioG722
 			n++
 			continue
 		}

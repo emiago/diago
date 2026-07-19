@@ -9,16 +9,39 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
 	"strings"
+	"sync/atomic"
 
-	"github.com/emiago/dtls/v3"
-	"github.com/emiago/dtls/v3/pkg/crypto/elliptic"
+	"github.com/pion/dtls/v3"
+	"github.com/pion/dtls/v3/pkg/crypto/elliptic"
 	"github.com/pion/logging"
 )
 
 var (
 	DTLSDebug bool
+)
+
+// Secure RTP modes for MediaSession.SecureRTP.
+const (
+	SecureRTPModeNone = 0
+	SecureRTPModeSDES = 1
+	SecureRTPModeDTLS = 2
+)
+
+// DTLSEndpointRole is the offer/answer role of this endpoint.
+//
+// It decides two things that RFC 5763 and RFC 8445 tie to the same signalling
+// role: the default a=setup value, and which side is the controlling ICE agent.
+// DTLSEndpointRoleUnknown lets MediaSession infer the role from whether a
+// remote address is already known.
+type DTLSEndpointRole int
+
+const (
+	DTLSEndpointRoleUnknown DTLSEndpointRole = iota
+	DTLSEndpointRoleOfferer
+	DTLSEndpointRoleAnswerer
 )
 
 const (
@@ -92,7 +115,6 @@ func (conf *DTLSConfig) ToLibConf(fingerprints []sdpFingerprints) *dtls.Config {
 			}
 			return dtlsVerifyConnection(state, fingerprints)
 		},
-		StopReaderAfterHandshake: true,
 	}
 
 	if conf.SRTPProfiles != nil {
@@ -117,6 +139,56 @@ func (conf *DTLSConfig) ToLibConf(fingerprints []sdpFingerprints) *dtls.Config {
 	}
 	return config
 }
+
+// dtlsKeyExchangeConn lends the media socket to the DTLS stack.
+//
+// RFC 5764 section 5.1.2 multiplexes the handshake onto the transport that
+// carries media, so the socket belongs to MediaSession and merely serves DTLS
+// for the length of the exchange. The DTLS stack does not know that: every one
+// of its teardown paths, whether a fatal alert, a handshake timeout or a peer
+// close_notify, ends in a Close of its underlying conn. Under ICE that conn is
+// one stream of a mux whose Close releases the nominated pair, so an alert on
+// the handshake would silence RTP and RTCP for the rest of the call.
+//
+// DTLS here is only a key exchange: the association carries no application data,
+// and nothing reads or writes it once the keying material is exported. Retiring
+// it is therefore a local act, and detach makes that explicit.
+type dtlsKeyExchangeConn struct {
+	net.PacketConn
+	detached atomic.Bool
+}
+
+func newDTLSKeyExchangeConn(conn net.PacketConn) *dtlsKeyExchangeConn {
+	return &dtlsKeyExchangeConn{PacketConn: conn}
+}
+
+// detach retires the transport. Reads report EOF, which the DTLS read loop
+// treats as a clean end, and writes are dropped instead of reaching the peer.
+// It must be called before the conn is closed, so that the close_notify that
+// Close emits is dropped with them: the peer's DTLS association is still live
+// and is what its SRTP keys hang off, so telling it we are gone would fail the
+// call. Retiring is invisible on the wire by design.
+func (c *dtlsKeyExchangeConn) detach() {
+	c.detached.Store(true)
+}
+
+func (c *dtlsKeyExchangeConn) ReadFrom(p []byte) (int, net.Addr, error) {
+	if c.detached.Load() {
+		return 0, nil, io.EOF
+	}
+	return c.PacketConn.ReadFrom(p)
+}
+
+func (c *dtlsKeyExchangeConn) WriteTo(p []byte, addr net.Addr) (int, error) {
+	if c.detached.Load() {
+		return len(p), nil
+	}
+	return c.PacketConn.WriteTo(p, addr)
+}
+
+// Close is deliberately a no-op. The socket outlives the DTLS association and
+// is closed by MediaSession.Close, which is what owns it.
+func (c *dtlsKeyExchangeConn) Close() error { return nil }
 
 func dtlsServer(conn net.PacketConn, raddr net.Addr, certificates []tls.Certificate) (*dtls.Conn, error) {
 	conf := DTLSConfig{

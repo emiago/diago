@@ -294,9 +294,15 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 		// We expect that SSRC only changed but MULTI RTP stream per one session is not supported
 		// NOTE: Reading codecs may be in a race while establishing session but it is expected
 		// that caller should not run reading while session is established
-		codec := sess.Codecs[0]
+		//
+		// The negotiated set is what the peer sends: for a dynamic format the
+		// payload type on the wire is the number the peer chose, and only the
+		// negotiated entry carries it. Gating on the local list dropped every
+		// packet of an opus call the peer numbered 111.
+		codecs := sess.activeCodecs()
+		codec := codecs[0]
 		if codec.PayloadType != readPkt.PayloadType {
-			for _, c := range sess.Codecs {
+			for _, c := range codecs {
 				if c.PayloadType == readPkt.PayloadType {
 					codec = c
 					break
@@ -397,13 +403,19 @@ func (s *RTPSession) WriteRTP(pkt *rtp.Packet) error {
 		return err
 	}
 
+	// Unlock on defer: the codec lookup below returns an error, and an early
+	// return that skipped the unlock left the session wedged for good. Close
+	// takes the same lock, so the dialog could not even be torn down.
 	s.rtcpMU.Lock()
+	defer s.rtcpMU.Unlock()
 	writeStats := &s.writeStats
 	// For now we only track latest SSRC
 	if writeStats.SSRC != pkt.SSRC {
 		codec, err := func() (Codec, error) {
-			// Find codec from promoted list of codecs
-			for _, c := range sess.Codecs {
+			// Find codec from the negotiated list of codecs. We stamp packets with
+			// the payload type negotiation settled on, which for a dynamic format is
+			// the peer's number, so the local list can not resolve it.
+			for _, c := range sess.activeCodecs() {
 				if c.PayloadType == pkt.PayloadType {
 					return c, nil
 				}
@@ -425,7 +437,6 @@ func (s *RTPSession) WriteRTP(pkt *rtp.Packet) error {
 	writeStats.lastPacketTime = time.Now()
 	writeStats.lastPacketTimestamp = pkt.Timestamp
 
-	s.rtcpMU.Unlock()
 	return nil
 }
 

@@ -11,6 +11,7 @@ import (
 const (
 	FORMAT_TYPE_ULAW            = "0"
 	FORMAT_TYPE_ALAW            = "8"
+	FORMAT_TYPE_G722            = "9"
 	FORMAT_TYPE_OPUS            = "96"
 	FORMAT_TYPE_TELEPHONE_EVENT = "101"
 )
@@ -43,6 +44,8 @@ func (fmts Formats) String() string {
 			out[i] = "0(ulaw)"
 		case FORMAT_TYPE_ALAW:
 			out[i] = "8(alaw)"
+		case FORMAT_TYPE_G722:
+			out[i] = "9(g722)"
 		case FORMAT_TYPE_OPUS:
 			out[i] = "96(opus)"
 		default:

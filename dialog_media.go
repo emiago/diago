@@ -74,10 +74,95 @@ type DialogMedia struct {
 
 	onReferNotify func(statusCode int)
 
+	// referMu guards referInFlight. It is separate from mu so delivering a REFER
+	// outcome never contends with media state.
+	referMu sync.Mutex
+	// referInFlight is the waiter for the REFER attempt currently awaiting its
+	// terminal sipfrag NOTIFY, or nil when no synchronous transfer is in flight.
+	// Only dialogRefer callers that opted into waiting register one; the
+	// onReferNotify callback path leaves this nil.
+	referInFlight *referWaiter
+
+	// releaseRTPPort returns this dialog RTP port to the allocator that handed
+	// it out. Nil when no allocator is installed, as the OS takes the port back
+	// when the socket closes. Set next to mediaSession and consumed by Close.
+	releaseRTPPort func()
+
 	onClose       func() error
 	onMediaUpdate func(*DialogMedia)
 
 	closed bool
+}
+
+// referWaiter is one in-flight REFER attempt's terminal-outcome mailbox. ch is
+// buffered so dialogHandleReferNotify never blocks delivering an outcome, even
+// if the waiter has already given up on the deadline.
+type referWaiter struct {
+	// cseq is the CSeq of the sent REFER. RFC 3515 makes the NOTIFY's Event id
+	// the CSeq of the REFER that created the subscription, so this is what an
+	// id-carrying NOTIFY is matched against.
+	cseq uint32
+	// cseqKnown is false until setReferAttemptCSeq records the sent REFER's CSeq.
+	// Until then an id-carrying NOTIFY cannot be rejected as stale.
+	cseqKnown bool
+	// ch carries the terminal outcome to the dialogRefer waiter.
+	ch chan referTerminal
+}
+
+// beginReferAttempt registers a fresh in-flight REFER waiter, replacing any
+// prior one, and returns it. Called before the REFER is sent so a terminal
+// NOTIFY that races ahead of the wait is buffered rather than lost.
+func (d *DialogMedia) beginReferAttempt() *referWaiter {
+	w := &referWaiter{ch: make(chan referTerminal, 1)}
+	d.referMu.Lock()
+	d.referInFlight = w
+	d.referMu.Unlock()
+	return w
+}
+
+// setReferAttemptCSeq records the sent REFER's CSeq on w, but only while w is
+// still the registered attempt, so it can never stamp a newer one.
+func (d *DialogMedia) setReferAttemptCSeq(w *referWaiter, cseq uint32) {
+	d.referMu.Lock()
+	if d.referInFlight == w {
+		w.cseq = cseq
+		w.cseqKnown = true
+	}
+	d.referMu.Unlock()
+}
+
+// endReferAttempt unregisters w, but only if it is still the registered attempt.
+// dialogRefer defers this on every return path so a late NOTIFY for a finished
+// attempt finds no waiter and can never be inherited by a later attempt on the
+// same still-live dialog.
+func (d *DialogMedia) endReferAttempt(w *referWaiter) {
+	d.referMu.Lock()
+	if d.referInFlight == w {
+		d.referInFlight = nil
+	}
+	d.referMu.Unlock()
+}
+
+// deliverReferResult routes a terminal sipfrag outcome to the in-flight REFER
+// waiter, if any. A NOTIFY carrying an RFC 3515 Event id is delivered only when
+// that id matches the in-flight attempt's CSeq, so a stale NOTIFY from a prior
+// REFER on the same dialog is dropped. A NOTIFY without an id falls back to the
+// single in-flight attempt, since peers MAY omit it. The send is non-blocking so
+// a NOTIFY handler is never held up by a waiter that has already timed out.
+func (d *DialogMedia) deliverReferResult(notifyID uint32, hasID bool, term referTerminal) {
+	d.referMu.Lock()
+	defer d.referMu.Unlock()
+	w := d.referInFlight
+	if w == nil {
+		return
+	}
+	if hasID && w.cseqKnown && notifyID != w.cseq {
+		return
+	}
+	select {
+	case w.ch <- term:
+	default:
+	}
 }
 
 func (d *DialogMedia) Close() error {
@@ -94,6 +179,8 @@ func (d *DialogMedia) Close() error {
 	d.onClose = nil
 	m := d.mediaSession
 	rtpSess := d.rtpSession
+	releasePort := d.releaseRTPPort
+	d.releaseRTPPort = nil
 
 	d.mu.Unlock()
 
@@ -108,6 +195,14 @@ func (d *DialogMedia) Close() error {
 
 	if m != nil {
 		e3 = m.Close()
+	}
+
+	// After the sockets are closed, never before. An allocator may hold the port
+	// for a drain window so late RTP from this call can not land on the next
+	// call socket, and that window has to start when the wire is actually down.
+	// The closed latch above makes this exactly once.
+	if releasePort != nil {
+		releasePort()
 	}
 	return errors.Join(e1, e2, e3)
 }
@@ -165,21 +260,49 @@ func (d *DialogMedia) initMediaSessionFromConf(conf MediaConfig) error {
 		}
 	}
 
+	// Port 0 leaves the choice to the OS or to the media package port range. An
+	// allocator, when installed, makes it instead, so the port comes from a range
+	// the operator has bounded and opened on the firewall.
+	rtpPort := 0
+	var releasePort func()
+	if alloc := conf.RTPPortAllocator; alloc != nil {
+		port, err := alloc.AllocateRTPPort()
+		if err != nil {
+			return err
+		}
+		rtpPort = port
+		releasePort = func() { alloc.ReleaseRTPPort(port) }
+	}
+
+	// The session takes DTLS by value, so an unset config is the zero one. That
+	// keeps a caller that never touched DTLS on the path it had before.
+	var dtlsConf media.DTLSConfig
+	if conf.DTLSConfig != nil {
+		dtlsConf = *conf.DTLSConfig
+	}
+
 	sess := &media.MediaSession{
 		Codecs:     slices.Clone(conf.Codecs),
-		Laddr:      net.UDPAddr{IP: bindIP, Port: 0},
+		Laddr:      net.UDPAddr{IP: bindIP, Port: rtpPort},
 		ExternalIP: conf.externalIP,
 		Mode:       sdp.ModeSendrecv,
 		SecureRTP:  conf.secureRTP,
 		SRTPAlg:    conf.SecureRTPAlg,
 		RTPNAT:     conf.rtpNAT,
-		DTLSConf:   conf.dtlsConf,
+		DTLSConf:   dtlsConf,
+		ICEConf:    conf.ICEConfig,
 	}
 
 	if err := sess.Init(); err != nil {
+		// Nothing was bound, so the port goes straight back rather than wait for
+		// a Close that will not come: this dialog has no media session.
+		if releasePort != nil {
+			releasePort()
+		}
 		return err
 	}
 	d.mediaSession = sess
+	d.releaseRTPPort = releasePort
 	return nil
 }
 
@@ -203,8 +326,10 @@ func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransacti
 	d.remoteContactTarget = req.Contact().Clone()
 
 	// When body is not present this can mean client is doing keep alive
-	// Still offer needs to be responded
-	if req.Body() != nil {
+	// Still offer needs to be responded.
+	// Content-Length: 0 can reach us as an empty but non nil body, so length is
+	// checked rather than nilness.
+	if len(req.Body()) > 0 {
 		if err := d.sdpReInviteUnsafe(req.Body()); err != nil {
 			return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestTerminated, "Request Terminated - "+err.Error(), nil))
 		}
@@ -214,6 +339,12 @@ func (d *DialogMedia) handleMediaUpdate(req *sip.Request, tx sip.ServerTransacti
 			d.onMediaUpdate(d)
 			d.mu.Lock()
 		}
+	}
+
+	// A request for an offer can not be answered with an SDP we never built.
+	// The bodied path rejects this inside sdpReInviteUnsafe.
+	if d.mediaSession == nil {
+		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestTerminated, "Request Terminated - no media session present", nil))
 	}
 
 	// Reply with updated SDP
@@ -230,6 +361,8 @@ func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 		return fmt.Errorf("no media session present")
 	}
 
+	// An inbound re-INVITE carries an offer, whichever side of the dialog we are.
+	d.mediaSession.RemoteSDPIsAnswer = false
 	if err := d.sdpUpdateUnsafe(sdp); err != nil {
 		return err
 	}
@@ -356,7 +489,7 @@ func WithAudioReaderRTPStats(hook media.OnRTPReadStats) AudioReaderOption {
 // WithAudioReaderDTMF creates DTMF interceptor
 func WithAudioReaderDTMF(r *DTMFReader) AudioReaderOption {
 	return func(d *DialogMedia) error {
-		r.dtmfReader = media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, d.RTPPacketReader, d.getAudioReader())
+		r.dtmfReader = media.NewRTPDTMFReader(dtmfCodec(d.mediaSession), d.RTPPacketReader, d.getAudioReader())
 		r.mediaSession = d.mediaSession
 
 		d.audioReader = r
@@ -445,7 +578,7 @@ func WithAudioWriterRTPStats(hook media.OnRTPWriteStats) AudioWriterOption {
 // WithAudioWriterDTMF adds DTMF into audio pipeline
 func WithAudioWriterDTMF(r *DTMFWriter) AudioWriterOption {
 	return func(d *DialogMedia) error {
-		r.dtmfWriter = media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, d.RTPPacketWriter, d.getAudioWriter())
+		r.dtmfWriter = media.NewRTPDTMFWriter(dtmfCodec(d.mediaSession), d.RTPPacketWriter, d.getAudioWriter())
 		r.mediaSession = d.mediaSession
 		d.audioWriter = r
 		return nil
@@ -714,6 +847,20 @@ func (d *DialogMedia) StartRTP(rw int8, dur time.Duration) error {
 	return d.mediaSession.StartRTP(rw)
 }
 
+// dtmfCodec returns the telephone-event codec DTMF is carried on for this
+// session. It is the negotiated one: telephone-event is a dynamic format, so the
+// number on the wire is the peer's rather than our default (RFC 3264 section
+// 6.1).
+//
+// A session that negotiated no telephone-event keeps the package default, which
+// is the behaviour every caller had before.
+func dtmfCodec(s *media.MediaSession) media.Codec {
+	if codec, ok := media.CodecTelephoneEventFromSession(s); ok {
+		return codec
+	}
+	return media.CodecTelephoneEvent8000
+}
+
 type DTMFReader struct {
 	mediaSession *media.MediaSession
 	dtmfReader   *media.RTPDtmfReader
@@ -728,7 +875,7 @@ func (m *DialogMedia) AudioReaderDTMF() (*DTMFReader, error) {
 		return nil, err
 	}
 	return &DTMFReader{
-		dtmfReader:   media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, m.RTPPacketReader, ar),
+		dtmfReader:   media.NewRTPDTMFReader(dtmfCodec(m.mediaSession), m.RTPPacketReader, ar),
 		mediaSession: m.mediaSession,
 	}, nil
 }
@@ -791,7 +938,7 @@ func (m *DialogMedia) AudioWriterDTMF() (*DTMFWriter, error) {
 	}
 
 	return &DTMFWriter{
-		dtmfWriter:   media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, m.RTPPacketWriter, aw),
+		dtmfWriter:   media.NewRTPDTMFWriter(dtmfCodec(m.mediaSession), m.RTPPacketWriter, aw),
 		mediaSession: m.mediaSession,
 	}, nil
 }

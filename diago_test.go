@@ -448,8 +448,15 @@ func TestIntegrationDiagoDTLSCall(t *testing.T) {
 				BindHost:  "127.0.0.1",
 				BindPort:  16441,
 				MediaSRTP: 2, // USE DTLS
-				// We do not need any Certificate verification
-				MediaDTLSConf: media.DTLSConfig{},
+				// RFC 8122 section 6.2: under offer/answer both roles present a
+				// certificate -- the server "in all cases", and the client because
+				// "the server MUST request a certificate". The offerer advertises
+				// actpass (RFC 5763 section 5) and so does not know which role it
+				// will take until the answer arrives.
+				MediaDTLSConf: media.DTLSConfig{
+					Certificates:     []tls.Certificate{testdata.ClientCertificate()},
+					ServerClientAuth: media.ServerClientAuthRequireCert,
+				},
 			},
 		),
 		WithMediaConfig(
