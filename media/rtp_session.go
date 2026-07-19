@@ -323,7 +323,11 @@ func (s *RTPSession) WriteRTP(pkt *rtp.Packet) error {
 		return err
 	}
 
+	// Unlock on defer: the codec lookup below returns an error, and an early
+	// return that skipped the unlock left the session wedged for good. Close
+	// takes the same lock, so the dialog could not even be torn down.
 	s.rtcpMU.Lock()
+	defer s.rtcpMU.Unlock()
 	writeStats := &s.writeStats
 	// For now we only track latest SSRC
 	if writeStats.SSRC != pkt.SSRC {
@@ -351,7 +355,6 @@ func (s *RTPSession) WriteRTP(pkt *rtp.Packet) error {
 	writeStats.lastPacketTime = time.Now()
 	writeStats.lastPacketTimestamp = pkt.Timestamp
 
-	s.rtcpMU.Unlock()
 	return nil
 }
 
