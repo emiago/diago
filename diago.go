@@ -852,6 +852,29 @@ func (dg *Diago) RegisterTransaction(ctx context.Context, recipient sip.Uri, opt
 	return newRegisterTransaction(client, recipient, contactHDR, dg.log, opts), nil
 }
 
+// clientSourcePort reports the local UDP port a client may source requests from,
+// which is want only while the transport layer already listens on it.
+//
+// Sourcing from a listened port reuses that connection. Sourcing from any other
+// port is a fresh bind, which the OS refuses as soon as another process owns the
+// port. The distinction matters because a UA may register before it serves: at
+// that moment no listener holds the configured port, so pinning it there turns
+// an unrelated process on the same port into a failed REGISTER rather than the
+// intended reuse. Returning 0 asks for an ephemeral port, which always binds.
+func clientSourcePort(ua *sipgo.UserAgent, want int) int {
+	if want == 0 {
+		return 0
+	}
+	// The specific port must be listened on, not merely some port: a UA serving
+	// 5060 does not make an unheld 25000 bindable.
+	for _, p := range ua.TransportLayer().ListenPorts("udp") {
+		if p == want {
+			return want
+		}
+	}
+	return 0
+}
+
 func (dg *Diago) createClient(tran Transport) (client *sipgo.Client) {
 	ua := dg.ua
 	// When transport is not binding to specific IP
@@ -873,6 +896,9 @@ func (dg *Diago) createClient(tran Transport) (client *sipgo.Client) {
 				bindPort = 0
 			}
 		}
+
+		// 3. Only source from a port we already listen on, see clientSourcePort.
+		bindPort = clientSourcePort(ua, bindPort)
 
 		hostname := ""
 		if resolvedIP != nil && !resolvedIP.IsUnspecified() {
