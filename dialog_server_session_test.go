@@ -169,6 +169,78 @@ func TestIntegrationDialogServerReinvite(t *testing.T) {
 	d.Hangup(context.TODO())
 }
 
+func TestIntegrationDialogServerPeerCodecPruneReinvite(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ua, _ := sipgo.NewUA(sipgo.WithUserAgent("uas"))
+	defer ua.Close()
+
+	uas := NewDiago(ua, WithTransport(Transport{
+		Transport: "udp",
+		BindHost:  "127.0.0.1",
+		BindPort:  15080,
+	}))
+	err := uas.ServeBackground(ctx, func(d *DialogServerSession) {
+		// This is the reported role: the peer sends the initial INVITE and
+		// Diago answers it as the UAS. RTP NAT must not change the SIP flow.
+		err := d.AnswerOptions(AnswerOptions{
+			RTPNAT:        media.RTPNATSymetric,
+			OnMediaUpdate: func(*DialogMedia) {},
+		})
+		require.NoError(t, err)
+		reader, err := d.AudioReader()
+		require.NoError(t, err)
+		go func() {
+			_, _ = reader.Read(make([]byte, 160))
+		}()
+		<-d.Context().Done()
+	})
+	require.NoError(t, err)
+
+	peerUA, _ := sipgo.NewUA(sipgo.WithUserAgent("peer"))
+	defer peerUA.Close()
+	peer := newDialer(peerUA)
+	err = peer.ServeBackground(ctx, func(*DialogServerSession) {})
+	require.NoError(t, err)
+
+	dialog, err := peer.Invite(ctx, sip.Uri{User: "service", Host: "127.0.0.1", Port: 15080}, InviteOptions{})
+	require.NoError(t, err)
+	defer dialog.Close()
+	require.Contains(t, string(dialog.InviteRequest.Body()), " 0 8 101")
+
+	// The initial peer offer contains PCMU, PCMA and telephone-event. The
+	// post-answer offer intentionally prunes PCMA, matching the SBC behavior.
+	prunedMedia := dialog.MediaSession().Fork()
+	prunedMedia.Codecs = []media.Codec{
+		media.CodecAudioUlaw,
+		media.CodecTelephoneEvent8000,
+	}
+	prunedOffer := prunedMedia.LocalSDP()
+	require.Contains(t, string(prunedOffer), " 0 101")
+	require.NotContains(t, string(prunedOffer), " 0 8 101")
+	reinvite := sip.NewRequest(sip.INVITE, dialog.RemoteContact().Address)
+	reinvite.AppendHeader(dialog.InviteRequest.Contact())
+	reinvite.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
+	reinvite.SetBody(prunedOffer)
+
+	reinviteCtx, cancelReinvite := context.WithTimeout(ctx, 3*time.Second)
+	defer cancelReinvite()
+	res, err := dialog.Do(reinviteCtx, reinvite)
+	require.NoError(t, err)
+	require.Equal(t, sip.StatusOK, res.StatusCode)
+	require.NotNil(t, res.Contact())
+	contentType := res.ContentType()
+	require.NotNil(t, contentType)
+	require.Equal(t, "application/sdp", contentType.Value())
+	require.NotEmpty(t, res.Body())
+
+	// Complete the re-INVITE transaction from the peer/UAC side.
+	ack := sip.NewRequest(sip.ACK, res.Contact().Address)
+	require.NoError(t, dialog.WriteRequest(ack))
+	dialog.Hangup(ctx)
+}
+
 func TestIntegrationDialogServerRefer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
