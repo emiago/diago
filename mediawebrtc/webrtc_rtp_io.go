@@ -151,6 +151,7 @@ func (r *RTPWriterTrack) SetEnabled(enabled bool) {
 // rtpNilReader implementation
 type rtpNilReader struct {
 	blockRead chan struct{}
+	closeOnce sync.Once
 }
 
 func newRTPNilReader() *rtpNilReader {
@@ -160,7 +161,9 @@ func newRTPNilReader() *rtpNilReader {
 }
 
 func (r *rtpNilReader) Close() {
-	close(r.blockRead)
+	r.closeOnce.Do(func() {
+		close(r.blockRead)
+	})
 }
 
 func (r *rtpNilReader) ReadRTP(buf []byte, p *rtp.Packet) (int, error) {
