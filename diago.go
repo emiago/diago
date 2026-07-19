@@ -821,7 +821,9 @@ func (dg *Diago) Register(ctx context.Context, recipient sip.Uri, opts RegisterO
 			return err
 		}
 
-		t.expiry = retryAfter
+		// Only the refresh cadence, never the recorded grant: an
+		// otherwise live binding must not look already lapsed after a 503.
+		t.setExpiry(retryAfter)
 	}
 }
 
