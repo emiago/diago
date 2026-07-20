@@ -56,7 +56,13 @@ type DTLSConfig struct {
 	EllipticCurves []uint16
 }
 
-func (conf *DTLSConfig) ToLibConf(fingerprints []sdpFingerprints) *dtls.Config {
+// DTLSFingerprint identifies a peer certificate fingerprint advertised in SDP.
+type DTLSFingerprint struct {
+	Value     string
+	Algorithm string
+}
+
+func (conf *DTLSConfig) ToLibConf(fingerprints []DTLSFingerprint) *dtls.Config {
 	clientAuth := dtls.ClientAuthType(conf.ServerClientAuth)
 	// WebRTC authenticates the peer with the certificate fingerprint carried
 	// in SDP. A DTLS server must request the browser's certificate, otherwise
@@ -129,7 +135,7 @@ func dtlsServer(conn net.PacketConn, raddr net.Addr, certificates []tls.Certific
 	conf := DTLSConfig{
 		Certificates: certificates,
 	}
-	return dtls.Server(conn, raddr, conf.ToLibConf([]sdpFingerprints{}))
+	return dtls.Server(conn, raddr, conf.ToLibConf([]DTLSFingerprint{}))
 }
 
 func dtlsClient(conn net.PacketConn, raddr net.Addr, certificates []tls.Certificate, serverName string) (*dtls.Conn, error) {
@@ -138,10 +144,10 @@ func dtlsClient(conn net.PacketConn, raddr net.Addr, certificates []tls.Certific
 		Certificates: certificates,
 		ServerName:   serverName,
 	}
-	return dtls.Client(conn, raddr, conf.ToLibConf([]sdpFingerprints{}))
+	return dtls.Client(conn, raddr, conf.ToLibConf([]DTLSFingerprint{}))
 }
 
-func dtlsVerifyConnection(state *dtls.State, fingerprints []sdpFingerprints) error {
+func dtlsVerifyConnection(state *dtls.State, fingerprints []DTLSFingerprint) error {
 	if len(state.PeerCertificates) == 0 {
 		return fmt.Errorf("no certificate found in dtls")
 	}
@@ -149,19 +155,19 @@ func dtlsVerifyConnection(state *dtls.State, fingerprints []sdpFingerprints) err
 	remoteCert := state.PeerCertificates[0]
 	for _, fp := range fingerprints {
 		var remoteFP string
-		if strings.EqualFold(fp.alg, "sha-256") {
+		if strings.EqualFold(fp.Algorithm, "sha-256") {
 			var err error
 			remoteFP, err = dtlsSHA256CertificateFingerprint(remoteCert)
 			if err != nil {
 				return err
 			}
 		} else {
-			DefaultLogger().Debug("Skiping fingerprint due to unsuported alg", "alg", fp.alg)
+			DefaultLogger().Debug("Skiping fingerprint due to unsuported alg", "alg", fp.Algorithm)
 			continue
 		}
 
-		DefaultLogger().Debug("Comparing fingerprint", "alg", fp.alg, "fp", fp.fingerprint, "rfp", remoteFP)
-		if strings.EqualFold(fp.fingerprint, remoteFP) {
+		DefaultLogger().Debug("Comparing fingerprint", "alg", fp.Algorithm, "fp", fp.Value, "rfp", remoteFP)
+		if strings.EqualFold(fp.Value, remoteFP) {
 			return nil
 		}
 	}

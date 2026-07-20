@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // SPDX-FileCopyrightText: Copyright (c) 2026, Emir Aganovic
 
-package media
+package mediaweb
 
 import (
 	"errors"
@@ -13,9 +13,54 @@ import (
 	"sync"
 	"time"
 
+	"github.com/emiago/diago/media"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 )
+
+var (
+	errRTPSessionClosed         = errors.New("rtp session is closed")
+	errRTPSessionMonitorStarted = errors.New("rtp session monitor already started")
+)
+
+// RTPReadStats is shared with the core media package so existing statistics
+// hooks can consume WebRTC and UDP RTP sessions uniformly.
+type RTPReadStats = media.RTPReadStats
+
+// RTPWriteStats is shared with the core media package so existing statistics
+// hooks can consume WebRTC and UDP RTP sessions uniformly.
+type RTPWriteStats = media.RTPWriteStats
+
+type rtpReadStats struct {
+	RTPReadStats
+	lastSeq                   media.RTPExtendedSequenceNumber
+	firstRTPTime              time.Time
+	firstRTPTimestamp         uint32
+	jitter                    float64
+	transit                   int64
+	lastSenderReportNTP       uint64
+	lastSenderReportRecvTime  time.Time
+	lastReceptionReportSeqNum uint32
+	clockReset                bool
+}
+
+func (stats *rtpReadStats) calcJitter(now time.Time, timestamp uint32) {
+	rtpSampleArrival := stats.firstRTPTimestamp + uint32(now.Sub(stats.firstRTPTime).Seconds()*float64(stats.SampleRate))
+	transit := int64(rtpSampleArrival) - int64(timestamp)
+	delta := transit - stats.transit
+	stats.transit = transit
+	if delta < 0 {
+		delta = -delta
+	}
+	stats.jitter += (float64(delta) - stats.jitter) / 16
+}
+
+type rtpWriteStats struct {
+	RTPWriteStats
+	lastPacketTime      time.Time
+	lastPacketTimestamp uint32
+	sampleRate          uint32
+}
 
 // RTPSessionWebrtc adds RTP statistics and RTCP reporting to a negotiated
 // MediaSessionWebrtc transport. It is separate from MediaSessionWebrtc so the
@@ -35,8 +80,8 @@ type RTPSessionWebrtc struct {
 	monitorRun bool
 	closed     bool
 
-	readStats  RTPReadStats
-	writeStats RTPWriteStats
+	readStats  rtpReadStats
+	writeStats rtpWriteStats
 
 	intervalFirstExtended uint64
 	intervalStarted       bool
@@ -60,8 +105,8 @@ func NewRTPSessionWebrtc(sess *MediaSessionWebrtc) *RTPSessionWebrtc {
 		rtcpTicker:         time.NewTicker(5 * time.Second),
 		rtcpClosed:         make(chan struct{}),
 		reportSSRC:         reportSSRC,
-		onReadRTCP:         DefaultOnReadRTCP,
-		onWriteRTCP:        DefaultOnWriteRTCP,
+		onReadRTCP:         media.DefaultOnReadRTCP,
+		onWriteRTCP:        media.DefaultOnWriteRTCP,
 		RTCPReportInterval: 5 * time.Second,
 	}
 }
@@ -81,13 +126,13 @@ func (s *RTPSessionWebrtc) OnWriteRTCP(f func(pkt rtcp.Packet, rtpStats RTPWrite
 func (s *RTPSessionWebrtc) ReadStats() RTPReadStats {
 	s.rtcpMU.Lock()
 	defer s.rtcpMU.Unlock()
-	return s.readStats
+	return s.readStats.RTPReadStats
 }
 
 func (s *RTPSessionWebrtc) WriteStats() RTPWriteStats {
 	s.rtcpMU.Lock()
 	defer s.rtcpMU.Unlock()
-	return s.writeStats
+	return s.writeStats.RTPWriteStats
 }
 
 // ReadRTP decrypts through MediaSessionWebrtc and updates the receiver report
@@ -113,11 +158,13 @@ func (s *RTPSessionWebrtc) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 			}
 			lastSenderReportNTP := stats.lastSenderReportNTP
 			lastSenderReportRecvTime := stats.lastSenderReportRecvTime
-			*stats = RTPReadStats{
-				SSRC:                     pkt.SSRC,
-				FirstPktSequenceNumber:   pkt.SequenceNumber,
-				LastSequenceNumber:       pkt.SequenceNumber,
-				SampleRate:               codec.SampleRate,
+			*stats = rtpReadStats{
+				RTPReadStats: RTPReadStats{
+					SSRC:                   pkt.SSRC,
+					FirstPktSequenceNumber: pkt.SequenceNumber,
+					LastSequenceNumber:     pkt.SequenceNumber,
+					SampleRate:             codec.SampleRate,
+				},
 				firstRTPTime:             now,
 				firstRTPTimestamp:        pkt.Timestamp,
 				lastSenderReportNTP:      lastSenderReportNTP,
@@ -178,7 +225,10 @@ func (s *RTPSessionWebrtc) WriteRTP(pkt *rtp.Packet) error {
 	defer s.rtcpMU.Unlock()
 	stats := &s.writeStats
 	if stats.SSRC != pkt.SSRC {
-		*stats = RTPWriteStats{SSRC: pkt.SSRC, sampleRate: codec.SampleRate}
+		*stats = rtpWriteStats{
+			RTPWriteStats: RTPWriteStats{SSRC: pkt.SSRC},
+			sampleRate:    codec.SampleRate,
+		}
 	}
 	stats.PacketsCount++
 	stats.OctetCount += uint64(len(pkt.Payload))
@@ -252,7 +302,7 @@ func (s *RTPSessionWebrtc) MonitorBackground() error {
 	if err := s.startMonitor(); err != nil {
 		return err
 	}
-	log := DefaultLogger()
+	log := media.DefaultLogger()
 	go func() {
 		defer s.monitorWG.Done()
 		if err := s.readRTCP(); webRTCPMonitorError(err) != nil {
@@ -308,13 +358,13 @@ func (s *RTPSessionWebrtc) readRTCP() error {
 	if err := rtcpEndpoint.SetReadDeadline(time.Time{}); err != nil {
 		return err
 	}
-	buf := make([]byte, RTPBufSize)
+	buf := make([]byte, media.RTPBufSize)
 	pkts := make([]rtcp.Packet, 8)
 	for {
 		n, err := s.Sess.ReadRTCP(buf, pkts)
 		if err != nil {
 			if errors.Is(err, errRTCPFailedToUnmarshal) {
-				DefaultLogger().Warn("Ignoring malformed WebRTC RTCP packet", "error", err)
+				media.DefaultLogger().Warn("Ignoring malformed WebRTC RTCP packet", "error", err)
 				continue
 			}
 			return err
@@ -328,7 +378,7 @@ func (s *RTPSessionWebrtc) readRTCP() error {
 func (s *RTPSessionWebrtc) readRTCPPacket(pkt rtcp.Packet, now time.Time) {
 	s.rtcpMU.Lock()
 	callback := s.onReadRTCP
-	callbackStats := s.readStats
+	callbackStats := s.readStats.RTPReadStats
 	switch p := pkt.(type) {
 	case *rtcp.SenderReport:
 		if s.readStats.SSRC == 0 {
@@ -389,7 +439,7 @@ func (s *RTPSessionWebrtc) writeReport(now time.Time) error {
 		return nil
 	}
 	callback := s.onWriteRTCP
-	callbackStats := s.writeStats
+	callbackStats := s.writeStats.RTPWriteStats
 	s.readStats.IntervalFirstPktSeqNum = 0
 	s.readStats.IntervalPacketsCount = 0
 	s.intervalStarted = false
@@ -406,7 +456,7 @@ func (s *RTPSessionWebrtc) senderReport(now time.Time) *rtcp.SenderReport {
 	timestampOffset := now.Sub(stats.lastPacketTime).Seconds() * float64(stats.sampleRate)
 	report := &rtcp.SenderReport{
 		SSRC:        stats.SSRC,
-		NTPTime:     NTPTimestamp(now),
+		NTPTime:     media.NTPTimestamp(now),
 		RTPTime:     stats.lastPacketTimestamp + uint32(max(timestampOffset, 0)),
 		PacketCount: uint32(min(stats.PacketsCount, uint64(math.MaxUint32))),
 		OctetCount:  uint32(min(stats.OctetCount, uint64(math.MaxUint32))),
@@ -455,13 +505,22 @@ func (s *RTPSessionWebrtc) receptionReport(now time.Time) rtcp.ReceptionReport {
 	}
 }
 
-func webRTCRTPCodec(codecs []Codec, payloadType uint8) (Codec, error) {
+func webRTCRTPCodec(codecs []media.Codec, payloadType uint8) (media.Codec, error) {
 	for _, codec := range codecs {
 		if codec.PayloadType == payloadType {
 			return codec, nil
 		}
 	}
-	return Codec{}, fmt.Errorf("unknown WebRTC RTP payload type %d", payloadType)
+	return media.Codec{}, fmt.Errorf("unknown WebRTC RTP payload type %d", payloadType)
+}
+
+func calcRTT(now time.Time, lastSenderReport, delaySenderReport uint32) (time.Duration, bool) {
+	now32 := uint32(media.NTPTimestamp(now) >> 16)
+	rtt32 := now32 - lastSenderReport - delaySenderReport
+	skewed := now32-delaySenderReport < lastSenderReport
+	seconds := rtt32 >> 16
+	fractions := float64(rtt32&0xFFFF) / 65536
+	return time.Duration(seconds)*time.Second + time.Duration(fractions*float64(time.Second)), skewed
 }
 
 func webRTCPMonitorError(err error) error {

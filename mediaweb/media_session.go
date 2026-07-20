@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 // SPDX-FileCopyrightText: Copyright (c) 2026, Emir Aganovic
 
-package media
+package mediaweb
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/emiago/diago/media"
 	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/dtls/v3"
 	"github.com/pion/ice/v4"
@@ -35,7 +40,7 @@ type MediaSessionWebrtcConfig struct {
 	PortMax         uint16
 	IncludeLoopback bool
 	InterfaceFilter func(interfaceName string) bool
-	DTLS            DTLSConfig
+	DTLS            media.DTLSConfig
 }
 
 // MediaSessionWebrtc is the direct ICE + DTLS-SRTP media stack. It intentionally
@@ -54,7 +59,7 @@ type MediaSessionWebrtcConfig struct {
 type MediaSessionWebrtc struct {
 	Laddr  string
 	Raddr  string
-	Codecs []Codec
+	Codecs []media.Codec
 	Mode   string
 
 	Config MediaSessionWebrtcConfig
@@ -67,8 +72,8 @@ type MediaSessionWebrtc struct {
 	remoteUfrag     string
 	remotePwd       string
 	localSetup      string
-	codec           Codec
-	filterCodecs    []Codec
+	codec           media.Codec
+	filterCodecs    []media.Codec
 	iceConn         *ice.Conn
 	mux             *webRTCPacketMux
 	dtlsConn        *dtls.Conn
@@ -177,17 +182,17 @@ func (m *MediaSessionWebrtc) Init(ctx context.Context, conf MediaSessionWebrtcCo
 	return nil
 }
 
-func (m *MediaSessionWebrtc) Codec() Codec {
+func (m *MediaSessionWebrtc) Codec() media.Codec {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.codec.SampleRate != 0 {
 		return m.codec
 	}
-	codec, _ := CodecAudioFromList(m.Codecs)
+	codec, _ := media.CodecAudioFromList(m.Codecs)
 	return codec
 }
 
-func (m *MediaSessionWebrtc) CommonCodecs() []Codec {
+func (m *MediaSessionWebrtc) CommonCodecs() []media.Codec {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return slices.Clone(m.filterCodecs)
@@ -216,7 +221,7 @@ func (m *MediaSessionWebrtc) LocalSDP(_ context.Context, answered bool) ([]byte,
 	return m.localSDPLocked(codecs, setup)
 }
 
-func (m *MediaSessionWebrtc) localSDPLocked(codecs []Codec, setup string) ([]byte, error) {
+func (m *MediaSessionWebrtc) localSDPLocked(codecs []media.Codec, setup string) ([]byte, error) {
 	fingerprint, err := dtlsSHA256Fingerprint(m.Config.DTLS.Certificates[0])
 	if err != nil {
 		return nil, fmt.Errorf("DTLS certificate fingerprint: %w", err)
@@ -378,7 +383,7 @@ func (m *MediaSessionWebrtc) RemoteSDP(_ context.Context, body []byte, offered b
 	m.remotePwd = remotePwd
 	m.filterCodecs = common
 	m.Codecs = slices.Clone(common)
-	m.codec, _ = CodecAudioFromList(common)
+	m.codec, _ = media.CodecAudioFromList(common)
 	m.Mode = negotiateMediaDirection(remoteMode, m.Mode)
 
 	var conn *ice.Conn
@@ -415,7 +420,10 @@ func (m *MediaSessionWebrtc) RemoteSDP(_ context.Context, body []byte, offered b
 		localDTLSClient = true
 		m.localSetup = "active"
 	}
-	dtlsConf := m.Config.DTLS.ToLibConf([]sdpFingerprints{{alg: fingerprintFields[0], fingerprint: fingerprintFields[1]}})
+	dtlsConf := m.Config.DTLS.ToLibConf([]media.DTLSFingerprint{{
+		Algorithm: fingerprintFields[0],
+		Value:     fingerprintFields[1],
+	}})
 	if localDTLSClient {
 		m.dtlsConn, err = dtls.Client(m.mux.dtls, conn.RemoteAddr(), dtlsConf)
 	} else {
@@ -536,7 +544,7 @@ func (m *MediaSessionWebrtc) StopRTP(rw int8, duration time.Duration) error {
 }
 
 func (m *MediaSessionWebrtc) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
-	if len(buf) < RTPBufSize {
+	if len(buf) < media.RTPBufSize {
 		return 0, io.ErrShortBuffer
 	}
 	m.mu.Lock()
@@ -588,7 +596,7 @@ func (m *MediaSessionWebrtc) WriteRTP(pkt *rtp.Packet) error {
 		return nil
 	}
 	if m.writeRTPBuf == nil {
-		m.writeRTPBuf = make([]byte, RTPBufSize)
+		m.writeRTPBuf = make([]byte, media.RTPBufSize)
 	}
 	buf := m.writeRTPBuf
 	ctx := m.localCtxSRTP
@@ -626,7 +634,7 @@ func (m *MediaSessionWebrtc) ReadRTCP(buf []byte, pkts []rtcp.Packet) (int, erro
 	if err != nil {
 		return 0, fmt.Errorf("decrypt WebRTC SRTCP: %w", err)
 	}
-	return RTCPUnmarshal(data, pkts)
+	return rtcpUnmarshal(data, pkts)
 }
 
 func (m *MediaSessionWebrtc) WriteRTCP(pkt rtcp.Packet) error {
@@ -675,7 +683,7 @@ func webRTCAttribute(session, media []webrtcsdp.Attribute, key string) (string, 
 	return "", false
 }
 
-func webRTCAudioCodecs(desc *webrtcsdp.SessionDescription, md *webrtcsdp.MediaDescription) ([]Codec, error) {
+func webRTCAudioCodecs(desc *webrtcsdp.SessionDescription, md *webrtcsdp.MediaDescription) ([]media.Codec, error) {
 	attrs := make([]string, 0, len(desc.Attributes)+len(md.Attributes))
 	for _, attr := range desc.Attributes {
 		attrs = append(attrs, attr.String())
@@ -683,16 +691,16 @@ func webRTCAudioCodecs(desc *webrtcsdp.SessionDescription, md *webrtcsdp.MediaDe
 	for _, attr := range md.Attributes {
 		attrs = append(attrs, attr.String())
 	}
-	codecs := make([]Codec, len(md.MediaName.Formats))
-	n, err := CodecsFromSDPRead(md.MediaName.Formats, attrs, codecs)
+	codecs := make([]media.Codec, len(md.MediaName.Formats))
+	n, err := media.CodecsFromSDPRead(md.MediaName.Formats, attrs, codecs)
 	if err != nil {
 		return nil, fmt.Errorf("parse remote WebRTC codecs: %w", err)
 	}
 	return codecs[:n], nil
 }
 
-func commonWebRTCCodecs(remote, local []Codec) []Codec {
-	common := make([]Codec, 0, len(remote))
+func commonWebRTCCodecs(remote, local []media.Codec) []media.Codec {
+	common := make([]media.Codec, 0, len(remote))
 	for _, rc := range remote {
 		for _, lc := range local {
 			if !strings.EqualFold(rc.Name, lc.Name) || rc.SampleRate != lc.SampleRate || rc.NumChannels != lc.NumChannels {
@@ -706,4 +714,70 @@ func commonWebRTCCodecs(remote, local []Codec) []Codec {
 		}
 	}
 	return common
+}
+
+func negotiateMediaDirection(remoteMode, localPreference string) string {
+	if localPreference == "" {
+		localPreference = sdp.ModeSendrecv
+	}
+	switch remoteMode {
+	case "inactive":
+		return "inactive"
+	case sdp.ModeSendonly:
+		if localPreference == "inactive" {
+			return "inactive"
+		}
+		return sdp.ModeRecvonly
+	case sdp.ModeRecvonly:
+		if localPreference == "inactive" {
+			return "inactive"
+		}
+		return sdp.ModeSendonly
+	case sdp.ModeSendrecv:
+		switch localPreference {
+		case sdp.ModeSendrecv, sdp.ModeSendonly, sdp.ModeRecvonly, "inactive":
+			return localPreference
+		}
+	}
+	return sdp.ModeSendrecv
+}
+
+func dtlsSHA256Fingerprint(cert tls.Certificate) (string, error) {
+	if len(cert.Certificate) == 0 {
+		return "", fmt.Errorf("no certificate data found")
+	}
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return "", fmt.Errorf("parse certificate: %w", err)
+	}
+	hash := sha256.Sum256(leaf.Raw)
+	hexString := strings.ToUpper(hex.EncodeToString(hash[:]))
+	var fingerprint strings.Builder
+	for i := 0; i < len(hexString); i += 2 {
+		if i > 0 {
+			fingerprint.WriteByte(':')
+		}
+		fingerprint.WriteString(hexString[i : i+2])
+	}
+	return fingerprint.String(), nil
+}
+
+func rtpUnmarshalPayload(buf []byte, packet *rtp.Packet) error {
+	headerSize := packet.Header.MarshalSize()
+	end := len(buf)
+	if packet.Header.Padding {
+		if end <= headerSize {
+			return io.ErrUnexpectedEOF
+		}
+		packet.Header.PaddingSize = buf[end-1]
+		end -= int(packet.Header.PaddingSize)
+	} else {
+		packet.Header.PaddingSize = 0
+	}
+	packet.PaddingSize = packet.Header.PaddingSize
+	if end < headerSize {
+		return io.ErrUnexpectedEOF
+	}
+	packet.Payload = buf[headerSize:end]
+	return nil
 }
