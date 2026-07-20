@@ -56,6 +56,7 @@ type DTLSConfig struct {
 	EllipticCurves []uint16
 }
 
+<<<<<<< HEAD
 // DTLSFingerprint identifies a peer certificate fingerprint advertised in SDP.
 type DTLSFingerprint struct {
 	Value     string
@@ -63,6 +64,9 @@ type DTLSFingerprint struct {
 }
 
 func (conf *DTLSConfig) ToLibConf(fingerprints []DTLSFingerprint) *dtls.Config {
+=======
+func (conf *DTLSConfig) ToLibConf(fingerprints []sdpFingerprints) *dtls.Config {
+>>>>>>> 18c40da (feat(media): add direct WebRTC ICE media stack)
 	clientAuth := dtls.ClientAuthType(conf.ServerClientAuth)
 	// WebRTC authenticates the peer with the certificate fingerprint carried
 	// in SDP. A DTLS server must request the browser's certificate, otherwise
@@ -155,7 +159,11 @@ func dtlsVerifyConnection(state *dtls.State, fingerprints []DTLSFingerprint) err
 	remoteCert := state.PeerCertificates[0]
 	for _, fp := range fingerprints {
 		var remoteFP string
+<<<<<<< HEAD
 		if strings.EqualFold(fp.Algorithm, "sha-256") {
+=======
+		if strings.EqualFold(fp.alg, "sha-256") {
+>>>>>>> 18c40da (feat(media): add direct WebRTC ICE media stack)
 			var err error
 			remoteFP, err = dtlsSHA256CertificateFingerprint(remoteCert)
 			if err != nil {
@@ -166,8 +174,13 @@ func dtlsVerifyConnection(state *dtls.State, fingerprints []DTLSFingerprint) err
 			continue
 		}
 
+<<<<<<< HEAD
 		DefaultLogger().Debug("Comparing fingerprint", "alg", fp.Algorithm, "fp", fp.Value, "rfp", remoteFP)
 		if strings.EqualFold(fp.Value, remoteFP) {
+=======
+		DefaultLogger().Debug("Comparing fingerprint", "alg", fp.alg, "fp", fp.fingerprint, "rfp", remoteFP)
+		if strings.EqualFold(fp.fingerprint, remoteFP) {
+>>>>>>> 18c40da (feat(media): add direct WebRTC ICE media stack)
 			return nil
 		}
 	}
