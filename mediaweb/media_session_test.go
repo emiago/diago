@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // SPDX-FileCopyrightText: Copyright (c) 2026, Emir Aganovic
 
-package media
+package mediaweb
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emiago/diago/media"
 	"github.com/emiago/diago/testdata"
 	"github.com/pion/ice/v4"
 	"github.com/pion/rtcp"
@@ -21,15 +22,15 @@ func TestMediaSessionWebrtcICEAndSRTP(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	newSession := func(certConfig DTLSConfig) *MediaSessionWebrtc {
+	newSession := func(certConfig media.DTLSConfig) *MediaSessionWebrtc {
 		return &MediaSessionWebrtc{
-			Codecs: []Codec{CodecAudioUlaw, CodecAudioAlaw},
+			Codecs: []media.Codec{media.CodecAudioUlaw, media.CodecAudioAlaw},
 			Mode:   "sendrecv",
 			Config: MediaSessionWebrtcConfig{DTLS: certConfig},
 		}
 	}
-	offerer := newSession(DTLSConfig{Certificates: []tls.Certificate{testdata.ClientCertificate()}})
-	answerer := newSession(DTLSConfig{Certificates: []tls.Certificate{testdata.ServerCertificate()}})
+	offerer := newSession(media.DTLSConfig{Certificates: []tls.Certificate{testdata.ClientCertificate()}})
+	answerer := newSession(media.DTLSConfig{Certificates: []tls.Certificate{testdata.ServerCertificate()}})
 	defer offerer.Close()
 	defer answerer.Close()
 
@@ -58,8 +59,8 @@ func TestMediaSessionWebrtcICEAndSRTP(t *testing.T) {
 	require.NoError(t, offerer.RemoteSDP(ctx, answer, true))
 	offerRTPSession := NewRTPSessionWebrtc(offerer)
 	answerRTPSession := NewRTPSessionWebrtc(answerer)
-	offerWriter := NewRTPPacketWriter(offerRTPSession, offerer.Codec())
-	answerReader := NewRTPPacketReader(answerRTPSession, answerer.Codec())
+	offerWriter := media.NewRTPPacketWriter(offerRTPSession, offerer.Codec())
+	answerReader := media.NewRTPPacketReader(answerRTPSession, answerer.Codec())
 
 	finalized := make(chan error, 2)
 	go func() { finalized <- offerer.Finalize(ctx) }()
@@ -95,7 +96,7 @@ func TestMediaSessionWebrtcICEAndSRTP(t *testing.T) {
 	defer answerRTPSession.MonitorClose()
 
 	payload := []byte("audio-over-ice-dtls-srtp")
-	_, err = offerWriter.WriteSamples(payload, CodecAudioUlaw.SampleTimestamp(), true, CodecAudioUlaw.PayloadType)
+	_, err = offerWriter.WriteSamples(payload, media.CodecAudioUlaw.SampleTimestamp(), true, media.CodecAudioUlaw.PayloadType)
 	require.NoError(t, err)
 	require.NoError(t, answerer.StopRTP(1, 2*time.Second))
 	readBuf := make([]byte, 160)
@@ -173,13 +174,13 @@ func TestMediaSessionWebrtcPionBrowserPeer(t *testing.T) {
 	case <-gathered:
 	}
 
-	session := &MediaSessionWebrtc{Codecs: []Codec{CodecAudioUlaw}, Mode: "sendrecv"}
+	session := &MediaSessionWebrtc{Codecs: []media.Codec{media.CodecAudioUlaw}, Mode: "sendrecv"}
 	defer session.Close()
 	conf := MediaSessionWebrtcConfig{
 		NetworkTypes:    []ice.NetworkType{ice.NetworkTypeUDP4},
 		IncludeLoopback: true,
 		InterfaceFilter: testLoopbackInterface,
-		DTLS:            DTLSConfig{Certificates: []tls.Certificate{testdata.ServerCertificate()}},
+		DTLS:            media.DTLSConfig{Certificates: []tls.Certificate{testdata.ServerCertificate()}},
 	}
 	require.NoError(t, session.Init(ctx, conf))
 	require.NoError(t, session.RemoteSDP(ctx, []byte(peer.LocalDescription().SDP), false))
@@ -187,11 +188,11 @@ func TestMediaSessionWebrtcPionBrowserPeer(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, peer.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: string(answer)}))
 	rtpSession := NewRTPSessionWebrtc(session)
-	packetWriter := NewRTPPacketWriter(rtpSession, session.Codec())
+	packetWriter := media.NewRTPPacketWriter(rtpSession, session.Codec())
 	require.NoError(t, session.Finalize(ctx))
 
 	payload := []byte("browser-compatible-audio")
-	_, err = packetWriter.WriteSamples(payload, CodecAudioUlaw.SampleTimestamp(), true, CodecAudioUlaw.PayloadType)
+	_, err = packetWriter.WriteSamples(payload, media.CodecAudioUlaw.SampleTimestamp(), true, media.CodecAudioUlaw.PayloadType)
 	require.NoError(t, err)
 	select {
 	case <-ctx.Done():
@@ -228,7 +229,7 @@ a=rtpmap:0 PCMU/8000
 `, "\n", "\r\n")
 
 	session := &MediaSessionWebrtc{
-		Codecs: []Codec{CodecAudioUlaw},
+		Codecs: []media.Codec{media.CodecAudioUlaw},
 		agent:  &ice.Agent{}, // parsing reaches candidate validation before agent use
 	}
 	err := session.RemoteSDP(context.Background(), []byte(sdpBody), false)
