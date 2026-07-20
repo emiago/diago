@@ -57,6 +57,13 @@ type DTLSConfig struct {
 }
 
 func (conf *DTLSConfig) ToLibConf(fingerprints []sdpFingerprints) *dtls.Config {
+	clientAuth := dtls.ClientAuthType(conf.ServerClientAuth)
+	// WebRTC authenticates the peer with the certificate fingerprint carried
+	// in SDP. A DTLS server must request the browser's certificate, otherwise
+	// VerifyConnection has nothing to compare.
+	if len(fingerprints) > 0 && clientAuth == dtls.NoClientCert {
+		clientAuth = dtls.RequestClientCert
+	}
 
 	config := &dtls.Config{
 		// Use appropriate certificate or generate self-signed
@@ -79,7 +86,7 @@ func (conf *DTLSConfig) ToLibConf(fingerprints []sdpFingerprints) *dtls.Config {
 		// If you're acting as the server
 		// We are verifying Connection fingerprints so we require client cert
 		// use dtls.NoClientCert without verfication
-		ClientAuth:           dtls.ClientAuthType(conf.ServerClientAuth),
+		ClientAuth:           clientAuth,
 		ExtendedMasterSecret: dtls.RequireExtendedMasterSecret,
 
 		InsecureSkipVerify: conf.ServerName == "", // Accept self-signed certs (for dev)
@@ -142,7 +149,7 @@ func dtlsVerifyConnection(state *dtls.State, fingerprints []sdpFingerprints) err
 	remoteCert := state.PeerCertificates[0]
 	for _, fp := range fingerprints {
 		var remoteFP string
-		if fp.alg == "SHA-256" {
+		if strings.EqualFold(fp.alg, "sha-256") {
 			var err error
 			remoteFP, err = dtlsSHA256CertificateFingerprint(remoteCert)
 			if err != nil {
@@ -154,12 +161,12 @@ func dtlsVerifyConnection(state *dtls.State, fingerprints []sdpFingerprints) err
 		}
 
 		DefaultLogger().Debug("Comparing fingerprint", "alg", fp.alg, "fp", fp.fingerprint, "rfp", remoteFP)
-		if fp.fingerprint == remoteFP {
+		if strings.EqualFold(fp.fingerprint, remoteFP) {
 			return nil
 		}
 	}
 
-	return nil
+	return fmt.Errorf("dtls certificate does not match any SDP fingerprint")
 }
 
 func dtlsSHA256Fingerprint(cert tls.Certificate) (string, error) {
