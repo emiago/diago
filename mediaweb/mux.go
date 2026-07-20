@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // SPDX-FileCopyrightText: Copyright (c) 2026, Emir Aganovic
 
-package media
+package mediaweb
 
 import (
 	"errors"
@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/emiago/diago/media"
 	"github.com/pion/transport/v4/packetio"
 )
 
@@ -74,7 +75,7 @@ func (m *webRTCPacketMux) readLoop() {
 			continue
 		}
 		if _, err = endpoint.buffer.Write(buf[:n]); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-			DefaultLogger().Warn("WebRTC packet mux dropped packet", "error", err)
+			media.DefaultLogger().Warn("WebRTC packet mux dropped packet", "error", err)
 		}
 	}
 }

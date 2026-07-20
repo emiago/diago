@@ -373,7 +373,7 @@ func (s *MediaSession) LocalSDP() []byte {
 		rtpProfile = "UDP/TLS/RTP/SAVP"
 		dtlsSet = &dtlsSetup{
 			setup:        "active",
-			fingerprints: make([]sdpFingerprints, len(s.DTLSConf.Certificates)),
+			fingerprints: make([]DTLSFingerprint, len(s.DTLSConf.Certificates)),
 		}
 		if s.Raddr.IP != nil {
 			// We do have remote IP, so probably we are server
@@ -400,9 +400,9 @@ func (s *MediaSession) LocalSDP() []byte {
 				DefaultLogger().Error("Failed to generate dtls certificate fingerprint", "error", err)
 				continue
 			}
-			dtlsSet.fingerprints[i] = sdpFingerprints{
-				fingerprint: fingerprint,
-				alg:         "SHA-256",
+			dtlsSet.fingerprints[i] = DTLSFingerprint{
+				Value:     fingerprint,
+				Algorithm: "SHA-256",
 			}
 		}
 
@@ -562,7 +562,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	// Check for DTLS
 	if len(s.DTLSConf.Certificates) > 0 || s.SecureRTP == 2 {
 		setup := ""
-		fingerprints := make([]sdpFingerprints, 0, 1) // at least must be 1
+		fingerprints := make([]DTLSFingerprint, 0, 1) // at least must be 1
 		for _, v := range attrs {
 			if strings.HasPrefix(v, "setup:") {
 				setup = strings.TrimSpace(v[len("setup:"):])
@@ -578,9 +578,9 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 				alg := vals[0]
 				fp := vals[1]
 				// TODO fingerprint validation
-				fingerprints = append(fingerprints, sdpFingerprints{
-					alg:         alg,
-					fingerprint: fp,
+				fingerprints = append(fingerprints, DTLSFingerprint{
+					Algorithm: alg,
+					Value:     fp,
 				})
 			}
 		}
@@ -1147,14 +1147,9 @@ type sdesInline struct {
 	tag    int
 }
 
-type sdpFingerprints struct {
-	fingerprint string
-	alg         string
-}
-
 type dtlsSetup struct {
 	setup        string
-	fingerprints []sdpFingerprints
+	fingerprints []DTLSFingerprint
 }
 
 func generateSDPForAudio(sessionID uint64, sessionVersion uint64, rtpProfile string, originIP net.IP, connectionIP net.IP, rtpPort int, mode string, codecs []Codec, sdes sdesInline, dtlsSet *dtlsSetup) []byte {
@@ -1213,10 +1208,10 @@ func generateSDPForAudio(sessionID uint64, sessionVersion uint64, rtpProfile str
 		s = append(s, "a=setup:"+dtlsSetup)
 		s = append(s, "a=connection:new") // Cane be new or existing. Marks it needs new transport
 		for _, d := range fingerprints {
-			if d.fingerprint == "" {
+			if d.Value == "" {
 				continue
 			}
-			s = append(s, fmt.Sprintf("a=fingerprint:%s %s", d.alg, d.fingerprint))
+			s = append(s, fmt.Sprintf("a=fingerprint:%s %s", d.Algorithm, d.Value))
 		}
 	}
 
