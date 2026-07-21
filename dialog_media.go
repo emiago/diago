@@ -74,10 +74,90 @@ type DialogMedia struct {
 
 	onReferNotify func(statusCode int)
 
+	// referMu guards referInFlight. It is separate from mu so delivering a REFER
+	// outcome never contends with media state.
+	referMu sync.Mutex
+	// referInFlight is the waiter for the REFER attempt currently awaiting its
+	// terminal sipfrag NOTIFY, or nil when no synchronous transfer is in flight.
+	// Only dialogRefer callers that opted into waiting register one; the
+	// onReferNotify callback path leaves this nil.
+	referInFlight *referWaiter
+
 	onClose       func() error
 	onMediaUpdate func(*DialogMedia)
 
 	closed bool
+}
+
+// referWaiter is one in-flight REFER attempt's terminal-outcome mailbox. ch is
+// buffered so dialogHandleReferNotify never blocks delivering an outcome, even
+// if the waiter has already given up on the deadline.
+type referWaiter struct {
+	// cseq is the CSeq of the sent REFER. RFC 3515 makes the NOTIFY's Event id
+	// the CSeq of the REFER that created the subscription, so this is what an
+	// id-carrying NOTIFY is matched against.
+	cseq uint32
+	// cseqKnown is false until setReferAttemptCSeq records the sent REFER's CSeq.
+	// Until then an id-carrying NOTIFY cannot be rejected as stale.
+	cseqKnown bool
+	// ch carries the terminal outcome to the dialogRefer waiter.
+	ch chan referTerminal
+}
+
+// beginReferAttempt registers a fresh in-flight REFER waiter, replacing any
+// prior one, and returns it. Called before the REFER is sent so a terminal
+// NOTIFY that races ahead of the wait is buffered rather than lost.
+func (d *DialogMedia) beginReferAttempt() *referWaiter {
+	w := &referWaiter{ch: make(chan referTerminal, 1)}
+	d.referMu.Lock()
+	d.referInFlight = w
+	d.referMu.Unlock()
+	return w
+}
+
+// setReferAttemptCSeq records the sent REFER's CSeq on w, but only while w is
+// still the registered attempt, so it can never stamp a newer one.
+func (d *DialogMedia) setReferAttemptCSeq(w *referWaiter, cseq uint32) {
+	d.referMu.Lock()
+	if d.referInFlight == w {
+		w.cseq = cseq
+		w.cseqKnown = true
+	}
+	d.referMu.Unlock()
+}
+
+// endReferAttempt unregisters w, but only if it is still the registered attempt.
+// dialogRefer defers this on every return path so a late NOTIFY for a finished
+// attempt finds no waiter and can never be inherited by a later attempt on the
+// same still-live dialog.
+func (d *DialogMedia) endReferAttempt(w *referWaiter) {
+	d.referMu.Lock()
+	if d.referInFlight == w {
+		d.referInFlight = nil
+	}
+	d.referMu.Unlock()
+}
+
+// deliverReferResult routes a terminal sipfrag outcome to the in-flight REFER
+// waiter, if any. A NOTIFY carrying an RFC 3515 Event id is delivered only when
+// that id matches the in-flight attempt's CSeq, so a stale NOTIFY from a prior
+// REFER on the same dialog is dropped. A NOTIFY without an id falls back to the
+// single in-flight attempt, since peers MAY omit it. The send is non-blocking so
+// a NOTIFY handler is never held up by a waiter that has already timed out.
+func (d *DialogMedia) deliverReferResult(notifyID uint32, hasID bool, term referTerminal) {
+	d.referMu.Lock()
+	defer d.referMu.Unlock()
+	w := d.referInFlight
+	if w == nil {
+		return
+	}
+	if hasID && w.cseqKnown && notifyID != w.cseq {
+		return
+	}
+	select {
+	case w.ch <- term:
+	default:
+	}
 }
 
 func (d *DialogMedia) Close() error {
