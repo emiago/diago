@@ -8,6 +8,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"sync"
 
 	"github.com/emiago/diago/media"
 	"github.com/pion/ice/v2"
@@ -35,6 +36,8 @@ var defaultWebrtcConfig = webrtc.Configuration{
 }
 
 var defaultWebrtcAPI *webrtc.API
+
+var rtcpInterceptorFactories sync.Map
 
 type WebrtcAPIConfig struct {
 	Config       webrtc.Configuration
@@ -135,6 +138,18 @@ func NewWebrtcAPIFromConfig(cfg WebrtcAPIConfig) (*webrtc.API, error) {
 	rtpDebug := os.Getenv("RTP_DEBUG") == "true"
 	rtcpDebug := os.Getenv("RTCP_DEBUG") == "true"
 	i := &interceptor.Registry{}
+	if cfg.Interceptors != nil {
+		var err error
+		i, err = cfg.Interceptors()
+		if err != nil {
+			return nil, err
+		}
+		if i == nil {
+			return nil, fmt.Errorf("WebRTC interceptor registry is nil")
+		}
+	}
+	rtcpFactory := &rtcpInterceptorFactory{}
+	i.Add(rtcpFactory)
 	if rtpDebug || rtcpDebug {
 		si, _ := packetdump.NewSenderInterceptor(
 			packetdump.PacketLog(&packetLogger{
@@ -163,6 +178,7 @@ func NewWebrtcAPIFromConfig(cfg WebrtcAPIConfig) (*webrtc.API, error) {
 		webrtc.WithSettingEngine(settEng),
 		webrtc.WithInterceptorRegistry(i),
 	)
+	rtcpInterceptorFactories.Store(api, rtcpFactory)
 	return api, nil
 }
 
