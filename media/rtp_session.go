@@ -96,6 +96,14 @@ type RTPReadStats struct {
 	RTT time.Duration
 }
 
+// JitterMilliseconds returns the current RFC 3550 interarrival-jitter estimate in milliseconds.
+func (stats RTPReadStats) JitterMilliseconds() float64 {
+	if stats.SampleRate == 0 {
+		return 0
+	}
+	return stats.jitter * 1000.0 / float64(stats.SampleRate)
+}
+
 /*
 	 func (stats *RTPReadStats) calcJitter(now time.Time, readPktTimestamp uint32) {
 		sampleRate := float64(stats.SampleRate)

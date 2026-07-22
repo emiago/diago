@@ -286,6 +286,17 @@ func TestJitterCalc(t *testing.T) {
 	// assert.EqualValues(t, 0, int(stats.jitter))
 }
 
+func TestRTPReadStatsJitterMilliseconds(t *testing.T) {
+	stats := RTPReadStats{
+		SampleRate: 48000,
+		jitter:     24,
+	}
+	assert.Equal(t, 0.5, stats.JitterMilliseconds())
+
+	stats.SampleRate = 0
+	assert.Zero(t, stats.JitterMilliseconds())
+}
+
 func TestRTPSessionSourceLockProtection(t *testing.T) {
 	// slog.SetLogLoggerLevel(slog.LevelDebug)
 	// RTPDebug = true
