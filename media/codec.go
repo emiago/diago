@@ -20,6 +20,12 @@ var (
 	CodecAudioAlaw          = Codec{PayloadType: 8, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "PCMA"}
 	CodecAudioOpus          = Codec{PayloadType: 96, SampleRate: 48000, SampleDur: 20 * time.Millisecond, NumChannels: 2, Name: "opus"}
 	CodecTelephoneEvent8000 = Codec{PayloadType: 101, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "telephone-event"}
+
+	// CodecAudioG722 SampleRate is 8000 and not 16000. RFC 3551 section 4.5.2 froze
+	// the G.722 RTP clock at 8000 even though the codec samples at 16 kHz. The clock
+	// drives SampleTimestamp(), so 16000 here would advance the RTP timestamp at
+	// twice the wire rate. The 16 kHz sampling rate is a decoder concern only.
+	CodecAudioG722 = Codec{PayloadType: 9, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "G722"}
 )
 
 type Codec struct {
@@ -88,6 +94,8 @@ func CodecAudioFromPayloadType(payloadType uint8) (Codec, error) {
 		return CodecAudioAlaw, nil
 	case sdp.FORMAT_TYPE_ULAW:
 		return CodecAudioUlaw, nil
+	case sdp.FORMAT_TYPE_G722:
+		return CodecAudioG722, nil
 	case sdp.FORMAT_TYPE_OPUS:
 		return CodecAudioOpus, nil
 	case sdp.FORMAT_TYPE_TELEPHONE_EVENT:
@@ -104,6 +112,8 @@ func mapSupportedCodec(f string) Codec {
 		return CodecAudioAlaw
 	case sdp.FORMAT_TYPE_ULAW:
 		return CodecAudioUlaw
+	case sdp.FORMAT_TYPE_G722:
+		return CodecAudioG722
 	case sdp.FORMAT_TYPE_OPUS:
 		return CodecAudioOpus
 	case sdp.FORMAT_TYPE_TELEPHONE_EVENT:
@@ -153,6 +163,16 @@ func CodecsFromSDPRead(formats []string, attrs []string, codecsAudio []Codec) (i
 
 		if f == "8" {
 			codecsAudio[n] = CodecAudioAlaw
+			n++
+			continue
+		}
+
+		// G.722 is a static payload type like ulaw and alaw above, so a peer may
+		// offer it with no a=rtpmap line. Resolving it from the payload type also
+		// keeps the RFC 3551 clock when a peer advertises the 16 kHz sampling rate
+		// in rtpmap instead.
+		if f == "9" {
+			codecsAudio[n] = CodecAudioG722
 			n++
 			continue
 		}
