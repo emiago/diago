@@ -20,6 +20,9 @@ var (
 	CodecAudioAlaw          = Codec{PayloadType: 8, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "PCMA"}
 	CodecAudioOpus          = Codec{PayloadType: 96, SampleRate: 48000, SampleDur: 20 * time.Millisecond, NumChannels: 2, Name: "opus"}
 	CodecTelephoneEvent8000 = Codec{PayloadType: 101, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "telephone-event"}
+	// CodecComfortNoise8000 describes the static RFC 3389 comfort-noise payload.
+	// It is an auxiliary RTP format and is not included in default SDP offers.
+	CodecComfortNoise8000 = Codec{PayloadType: 13, SampleRate: 8000, NumChannels: 1, Name: "CN"}
 )
 
 type Codec struct {
