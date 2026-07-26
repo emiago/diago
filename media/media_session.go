@@ -409,7 +409,9 @@ func (s *MediaSession) LocalSDP() []byte {
 	}
 
 	if s.sessionID == 0 {
-		s.sessionID = GetCurrentNTPTimestamp()
+		// Use NTP seconds for the SDP o= session id (mainstream practice); the full 64-bit
+		// NTP value exceeds int64 when parsed as signed, breaking strict peers (488).
+		s.sessionID = GetCurrentNTPTimestamp() >> 32
 		s.sessionVersion = s.sessionID
 	} else {
 		s.sessionVersion++
