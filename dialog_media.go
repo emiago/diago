@@ -526,6 +526,19 @@ func WithAudioWriterDTMF(r *DTMFWriter) AudioWriterOption {
 	}
 }
 
+// WithAudioWriterComfortNoise adds explicit RFC 3389 comfort-noise writes to
+// the audio pipeline. It does not advertise CN in SDP or schedule packets.
+func WithAudioWriterComfortNoise(w *ComfortNoiseWriter) AudioWriterOption {
+	return func(d *DialogMedia) error {
+		if w == nil {
+			return fmt.Errorf("comfort noise writer is nil")
+		}
+		w.comfortNoiseWriter = media.NewRTPComfortNoiseWriter(d.RTPPacketWriter, d.getAudioWriter())
+		d.audioWriter = w
+		return nil
+	}
+}
+
 // WithAudioWriterMonitor initializes and adds PCM monitor in audio pipeline. It records and decodes stream into PCM.
 func WithAudioWriterMonitor(mon *audio.MonitorPCMWriter, w io.Writer) AudioWriterOption {
 	return func(d *DialogMedia) error {
@@ -885,4 +898,27 @@ func (w *DTMFWriter) AudioWriter() *media.RTPDtmfWriter {
 // Write exposes as io.Writer that can be used as AudioWriter
 func (w *DTMFWriter) Write(buf []byte) (n int, err error) {
 	return w.dtmfWriter.Write(buf)
+}
+
+// ComfortNoiseWriter exposes explicit comfort-noise writes while remaining an
+// io.Writer for ordinary encoded audio.
+type ComfortNoiseWriter struct {
+	comfortNoiseWriter *media.RTPComfortNoiseWriter
+}
+
+// WriteComfortNoise sends one PT 13 comfort-noise packet. Level is attenuation
+// in -dBov and must be between 0 and 127.
+func (w *ComfortNoiseWriter) WriteComfortNoise(level uint8) error {
+	if w.comfortNoiseWriter == nil {
+		return fmt.Errorf("comfort noise writer is not initialized")
+	}
+	return w.comfortNoiseWriter.WriteComfortNoise(level)
+}
+
+// Write forwards ordinary encoded audio through the configured pipeline.
+func (w *ComfortNoiseWriter) Write(buf []byte) (n int, err error) {
+	if w.comfortNoiseWriter == nil {
+		return 0, fmt.Errorf("comfort noise writer is not initialized")
+	}
+	return w.comfortNoiseWriter.Write(buf)
 }
