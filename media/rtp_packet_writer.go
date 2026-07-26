@@ -4,6 +4,7 @@
 package media
 
 import (
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -165,6 +166,26 @@ func (p *RTPPacketWriter) WriteSamples(payload []byte, sampleRateTimestamp uint3
 	n, err := p.writeSamplesUnsafe(p.writer, payload, sampleRateTimestamp, marker, payloadType)
 	p.mu.RUnlock()
 	return n, err
+}
+
+func (p *RTPPacketWriter) writeComfortNoise(payload []byte, timestampOffset uint32) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.codec.SampleRate != CodecComfortNoise8000.SampleRate {
+		return 0, fmt.Errorf("comfort noise payload type 13 requires an 8000 Hz RTP clock: %d", p.codec.SampleRate)
+	}
+
+	p.nextTimestamp += timestampOffset
+	return p.writeSamplesUnsafe(p.writer, payload, 0, false, CodecComfortNoise8000.PayloadType)
+}
+
+func (p *RTPPacketWriter) resetTimestampBy(timestampOffset uint32) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.nextTimestamp += timestampOffset
+	p.initTimestamp = p.nextTimestamp
 }
 
 func (p *RTPPacketWriter) writeSamplesUnsafe(writer RTPWriter, payload []byte, sampleRateTimestamp uint32, marker bool, payloadType uint8) (int, error) {
