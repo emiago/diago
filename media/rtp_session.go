@@ -75,6 +75,7 @@ type RTPReadStats struct {
 	SSRC                   uint32
 	FirstPktSequenceNumber uint16
 	LastSequenceNumber     uint16
+	payloadType            uint8
 	lastSeq                RTPExtendedSequenceNumber
 	// tracks first pkt seq in this interval to calculate loss of packets
 	IntervalFirstPktSeqNum uint16
@@ -279,39 +280,45 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 			continue
 		}
 
-		break
+		s.rtcpMU.Lock()
+		supported := s.updateReadStats(readPkt, n, time.Now())
+		s.rtcpMU.Unlock()
+		if !supported {
+			DefaultLogger().Warn("Received RTP with unsupported payload_type. Skipping", "pt", readPkt.PayloadType)
+			continue
+		}
+
+		return n, nil
+	}
+}
+
+// updateReadStats updates the active RTP source and payload format.
+// s.rtcpMU must be held by the caller.
+func (s *RTPSession) updateReadStats(readPkt *rtp.Packet, n int, now time.Time) bool {
+	stats := &s.readStats
+	ssrcChanged := stats.SSRC != readPkt.SSRC
+
+	var codec Codec
+	if ssrcChanged {
+		var ok bool
+		codec, ok = codecByPayloadType(s.Sess.Codecs, readPkt.PayloadType)
+		if !ok {
+			return false
+		}
+	} else if stats.payloadType != readPkt.PayloadType {
+		return false
 	}
 
-	s.rtcpMU.Lock()
-	defer s.rtcpMU.Unlock()
-	// pktArrival := time.Now()
-	stats := &s.readStats
-	now := time.Now()
-
 	// For now we only track latest SSRC
-	if stats.SSRC != readPkt.SSRC {
+	if ssrcChanged {
 		// For now we will reset all our stats.
 		// We expect that SSRC only changed but MULTI RTP stream per one session is not supported
 		// NOTE: Reading codecs may be in a race while establishing session but it is expected
 		// that caller should not run reading while session is established
-		codec := sess.Codecs[0]
-		if codec.PayloadType != readPkt.PayloadType {
-			for _, c := range sess.Codecs {
-				if c.PayloadType == readPkt.PayloadType {
-					codec = c
-					break
-				}
-			}
-
-			if codec.PayloadType != readPkt.PayloadType {
-				DefaultLogger().Warn("Received RTP with unsupported payload_type", "pt", readPkt.PayloadType)
-				return 0, nil
-			}
-		}
-
 		*stats = RTPReadStats{
 			SSRC:                   readPkt.SSRC,
 			FirstPktSequenceNumber: readPkt.SequenceNumber,
+			payloadType:            readPkt.PayloadType,
 			SampleRate:             codec.SampleRate,
 			firstRTPTime:           now,
 			firstRTPTimestamp:      readPkt.Timestamp,
@@ -350,7 +357,16 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 	// stats.lastRTPTime = now
 	// stats.lastRTPTimestamp = readPkt.Timestamp
 
-	return n, err
+	return true
+}
+
+func codecByPayloadType(codecs []Codec, payloadType uint8) (Codec, bool) {
+	for _, codec := range codecs {
+		if codec.PayloadType == payloadType {
+			return codec, true
+		}
+	}
+	return Codec{}, false
 }
 
 // sourceLockProtection locks RTP handling only to one source change

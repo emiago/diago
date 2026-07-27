@@ -56,6 +56,209 @@ func pipeRTP(lport int, rport int) (read *RTPSession, write *RTPSession) {
 	return rtpSessRead, rtpSessWrite
 }
 
+func TestRTPSessionReadSkipsComfortNoise(t *testing.T) {
+	rtpSessRead, rtpSessWrite := pipeRTP(9876, 1234)
+
+	const ssrc uint32 = 1234
+	packets := []rtp.Packet{
+		{
+			Header: rtp.Header{
+				Version:        2,
+				PayloadType:    CodecComfortNoise8000.PayloadType,
+				SequenceNumber: 1,
+				Timestamp:      160,
+				SSRC:           ssrc,
+			},
+			Payload: []byte{1},
+		},
+		{
+			Header: rtp.Header{
+				Version:        2,
+				PayloadType:    CodecAudioAlaw.PayloadType,
+				SequenceNumber: 2,
+				Timestamp:      320,
+				SSRC:           ssrc,
+			},
+			Payload: []byte{2},
+		},
+		{
+			Header: rtp.Header{
+				Version:        2,
+				PayloadType:    CodecComfortNoise8000.PayloadType,
+				SequenceNumber: 3,
+				Timestamp:      480,
+				SSRC:           ssrc,
+			},
+			Payload: []byte{3},
+		},
+		{
+			Header: rtp.Header{
+				Version:        2,
+				PayloadType:    CodecAudioAlaw.PayloadType,
+				SequenceNumber: 4,
+				Timestamp:      640,
+				SSRC:           ssrc,
+			},
+			Payload: []byte{4},
+		},
+	}
+
+	writeDone := make(chan error, 1)
+	go func() {
+		for i := range packets {
+			if err := rtpSessWrite.Sess.WriteRTP(&packets[i]); err != nil {
+				writeDone <- err
+				return
+			}
+		}
+		writeDone <- nil
+	}()
+
+	buf := make([]byte, RTPBufSize)
+	for _, wantSequenceNumber := range []uint16{2, 4} {
+		var pkt rtp.Packet
+		n, err := rtpSessRead.ReadRTP(buf, &pkt)
+		require.NoError(t, err)
+		require.Positive(t, n)
+		assert.Equal(t, CodecAudioAlaw.PayloadType, pkt.PayloadType)
+		assert.Equal(t, wantSequenceNumber, pkt.SequenceNumber)
+	}
+	require.NoError(t, <-writeDone)
+
+	stats := rtpSessRead.ReadStats()
+	assert.EqualValues(t, 2, stats.PacketsCount)
+	assert.EqualValues(t, 2, stats.OctetCount)
+}
+
+func TestRTPSessionReadSkipsPayloadTypeChange(t *testing.T) {
+	rtpSessRead, rtpSessWrite := pipeRTP(9876, 1234)
+
+	const ssrc uint32 = 1234
+	packets := []rtp.Packet{
+		{
+			Header: rtp.Header{
+				Version:        2,
+				PayloadType:    CodecAudioAlaw.PayloadType,
+				SequenceNumber: 1,
+				Timestamp:      160,
+				SSRC:           ssrc,
+			},
+			Payload: []byte{1},
+		},
+		{
+			Header: rtp.Header{
+				Version:        2,
+				PayloadType:    CodecAudioUlaw.PayloadType,
+				SequenceNumber: 2,
+				Timestamp:      320,
+				SSRC:           ssrc,
+			},
+			Payload: []byte{2},
+		},
+		{
+			Header: rtp.Header{
+				Version:        2,
+				PayloadType:    CodecAudioAlaw.PayloadType,
+				SequenceNumber: 3,
+				Timestamp:      480,
+				SSRC:           ssrc,
+			},
+			Payload: []byte{3},
+		},
+	}
+
+	writeDone := make(chan error, 1)
+	go func() {
+		for i := range packets {
+			if err := rtpSessWrite.Sess.WriteRTP(&packets[i]); err != nil {
+				writeDone <- err
+				return
+			}
+		}
+		writeDone <- nil
+	}()
+
+	buf := make([]byte, RTPBufSize)
+	for _, wantSequenceNumber := range []uint16{1, 3} {
+		var pkt rtp.Packet
+		n, err := rtpSessRead.ReadRTP(buf, &pkt)
+		require.NoError(t, err)
+		require.Positive(t, n)
+		assert.Equal(t, CodecAudioAlaw.PayloadType, pkt.PayloadType)
+		assert.Equal(t, wantSequenceNumber, pkt.SequenceNumber)
+	}
+	require.NoError(t, <-writeDone)
+
+	stats := rtpSessRead.ReadStats()
+	assert.Equal(t, CodecAudioAlaw.PayloadType, stats.payloadType)
+	assert.EqualValues(t, CodecAudioAlaw.SampleRate, stats.SampleRate)
+	assert.EqualValues(t, 2, stats.PacketsCount)
+	assert.EqualValues(t, 2, stats.OctetCount)
+}
+
+func TestRTPSessionReadCodecChangesWithSSRC(t *testing.T) {
+	rtpSessRead, rtpSessWrite := pipeRTP(9876, 1234)
+	codec16k := Codec{
+		Name:        "test",
+		PayloadType: 96,
+		SampleRate:  16000,
+		NumChannels: 1,
+	}
+	rtpSessRead.Sess.Codecs = append(rtpSessRead.Sess.Codecs, codec16k)
+
+	packets := []rtp.Packet{
+		{
+			Header: rtp.Header{
+				Version:        2,
+				PayloadType:    CodecAudioAlaw.PayloadType,
+				SequenceNumber: 1,
+				Timestamp:      160,
+				SSRC:           1234,
+			},
+			Payload: []byte{1},
+		},
+		{
+			Header: rtp.Header{
+				Version:        2,
+				PayloadType:    codec16k.PayloadType,
+				SequenceNumber: 2,
+				Timestamp:      320,
+				SSRC:           5678,
+			},
+			Payload: []byte{2},
+		},
+	}
+
+	writeDone := make(chan error, 1)
+	go func() {
+		for i := range packets {
+			if err := rtpSessWrite.Sess.WriteRTP(&packets[i]); err != nil {
+				writeDone <- err
+				return
+			}
+		}
+		writeDone <- nil
+	}()
+
+	buf := make([]byte, RTPBufSize)
+	for i := range packets {
+		var pkt rtp.Packet
+		n, err := rtpSessRead.ReadRTP(buf, &pkt)
+		require.NoError(t, err)
+		require.Positive(t, n)
+		assert.Equal(t, packets[i].SSRC, pkt.SSRC)
+		assert.Equal(t, packets[i].PayloadType, pkt.PayloadType)
+	}
+	require.NoError(t, <-writeDone)
+
+	stats := rtpSessRead.ReadStats()
+	assert.Equal(t, packets[1].SSRC, stats.SSRC)
+	assert.Equal(t, codec16k.PayloadType, stats.payloadType)
+	assert.EqualValues(t, codec16k.SampleRate, stats.SampleRate)
+	assert.EqualValues(t, 1, stats.PacketsCount)
+	assert.EqualValues(t, 1, stats.OctetCount)
+}
+
 func TestRTPSessionReading(t *testing.T) {
 	// pipeRTP := bytes.NewBuffer([]byte{})
 
