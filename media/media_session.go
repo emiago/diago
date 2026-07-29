@@ -148,6 +148,9 @@ type MediaSession struct {
 	// DTLS
 	dtlsConn *dtls.Conn
 
+	// onWriteRTP observes every outgoing RTP packet. See OnWriteRTP.
+	onWriteRTP atomic.Pointer[rtpWriteObserver]
+
 	onFinalize func() error
 
 	sessionID      uint64
@@ -989,6 +992,10 @@ func (m *MediaSession) WriteRTP(p *rtp.Packet) error {
 	}
 
 	logRTPWrite(m, p)
+
+	if o := m.onWriteRTP.Load(); o != nil {
+		o.fn(p)
+	}
 
 	writeBuf := m.getWriteBuf()
 
