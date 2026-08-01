@@ -24,6 +24,15 @@ import (
 	"github.com/pion/srtp/v3"
 )
 
+// RTPTracer receives decoded RTP packets when RTPDebug is enabled.
+//
+// Traces run synchronously on the media path. Implementations must not block
+// and must clone packets that are retained after the method returns.
+type RTPTracer interface {
+	RTPTraceRead(laddr string, raddr string, packet *rtp.Packet)
+	RTPTraceWrite(laddr string, raddr string, packet *rtp.Packet)
+}
+
 var (
 	// RTPPortStart and RTPPortEnd allows defining rtp port range for media
 	RTPPortStart  = 0
@@ -35,6 +44,7 @@ var (
 
 	RTPDebug  = false
 	RTCPDebug = false
+	rtpTracer RTPTracer
 
 	// RTPProfileSAVPDisable disables offering RTP/SAVP and keeps standard RTP/AVP for backward compatibilit needs
 	//
@@ -51,18 +61,41 @@ var (
 	SDPCodecPreferLocalOrder int = 0
 )
 
-func logRTPRead(m *MediaSession, raddr net.Addr, p *rtp.Packet) {
-	if RTPDebug {
-		s := raddr.String()
+// RTPDebugTracer sets the tracer used when RTPDebug is enabled.
+// Passing nil restores the default RTP debug logging.
+// It must be called before RTP traffic starts.
+func RTPDebugTracer(t RTPTracer) {
+	rtpTracer = t
+}
 
-		DefaultLogger().Debug(fmt.Sprintf("RTP read %s < %s:\n%s", m.Laddr.String(), s, p.String()))
+func logRTPRead(m *MediaSession, raddr net.Addr, p *rtp.Packet) {
+	if !RTPDebug {
+		return
 	}
+
+	laddr := m.Laddr.String()
+	raddrStr := raddr.String()
+	if rtpTracer != nil {
+		rtpTracer.RTPTraceRead(laddr, raddrStr, p)
+		return
+	}
+
+	DefaultLogger().Debug(fmt.Sprintf("RTP read %s < %s:\n%s", laddr, raddrStr, p.String()))
 }
 
 func logRTPWrite(m *MediaSession, p *rtp.Packet) {
-	if RTPDebug {
-		DefaultLogger().Debug(fmt.Sprintf("RTP write %s > %s:\n%s", m.Laddr.String(), m.Raddr.String(), p.String()))
+	if !RTPDebug {
+		return
 	}
+
+	laddr := m.Laddr.String()
+	raddr := m.Raddr.String()
+	if rtpTracer != nil {
+		rtpTracer.RTPTraceWrite(laddr, raddr, p)
+		return
+	}
+
+	DefaultLogger().Debug(fmt.Sprintf("RTP write %s > %s:\n%s", laddr, raddr, p.String()))
 }
 
 func logRTCPRead(m *MediaSession, pkts []rtcp.Packet) {
@@ -990,8 +1023,6 @@ func (m *MediaSession) WriteRTP(p *rtp.Packet) error {
 		return nil
 	}
 
-	logRTPWrite(m, p)
-
 	writeBuf := m.getWriteBuf()
 
 	n, err := p.MarshalTo(writeBuf)
@@ -1016,6 +1047,8 @@ func (m *MediaSession) WriteRTP(p *rtp.Packet) error {
 	if n != len(data) {
 		return io.ErrShortWrite
 	}
+
+	logRTPWrite(m, p)
 	return nil
 }
 
