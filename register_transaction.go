@@ -155,6 +155,9 @@ func (t *RegisterTransaction) register(ctx context.Context) error {
 
 		return client.Do(ctx, req, sipgo.ClientRequestRegisterBuild)
 	}()
+	if err != nil {
+		return fmt.Errorf("fail to create transaction req=%q: %w", req.StartLine(), err)
+	}
 
 	via := res.Via()
 	if via == nil {
