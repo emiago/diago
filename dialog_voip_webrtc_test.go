@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIntegrationDialogVoipWebrtcBidirectionalRTP(t *testing.T) {
+func TestIntegrationDialogWebrtcBidirectionalRTP(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -34,10 +34,10 @@ func TestIntegrationDialogVoipWebrtcBidirectionalRTP(t *testing.T) {
 		BindPort:  0,
 	}))
 
-	serverMedia := make(chan *DialogVoipWebrtc, 1)
+	serverMedia := make(chan *DialogWebrtc, 1)
 	serverErr := make(chan error, 1)
 	require.NoError(t, server.ServeBackground(ctx, func(dialog *DialogServerSession) {
-		med, answerErr := dialog.AnswerVoipWebrtc(AnswerVoipWebrtcOptions{
+		med, answerErr := dialog.AnswerWebrtc(AnswerWebrtcOptions{
 			WebrtcConfig: webRTCConfig,
 		})
 		if answerErr != nil {
@@ -68,13 +68,13 @@ func TestIntegrationDialogVoipWebrtcBidirectionalRTP(t *testing.T) {
 
 	inviteCtx, inviteCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer inviteCancel()
-	clientMed, err := dialog.InviteVoipWebrtc(inviteCtx, InviteVoipWebrtcOptions{
+	clientMed, err := dialog.InviteWebrtc(inviteCtx, InviteWebrtcOptions{
 		WebrtcConfig: webRTCConfig,
 	})
 	require.NoError(t, err)
 	defer clientMed.Close()
 
-	var serverMed *DialogVoipWebrtc
+	var serverMed *DialogWebrtc
 	select {
 	case serverMed = <-serverMedia:
 	case err = <-serverErr:
@@ -119,7 +119,7 @@ func TestIntegrationDialogVoipWebrtcBidirectionalRTP(t *testing.T) {
 	require.NoError(t, dialog.Hangup(ctx))
 }
 
-func TestIntegrationDialogVoipWebrtcEarlyMedia(t *testing.T) {
+func TestIntegrationDialogWebrtcEarlyMedia(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -146,7 +146,7 @@ func TestIntegrationDialogVoipWebrtcEarlyMedia(t *testing.T) {
 		}
 	}
 	require.NoError(t, server.ServeBackground(ctx, func(dialog *DialogServerSession) {
-		conf, confErr := prepareVoipWebrtcConfig(webRTCConfig)
+		conf, confErr := prepareWebrtcConfig(webRTCConfig)
 		if confErr != nil {
 			reportServerErr(confErr)
 			return
@@ -156,7 +156,7 @@ func TestIntegrationDialogVoipWebrtcEarlyMedia(t *testing.T) {
 			reportServerErr(initErr)
 			return
 		}
-		med := &DialogVoipWebrtc{}
+		med := &DialogWebrtc{}
 		defer med.Close()
 		if remoteErr := sess.RemoteSDP(dialog.Context(), dialog.InviteRequest.Body(), false); remoteErr != nil {
 			reportServerErr(remoteErr)
@@ -227,7 +227,7 @@ func TestIntegrationDialogVoipWebrtcEarlyMedia(t *testing.T) {
 
 	inviteCtx, inviteCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer inviteCancel()
-	clientMed, err := dialog.InviteVoipWebrtc(inviteCtx, InviteVoipWebrtcOptions{
+	clientMed, err := dialog.InviteWebrtc(inviteCtx, InviteWebrtcOptions{
 		EarlyMediaDetect: true,
 		WebrtcConfig:     webRTCConfig,
 	})
@@ -243,7 +243,7 @@ func TestIntegrationDialogVoipWebrtcEarlyMedia(t *testing.T) {
 	require.Equal(t, bytes.Repeat([]byte{0x45}, int(media.CodecAudioUlaw.SampleTimestamp())), received[:n])
 
 	close(allowAnswer)
-	require.NoError(t, dialog.WaitAnswerVoipWebrtc(inviteCtx, clientMed, sipgo.AnswerOptions{}))
+	require.NoError(t, dialog.WaitAnswerWebrtc(inviteCtx, clientMed, sipgo.AnswerOptions{}))
 	require.NoError(t, dialog.Hangup(ctx))
 
 	select {

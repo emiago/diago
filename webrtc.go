@@ -29,7 +29,7 @@ import (
 // info: everything else!
 
 // Prepare the configuration
-var defaultWebrtcConfig = webrtc.Configuration{
+var defaultWebrtcPionConfig = webrtc.Configuration{
 	ICEServers: []webrtc.ICEServer{
 		{
 			URLs: []string{"stun:stun.l.google.com:19302"},
@@ -44,10 +44,12 @@ var defaultWebrtcConfig = webrtc.Configuration{
 }
 
 var (
-	defaultWebrtcAPI *webrtc.API
+	defaultWebrtcPionAPI *webrtc.API
 )
 
-type WebrtcAPIConfig struct {
+// WebrtcPionAPIConfig configures the Pion WebRTC API used by Pion-backed
+// dialogs.
+type WebrtcPionAPIConfig struct {
 	Config webrtc.Configuration
 	ICEIPs []net.IP
 
@@ -61,26 +63,29 @@ type WebrtcAPIConfig struct {
 }
 
 func init() {
-	webrtcInit([]net.IP{})
+	webrtcPionInit([]net.IP{})
 }
 
-func SetWebrtcAPI(a *webrtc.API) {
-	defaultWebrtcAPI = a
+// SetWebrtcPionAPI replaces the Pion API used by Pion-backed dialogs.
+func SetWebrtcPionAPI(a *webrtc.API) {
+	defaultWebrtcPionAPI = a
 }
 
-func webrtcInit(iceIPs []net.IP) error {
+func webrtcPionInit(iceIPs []net.IP) error {
 	var err error
-	defaultWebrtcAPI, err = NewWebrtcAPI(iceIPs)
+	defaultWebrtcPionAPI, err = NewWebrtcPionAPI(iceIPs)
 	return err
 }
 
-func NewWebrtcAPI(iceIPs []net.IP) (*webrtc.API, error) {
-	return NewWebrtcAPIFromConfig(WebrtcAPIConfig{ICEIPs: iceIPs})
+// NewWebrtcPionAPI creates a Pion API limited to the supplied ICE addresses.
+func NewWebrtcPionAPI(iceIPs []net.IP) (*webrtc.API, error) {
+	return NewWebrtcPionAPIFromConfig(WebrtcPionAPIConfig{ICEIPs: iceIPs})
 }
 
-func NewWebrtcAPIFromConfig(cfg WebrtcAPIConfig) (*webrtc.API, error) {
+// NewWebrtcPionAPIFromConfig creates a Pion API from an explicit config.
+func NewWebrtcPionAPIFromConfig(cfg WebrtcPionAPIConfig) (*webrtc.API, error) {
 	if !reflect.ValueOf(cfg.Config).IsZero() {
-		defaultWebrtcConfig = cfg.Config
+		defaultWebrtcPionConfig = cfg.Config
 	}
 
 	api := webrtc.NewAPI()
@@ -88,7 +93,7 @@ func NewWebrtcAPIFromConfig(cfg WebrtcAPIConfig) (*webrtc.API, error) {
 		var webrtcMedia = webrtc.MediaEngine{}
 		registerCodecs := cfg.RegisterCodecs
 		if registerCodecs == nil {
-			registerCodecs = webrtcRegisterCodecs
+			registerCodecs = webrtcPionRegisterCodecs
 		}
 		if err := registerCodecs(&webrtcMedia); err != nil {
 			return err
@@ -245,12 +250,12 @@ func (r *rtpNilReader) ReadRTP(buf []byte, p *rtp.Packet) (int, error) {
 	return 0, io.EOF
 }
 
-type webrtcCodecs struct {
+type webrtcPionCodecs struct {
 	localCodecs  []media.Codec
 	remoteCodecs []media.Codec
 }
 
-func webrtcLoadCodecs(remoteSD *webrtcsdp.SessionDescription, filterCodecs []media.Codec, codecs *webrtcCodecs) error {
+func webrtcPionLoadCodecs(remoteSD *webrtcsdp.SessionDescription, filterCodecs []media.Codec, codecs *webrtcPionCodecs) error {
 	attrs := []string{}
 	for _, a := range remoteSD.Attributes {
 		attrs = append(attrs, a.String())
@@ -298,7 +303,7 @@ func webrtcLoadCodecs(remoteSD *webrtcsdp.SessionDescription, filterCodecs []med
 	return nil
 }
 
-func parseCodecMimeType(f uint8) (string, error) {
+func parseWebrtcPionCodecMimeType(f uint8) (string, error) {
 	switch f {
 	case media.CodecAudioUlaw.PayloadType:
 		return webrtc.MimeTypePCMU, nil

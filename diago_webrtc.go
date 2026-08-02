@@ -4,7 +4,7 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-func webrtcRegisterCodecs(webrtcMedia *webrtc.MediaEngine) error {
+func webrtcPionRegisterCodecs(webrtcMedia *webrtc.MediaEngine) error {
 	// webrtcMedia.RegisterDefaultCodecs()
 	for _, codec := range []webrtc.RTPCodecParameters{
 		// {

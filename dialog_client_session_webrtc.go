@@ -13,12 +13,14 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-type InviteWebrtcOptions struct {
+// InviteWebrtcPionOptions configures a SIP call backed by a Pion
+// PeerConnection.
+type InviteWebrtcPionOptions struct {
 	Originator DialogSession
 	OnResponse func(res *sip.Response) error
 	// OnMediaUpdate called when media is changed.
 	// NOTE: you should not block this call as it blocks response processing.
-	OnMediaUpdate func(d *DialogWebrtc)
+	OnMediaUpdate func(d *DialogWebrtcPion)
 	// OnRefer is called on successfull REFER handling
 	//
 	// It creates new dialog (NewDialog) on which you need to call Invite() and Ack()
@@ -38,8 +40,9 @@ type InviteWebrtcOptions struct {
 	WebrtcConfig webrtc.Configuration
 }
 
-func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrtcOptions) (*DialogWebrtc, error) {
-	m := &DialogWebrtc{}
+// InviteWebrtcPion creates a SIP call using the Pion WebRTC backend.
+func (d *DialogClientSession) InviteWebrtcPion(ctx context.Context, opts InviteWebrtcPionOptions) (*DialogWebrtcPion, error) {
+	m := &DialogWebrtcPion{}
 
 	// TODO this can be racy
 	d.Dialog.OnState(func(s sip.DialogState) {
@@ -53,7 +56,7 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 		}
 	})
 
-	if err := d.inviteWebrtc(ctx, m, opts); err != nil {
+	if err := d.inviteWebrtcPion(ctx, m, opts); err != nil {
 		m.Close()
 		return nil, err
 	}
@@ -70,7 +73,7 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 	return m, nil
 }
 
-func webrtcSDPMediaDirection(body []byte) string {
+func webrtcPionSDPMediaDirection(body []byte) string {
 	sd := mediasdp.SessionDescription{}
 	if err := mediasdp.Unmarshal(body, &sd); err != nil {
 		return mediasdp.ModeSendrecv
@@ -83,7 +86,7 @@ func webrtcSDPMediaDirection(body []byte) string {
 	return direction
 }
 
-func webrtcSDPAudioCodec(body []byte, current media.Codec) (media.Codec, error) {
+func webrtcPionSDPAudioCodec(body []byte, current media.Codec) (media.Codec, error) {
 	sd := mediasdp.SessionDescription{}
 	if err := mediasdp.Unmarshal(body, &sd); err != nil {
 		return current, err
@@ -111,7 +114,7 @@ func webrtcSDPAudioCodec(body []byte, current media.Codec) (media.Codec, error) 
 	return current, fmt.Errorf("reinvite has no supported webrtc audio codec: remote=%v", remoteCodecs)
 }
 
-func applyWebrtcRemoteCodec(sess *webrtcSession, rtpWriter *media.RTPPacketWriter, body []byte) error {
+func applyWebrtcPionRemoteCodec(sess *webrtcPionSession, rtpWriter *media.RTPPacketWriter, body []byte) error {
 	if sess == nil || sess.writer == nil {
 		return fmt.Errorf("webrtc media session is not initialized")
 	}
@@ -119,7 +122,7 @@ func applyWebrtcRemoteCodec(sess *webrtcSession, rtpWriter *media.RTPPacketWrite
 		return fmt.Errorf("webrtc rtp packet writer is not initialized")
 	}
 
-	codec, err := webrtcSDPAudioCodec(body, sess.Codec)
+	codec, err := webrtcPionSDPAudioCodec(body, sess.Codec)
 	if err != nil {
 		return err
 	}
@@ -127,7 +130,7 @@ func applyWebrtcRemoteCodec(sess *webrtcSession, rtpWriter *media.RTPPacketWrite
 		return nil
 	}
 
-	mimeType, err := parseCodecMimeType(codec.PayloadType)
+	mimeType, err := parseWebrtcPionCodecMimeType(codec.PayloadType)
 	if err != nil {
 		return err
 	}
@@ -150,12 +153,12 @@ func applyWebrtcRemoteCodec(sess *webrtcSession, rtpWriter *media.RTPPacketWrite
 	return nil
 }
 
-// func applyWebrtcRemoteDirection(writer *WebrtcTrackRTPWriter, remoteDirection string) error {
+// func applyWebrtcPionRemoteDirection(writer *WebrtcTrackRTPWriter, remoteDirection string) error {
 // 	shouldSend := remoteDirection == mediasdp.ModeSendrecv || remoteDirection == mediasdp.ModeRecvonly || remoteDirection == ""
 // 	return writer.UpdateDirection(shouldSend)
 // }
 
-func (d *DialogClientSession) inviteWebrtc(ctx context.Context, m *DialogWebrtc, opts InviteWebrtcOptions) error {
+func (d *DialogClientSession) inviteWebrtcPion(ctx context.Context, m *DialogWebrtcPion, opts InviteWebrtcPionOptions) error {
 	sess := &mediawebrtc.MediaSession{
 		// Keep the WebRTC media session aligned with the dialog codec config so
 		// later re-INVITEs can negotiate against the same codec set.

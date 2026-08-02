@@ -14,32 +14,32 @@ import (
 	"github.com/emiago/sipgo/sip"
 )
 
-// InviteVoipWebrtcOptions configures a SIP call using diago's direct ICE +
+// InviteWebrtcOptions configures a SIP call using diago's direct ICE +
 // DTLS-SRTP media stack. A temporary DTLS certificate is generated when the
 // configuration does not provide one.
-type InviteVoipWebrtcOptions struct {
+type InviteWebrtcOptions struct {
 	OnResponse func(*sip.Response) error
 	OnRefer    OnReferDialogFunc
 	Username   string
 	Password   string
 	Headers    []sip.Header
 	// Stop after WebRTC media is established from a 183 Session Progress
-	// response. InviteVoipWebrtc returns the usable media together with
-	// ErrClientEarlyMedia; call WaitAnswerVoipWebrtc to finish the call.
+	// response. InviteWebrtc returns the usable media together with
+	// ErrClientEarlyMedia; call WaitAnswerWebrtc to finish the call.
 	EarlyMediaDetect bool
 
 	WebrtcConfig media.MediaSessionWebrtcConfig
 }
 
-// InviteVoipWebrtc sends an SDP offer, completes ICE/DTLS-SRTP negotiation and
+// InviteWebrtc sends an SDP offer, completes ICE/DTLS-SRTP negotiation and
 // returns encoded audio RTP access for the established SIP dialog.
 //
 // When EarlyMediaDetect is enabled and a 183 response contains SDP, the method
 // establishes the WebRTC transport and returns it with ErrClientEarlyMedia.
 // The caller can use the returned media immediately, then call
-// WaitAnswerVoipWebrtc to wait for the final response and ACK it.
-func (d *DialogClientSession) InviteVoipWebrtc(ctx context.Context, opts InviteVoipWebrtcOptions) (*DialogVoipWebrtc, error) {
-	conf, err := prepareVoipWebrtcConfig(opts.WebrtcConfig)
+// WaitAnswerWebrtc to wait for the final response and ACK it.
+func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrtcOptions) (*DialogWebrtc, error) {
+	conf, err := prepareWebrtcConfig(opts.WebrtcConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (d *DialogClientSession) InviteVoipWebrtc(ctx context.Context, opts InviteV
 	if err = sess.Init(ctx, conf); err != nil {
 		return nil, err
 	}
-	med := &DialogVoipWebrtc{}
+	med := &DialogWebrtc{}
 
 	d.Dialog.OnState(func(state sip.DialogState) {
 		if state == sip.DialogStateEnded {
@@ -89,7 +89,7 @@ func (d *DialogClientSession) InviteVoipWebrtc(ctx context.Context, opts InviteV
 				if contentType == nil || contentType.Value() != "application/sdp" || res.Body() == nil {
 					return nil
 				}
-				if err := setupVoipWebrtcMedia(ctx, sess, med, res.Body()); err != nil {
+				if err := setupWebrtcMedia(ctx, sess, med, res.Body()); err != nil {
 					return err
 				}
 				return ErrClientEarlyMedia
@@ -108,28 +108,28 @@ func (d *DialogClientSession) InviteVoipWebrtc(ctx context.Context, opts InviteV
 		if err = d.Ack(ctx); err != nil {
 			return err
 		}
-		return finalizeVoipWebrtcMedia(ctx, sess, med)
+		return finalizeWebrtcMedia(ctx, sess, med)
 	}()
 	if err != nil {
 		if errors.Is(err, ErrClientEarlyMedia) && med.MediaSession() != nil {
-			d.registerVoipWebrtcDialogCallbacks(med, opts.OnRefer)
+			d.registerWebrtcDialogCallbacks(med, opts.OnRefer)
 			return med, err
 		}
 		return nil, errors.Join(err, sess.Close())
 	}
 
-	d.registerVoipWebrtcDialogCallbacks(med, opts.OnRefer)
+	d.registerWebrtcDialogCallbacks(med, opts.OnRefer)
 	return med, nil
 }
 
-func setupVoipWebrtcMedia(ctx context.Context, sess *media.MediaSessionWebrtc, med *DialogVoipWebrtc, remoteSDP []byte) error {
+func setupWebrtcMedia(ctx context.Context, sess *media.MediaSessionWebrtc, med *DialogWebrtc, remoteSDP []byte) error {
 	if err := sess.RemoteSDP(ctx, remoteSDP, true); err != nil {
 		return err
 	}
-	return finalizeVoipWebrtcMedia(ctx, sess, med)
+	return finalizeWebrtcMedia(ctx, sess, med)
 }
 
-func finalizeVoipWebrtcMedia(ctx context.Context, sess *media.MediaSessionWebrtc, med *DialogVoipWebrtc) error {
+func finalizeWebrtcMedia(ctx context.Context, sess *media.MediaSessionWebrtc, med *DialogWebrtc) error {
 	if err := sess.Finalize(ctx); err != nil {
 		return err
 	}
@@ -141,17 +141,17 @@ func finalizeVoipWebrtcMedia(ctx context.Context, sess *media.MediaSessionWebrtc
 	return nil
 }
 
-func (d *DialogClientSession) registerVoipWebrtcDialogCallbacks(med *DialogVoipWebrtc, onRefer OnReferDialogFunc) {
+func (d *DialogClientSession) registerWebrtcDialogCallbacks(med *DialogWebrtc, onRefer OnReferDialogFunc) {
 	d.dialogCallbacks.mu.Lock()
 	d.onReferDialog = onRefer
 	d.onClose = append(d.onClose, med.Close)
 	d.dialogCallbacks.mu.Unlock()
 }
 
-// WaitAnswerVoipWebrtc continues an InviteVoipWebrtc call that returned
+// WaitAnswerWebrtc continues an InviteWebrtc call that returned
 // ErrClientEarlyMedia. The early WebRTC transport remains active while this
 // method waits for the final response; on success it sends the ACK.
-func (d *DialogClientSession) WaitAnswerVoipWebrtc(ctx context.Context, med *DialogVoipWebrtc, opts sipgo.AnswerOptions) error {
+func (d *DialogClientSession) WaitAnswerWebrtc(ctx context.Context, med *DialogWebrtc, opts sipgo.AnswerOptions) error {
 	if med == nil || med.MediaSession() == nil {
 		return fmt.Errorf("dialog WebRTC media is not initialized")
 	}
