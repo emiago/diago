@@ -415,7 +415,10 @@ func (m *MediaSessionWebrtc) RemoteSDP(_ context.Context, body []byte, offered b
 		localDTLSClient = true
 		m.localSetup = "active"
 	}
-	dtlsConf := m.Config.DTLS.ToLibConf([]sdpFingerprints{{alg: fingerprintFields[0], fingerprint: fingerprintFields[1]}})
+	dtlsConf := m.Config.DTLS.ToLibConf([]DTLSFingerprint{{
+		Algorithm: fingerprintFields[0],
+		Value:     fingerprintFields[1],
+	}})
 	if localDTLSClient {
 		m.dtlsConn, err = dtls.Client(m.mux.dtls, conn.RemoteAddr(), dtlsConf)
 	} else {
