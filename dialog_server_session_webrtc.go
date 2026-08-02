@@ -4,12 +4,14 @@
 package diago
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
 
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo/sip"
+	"github.com/pion/ice/v4"
 )
 
 // AnswerWebrtcOptions configures an inbound SIP call using diago's direct
@@ -20,6 +22,8 @@ type AnswerWebrtcOptions struct {
 	Codecs  []media.Codec
 
 	WebrtcConfig media.MediaSessionWebrtcConfig
+	// OnICEStateChange observes ICE transport state. It must not block.
+	OnICEStateChange func(ice.ConnectionState)
 }
 
 // AnswerWebrtc consumes the WebRTC SDP offer, sends a SIP 200 answer and
@@ -38,10 +42,11 @@ func (d *DialogServerSession) AnswerWebrtc(opts AnswerWebrtcOptions) (*DialogWeb
 		codecs = d.mediaConf.Codecs
 	}
 	sess := &media.MediaSessionWebrtc{Codecs: slices.Clone(codecs)}
-	if err = sess.Init(d.Context(), conf); err != nil {
+	if err = sess.Init(d.Context(), conf, opts.OnICEStateChange); err != nil {
 		return nil, err
 	}
 	med := &DialogWebrtc{}
+	answered := false
 	d.OnState(func(state sip.DialogState) {
 		if state == sip.DialogStateEnded {
 			_ = med.Close()
@@ -59,6 +64,7 @@ func (d *DialogServerSession) AnswerWebrtc(opts AnswerWebrtcOptions) (*DialogWeb
 		if err = d.RespondSDP(localSDP); err != nil {
 			return err
 		}
+		answered = true
 		if err = sess.Finalize(d.Context()); err != nil {
 			return err
 		}
@@ -70,7 +76,13 @@ func (d *DialogServerSession) AnswerWebrtc(opts AnswerWebrtcOptions) (*DialogWeb
 		return nil
 	}()
 	if err != nil {
-		return nil, errors.Join(err, sess.Close())
+		cleanupErr := sess.Close()
+		if answered {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), webrtcFailureCleanupTimeout)
+			defer cancel()
+			cleanupErr = errors.Join(cleanupErr, d.Hangup(cleanupCtx))
+		}
+		return nil, errors.Join(err, cleanupErr)
 	}
 
 	d.dialogCallbacks.mu.Lock()
