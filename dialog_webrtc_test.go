@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDialogWebrtcAudioReaderWriterProps(t *testing.T) {
-	dialog := &DialogWebrtc{
+func TestDialogWebrtcPionAudioReaderWriterProps(t *testing.T) {
+	dialog := &DialogWebrtcPion{
 		mediaSession: &mediawebrtc.MediaSession{
 			Codecs: []media.Codec{media.CodecAudioUlaw},
 			Laddr:  "local",
@@ -27,24 +27,24 @@ func TestDialogWebrtcAudioReaderWriterProps(t *testing.T) {
 	}
 
 	readerProps := MediaProps{}
-	_, err := dialog.AudioReader(WithAudioReaderWebrtcProps(&readerProps))
+	_, err := dialog.AudioReader(WithAudioReaderWebrtcPionProps(&readerProps))
 	require.NoError(t, err)
 	assert.Equal(t, media.CodecAudioUlaw, readerProps.Codec)
 	assert.Equal(t, "local", readerProps.Laddr)
 	assert.Equal(t, "remote", readerProps.Raddr)
 
 	writerProps := MediaProps{}
-	_, err = dialog.AudioWriter(WithAudioWriterWebrtcProps(&writerProps))
+	_, err = dialog.AudioWriter(WithAudioWriterWebrtcPionProps(&writerProps))
 	require.NoError(t, err)
 	assert.Equal(t, media.CodecAudioUlaw, writerProps.Codec)
 	assert.Equal(t, "local", writerProps.Laddr)
 	assert.Equal(t, "remote", writerProps.Raddr)
 }
 
-func TestDialogWebrtcServerPlaybackClientReceivesRTP(t *testing.T) {
-	require.NoError(t, webrtcInit([]net.IP{net.IPv4(127, 0, 0, 1)}))
+func TestDialogWebrtcPionServerPlaybackClientReceivesRTP(t *testing.T) {
+	require.NoError(t, webrtcPionInit([]net.IP{net.IPv4(127, 0, 0, 1)}))
 	t.Cleanup(func() {
-		require.NoError(t, webrtcInit([]net.IP{}))
+		require.NoError(t, webrtcPionInit([]net.IP{}))
 	})
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -68,7 +68,7 @@ func TestDialogWebrtcServerPlaybackClientReceivesRTP(t *testing.T) {
 			inDialog.Trying()
 			inDialog.Ringing()
 
-			med, err := inDialog.AnswerWebrtc(AnswerWebrtcOptions{})
+			med, err := inDialog.AnswerWebrtcPion(AnswerWebrtcPionOptions{})
 			if err != nil {
 				return err
 			}
@@ -119,7 +119,7 @@ func TestDialogWebrtcServerPlaybackClientReceivesRTP(t *testing.T) {
 	inviteCtx, inviteCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer inviteCancel()
 
-	med, err := dialog.InviteWebrtc(inviteCtx, InviteWebrtcOptions{})
+	med, err := dialog.InviteWebrtcPion(inviteCtx, InviteWebrtcPionOptions{})
 	require.NoError(t, err)
 	defer med.Close()
 
@@ -132,7 +132,7 @@ func TestDialogWebrtcServerPlaybackClientReceivesRTP(t *testing.T) {
 	require.NoError(t, med.mediaSession.StopRTP(1, 5*time.Second))
 
 	props := MediaProps{}
-	audioR, err := med.AudioReader(WithAudioReaderWebrtcProps(&props))
+	audioR, err := med.AudioReader(WithAudioReaderWebrtcPionProps(&props))
 	require.NoError(t, err)
 	require.Equal(t, media.CodecAudioUlaw, props.Codec)
 
@@ -180,10 +180,10 @@ func (w *recordingRTPWriter) WriteRTP(p *rtp.Packet) error {
 	return w.next.WriteRTP(p)
 }
 
-func TestDialogWebrtcServerPlaybackPayloadSurvivesWebrtc(t *testing.T) {
-	require.NoError(t, webrtcInit([]net.IP{net.IPv4(127, 0, 0, 1)}))
+func TestDialogWebrtcPionServerPlaybackPayloadSurvivesWebrtc(t *testing.T) {
+	require.NoError(t, webrtcPionInit([]net.IP{net.IPv4(127, 0, 0, 1)}))
 	t.Cleanup(func() {
-		require.NoError(t, webrtcInit([]net.IP{}))
+		require.NoError(t, webrtcPionInit([]net.IP{}))
 	})
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -210,7 +210,7 @@ func TestDialogWebrtcServerPlaybackPayloadSurvivesWebrtc(t *testing.T) {
 			inDialog.Trying()
 			inDialog.Ringing()
 
-			med, err := inDialog.AnswerWebrtc(AnswerWebrtcOptions{})
+			med, err := inDialog.AnswerWebrtcPion(AnswerWebrtcPionOptions{})
 			if err != nil {
 				return err
 			}
@@ -271,7 +271,7 @@ func TestDialogWebrtcServerPlaybackPayloadSurvivesWebrtc(t *testing.T) {
 	inviteCtx, inviteCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer inviteCancel()
 
-	med, err := dialog.InviteWebrtc(inviteCtx, InviteWebrtcOptions{})
+	med, err := dialog.InviteWebrtcPion(inviteCtx, InviteWebrtcPionOptions{})
 	require.NoError(t, err)
 	defer med.Close()
 

@@ -17,11 +17,11 @@ import (
 	"github.com/emiago/diago/media"
 )
 
-func prepareVoipWebrtcConfig(conf media.MediaSessionWebrtcConfig) (media.MediaSessionWebrtcConfig, error) {
+func prepareWebrtcConfig(conf media.MediaSessionWebrtcConfig) (media.MediaSessionWebrtcConfig, error) {
 	if len(conf.DTLS.Certificates) != 0 {
 		return conf, nil
 	}
-	certificate, err := generateVoipWebrtcCertificate()
+	certificate, err := generateWebrtcCertificate()
 	if err != nil {
 		return conf, fmt.Errorf("generate WebRTC DTLS certificate: %w", err)
 	}
@@ -29,7 +29,7 @@ func prepareVoipWebrtcConfig(conf media.MediaSessionWebrtcConfig) (media.MediaSe
 	return conf, nil
 }
 
-func generateVoipWebrtcCertificate() (tls.Certificate, error) {
+func generateWebrtcCertificate() (tls.Certificate, error) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return tls.Certificate{}, err

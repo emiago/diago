@@ -98,6 +98,8 @@ func (b *Bridge) AddMedia(m any) error {
 		return b.AddDialogMedia(t)
 	case *DialogWebrtc:
 		return b.AddDialogWebrtc(t)
+	case *DialogWebrtcPion:
+		return b.AddDialogWebrtcPion(t)
 	default:
 		return fmt.Errorf("unsupporte media stack for bridge. Use AddAudioMedia")
 	}
@@ -123,6 +125,38 @@ func (b *Bridge) AddDialogWebrtc(m *DialogWebrtc) error {
 		}
 		dtmfWriter := DTMFWriter{}
 		med.Writer, err = m.AudioWriter(WithAudioWriterWebrtcProps(&med.WriterProps), WithAudioWriterWebrtcDTMF(&dtmfWriter))
+		if err != nil {
+			return err
+		}
+
+		dtmfReader.OnDTMF(func(dtmf rune) error {
+			return dtmfWriter.WriteDTMF(dtmf)
+		})
+	}
+	return b.AddAudioMedia(&med)
+}
+
+// AddDialogWebrtcPion adds media from the Pion-backed WebRTC dialog stack.
+func (b *Bridge) AddDialogWebrtcPion(m *DialogWebrtcPion) error {
+	med := BridgeAudioMedia{}
+	var err error
+	med.Reader, err = m.AudioReader(WithAudioReaderWebrtcPionProps(&med.ReaderProps))
+	if err != nil {
+		return err
+	}
+	med.Writer, err = m.AudioWriter(WithAudioWriterWebrtcPionProps(&med.WriterProps))
+	if err != nil {
+		return err
+	}
+
+	if b.DTMFpass {
+		dtmfReader := DTMFReader{}
+		med.Reader, err = m.AudioReader(WithAudioReaderWebrtcPionProps(&med.ReaderProps), WithAudioReaderWebrtcPionDTMF(&dtmfReader))
+		if err != nil {
+			return err
+		}
+		dtmfWriter := DTMFWriter{}
+		med.Writer, err = m.AudioWriter(WithAudioWriterWebrtcPionProps(&med.WriterProps), WithAudioWriterWebrtcPionDTMF(&dtmfWriter))
 		if err != nil {
 			return err
 		}

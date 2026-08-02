@@ -50,7 +50,7 @@ func run(ctx context.Context) error {
 		return err
 	}
 	defer dialog.Close()
-	med, err := dialog.InviteVoipWebrtc(ctx, diago.InviteVoipWebrtcOptions{
+	med, err := dialog.InviteWebrtc(ctx, diago.InviteWebrtcOptions{
 		WebrtcConfig: media.MediaSessionWebrtcConfig{
 			NetworkTypes:    []ice.NetworkType{ice.NetworkTypeUDP4},
 			IncludeLoopback: true,
