@@ -127,8 +127,15 @@ same early media stack. Calling `Answer` creates a separate new media stack.
 
 ### WebRTC
 
-WebRTC follows the same returned-media model. The returned value is
+WebRTC follows the same returned-media model. `InviteWebrtc` and
+`AnswerWebrtc` use Diago's direct WebRTC media stack and return
 `*DialogWebrtc`.
+
+The direct stack performs non-trickle ICE gathering, ICE connectivity checks,
+DTLS negotiation, and SRTP/SRTCP setup. The call methods do not return usable
+media until this setup is complete and RTP monitoring has started. The context
+passed to `InviteWebrtc` controls how long the outgoing setup may block;
+`AnswerWebrtc` uses the dialog context.
 
 ```go
 webMed, err := dialog.InviteWebrtc(ctx, diago.InviteWebrtcOptions{})
@@ -139,18 +146,38 @@ defer webMed.Close()
 ```
 
 ```go
-webMed, err := inDialog.AnswerWebrtc(diago.AnswerWebrtcOptions{
-	OnMediaUpdate: func(m *diago.DialogWebrtc) {
-		// Handle updated WebRTC media after re-INVITE.
-	},
-})
+webMed, err := inDialog.AnswerWebrtc(diago.AnswerWebrtcOptions{})
 if err != nil {
 	return err
 }
 defer webMed.Close()
 ```
 
-`AnswerWebrtcOptions.OnMediaUpdate` receives `*DialogWebrtc`.
+ICE is UDP-only. Its IP family, candidate policy, address filters, port range,
+and liveness timeouts are configured through
+`media.MediaSessionWebrtcConfig`. The optional ICE state callback is installed
+while media is initialized and must not block.
+
+```go
+webMed, err := dialog.InviteWebrtc(ctx, diago.InviteWebrtcOptions{
+	WebrtcConfig: media.MediaSessionWebrtcConfig{
+		IPFamilies:     []media.ICEIPFamily{media.ICEIPFamilyIPv4},
+		CandidateTypes: []media.ICECandidateType{media.ICECandidateHost},
+		IPFilter:        localIPFilter,
+		RemoteIPFilter:  remoteIPFilter,
+	},
+	OnICEStateChange: func(state ice.ConnectionState) {
+		// Observe state without blocking the ICE callback.
+	},
+})
+```
+
+When `EarlyMediaDetect` is enabled, retain the returned `*DialogWebrtc` after
+`ErrClientEarlyMedia` and pass it to `WaitAnswerWebrtc` to complete the SIP
+answer.
+
+A Pion PeerConnection-backed variant remains available through the explicitly
+suffixed `InviteWebrtcPion`, `AnswerWebrtcPion`, and `DialogWebrtcPion` APIs.
 
 ### Bridging
 
@@ -204,9 +231,10 @@ own SIP operations such as:
 `DialogWebrtc` owns WebRTC media operations such as:
 
 - WebRTC SDP offer/answer application;
-- peer connection media state;
-- RTP packet reader/writer access through WebRTC tracks;
-- WebRTC playback, recording, DTMF, echo, and media update handling.
+- ICE and DTLS-SRTP transport setup;
+- encrypted RTP and RTCP over the selected ICE candidate pair;
+- RTP packet reader/writer access;
+- WebRTC playback, recording, DTMF, and echo handling.
 
 The important rule is: once an API returns media, use that media object for media
 operations. Do not depend on the dialog session to find the media stack later.
@@ -227,7 +255,10 @@ operations. Do not depend on the dialog session to find the media stack later.
 - Add `defer med.Close()` and `defer dialog.Close()` where the caller owns those
   objects.
 - For WebRTC, use `*DialogWebrtc` returned by `InviteWebrtc` or `AnswerWebrtc`.
-- For WebRTC media updates, use `func(*DialogWebrtc)` callbacks.
+- Configure direct WebRTC transport policy through
+  `media.MediaSessionWebrtcConfig` on the Invite or Answer options.
+- If code specifically requires the Pion PeerConnection implementation, use
+  the APIs suffixed with `Pion`.
 
 ## Notes for Maintainers
 
