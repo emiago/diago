@@ -179,24 +179,36 @@ func TestIntegrationDialogServerPeerCodecPruneReinvite(t *testing.T) {
 	uas := NewDiago(ua, WithTransport(Transport{
 		Transport: "udp",
 		BindHost:  "127.0.0.1",
-		BindPort:  15080,
+		BindPort:  0,
 	}))
+	type answerResult struct {
+		dialog *DialogServerSession
+		err    error
+	}
+	answerCh := make(chan answerResult, 1)
 	err := uas.ServeBackground(ctx, func(d *DialogServerSession) {
 		// This is the reported role: the peer sends the initial INVITE and
 		// Diago answers it as the UAS. RTP NAT must not change the SIP flow.
-		err := d.AnswerOptions(AnswerOptions{
+		med, err := d.Answer(AnswerOptions{
 			RTPNAT:        media.RTPNATSymetric,
 			OnMediaUpdate: func(*DialogMedia) {},
 		})
-		require.NoError(t, err)
-		reader, err := d.AudioReader()
-		require.NoError(t, err)
+		if err != nil {
+			answerCh <- answerResult{err: err}
+			return
+		}
+		reader, err := med.AudioReader()
+		answerCh <- answerResult{dialog: d, err: err}
+		if err != nil {
+			return
+		}
 		go func() {
 			_, _ = reader.Read(make([]byte, 160))
 		}()
 		<-d.Context().Done()
 	})
 	require.NoError(t, err)
+	require.NotZero(t, uas.transports[0].BindPort)
 
 	peerUA, _ := sipgo.NewUA(sipgo.WithUserAgent("peer"))
 	defer peerUA.Close()
@@ -204,14 +216,20 @@ func TestIntegrationDialogServerPeerCodecPruneReinvite(t *testing.T) {
 	err = peer.ServeBackground(ctx, func(*DialogServerSession) {})
 	require.NoError(t, err)
 
-	dialog, err := peer.Invite(ctx, sip.Uri{User: "service", Host: "127.0.0.1", Port: 15080}, InviteOptions{})
+	dialog, peerMedia, err := peer.Invite(ctx, sip.Uri{User: "service", Host: "127.0.0.1", Port: uas.transports[0].BindPort}, InviteOptions{})
 	require.NoError(t, err)
 	defer dialog.Close()
+	answer := <-answerCh
+	require.NoError(t, answer.err)
+	require.NotNil(t, answer.dialog)
+	require.Eventually(t, func() bool {
+		return answer.dialog.LoadState() == sip.DialogStateConfirmed
+	}, time.Second, 10*time.Millisecond)
 	require.Contains(t, string(dialog.InviteRequest.Body()), " 0 8 101")
 
 	// The initial peer offer contains PCMU, PCMA and telephone-event. The
 	// post-answer offer intentionally prunes PCMA, matching the SBC behavior.
-	prunedMedia := dialog.MediaSession().Fork()
+	prunedMedia := peerMedia.MediaSession().Fork()
 	prunedMedia.Codecs = []media.Codec{
 		media.CodecAudioUlaw,
 		media.CodecTelephoneEvent8000,
