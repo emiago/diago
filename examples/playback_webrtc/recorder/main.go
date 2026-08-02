@@ -50,7 +50,7 @@ func start(ctx context.Context) error {
 	}
 	defer dialog.Close()
 
-	med, err := dialog.InviteWebrtc(ctx, diago.InviteWebrtcOptions{})
+	med, err := dialog.InviteWebrtcPion(ctx, diago.InviteWebrtcPionOptions{})
 	if err != nil {
 		return err
 	}

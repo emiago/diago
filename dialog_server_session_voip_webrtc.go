@@ -12,24 +12,24 @@ import (
 	"github.com/emiago/sipgo/sip"
 )
 
-// AnswerVoipWebrtcOptions configures an inbound SIP call using diago's direct
+// AnswerWebrtcOptions configures an inbound SIP call using diago's direct
 // ICE + DTLS-SRTP media stack. A temporary DTLS certificate is generated when
 // the configuration does not provide one.
-type AnswerVoipWebrtcOptions struct {
+type AnswerWebrtcOptions struct {
 	OnRefer func(*DialogClientSession) error
 	Codecs  []media.Codec
 
 	WebrtcConfig media.MediaSessionWebrtcConfig
 }
 
-// AnswerVoipWebrtc consumes the WebRTC SDP offer, sends a SIP 200 answer and
+// AnswerWebrtc consumes the WebRTC SDP offer, sends a SIP 200 answer and
 // completes ICE/DTLS-SRTP negotiation before returning.
-func (d *DialogServerSession) AnswerVoipWebrtc(opts AnswerVoipWebrtcOptions) (*DialogVoipWebrtc, error) {
+func (d *DialogServerSession) AnswerWebrtc(opts AnswerWebrtcOptions) (*DialogWebrtc, error) {
 	remoteSDP := d.InviteRequest.Body()
 	if remoteSDP == nil {
 		return nil, fmt.Errorf("no SDP present in INVITE")
 	}
-	conf, err := prepareVoipWebrtcConfig(opts.WebrtcConfig)
+	conf, err := prepareWebrtcConfig(opts.WebrtcConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +41,7 @@ func (d *DialogServerSession) AnswerVoipWebrtc(opts AnswerVoipWebrtcOptions) (*D
 	if err = sess.Init(d.Context(), conf); err != nil {
 		return nil, err
 	}
-	med := &DialogVoipWebrtc{}
+	med := &DialogWebrtc{}
 	d.OnState(func(state sip.DialogState) {
 		if state == sip.DialogStateEnded {
 			_ = med.Close()

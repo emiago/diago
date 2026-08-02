@@ -17,7 +17,7 @@ import (
 
 // PlaybackAndRecord plays the bundled WAV file, records received and sent
 // audio to a stereo WAV, and keeps draining incoming RTP during playback.
-func PlaybackAndRecord(med *diago.DialogVoipWebrtc, recordingPath string) error {
+func PlaybackAndRecord(med *diago.DialogWebrtc, recordingPath string) error {
 	wavFile, err := os.OpenFile(recordingPath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0o644)
 	if err != nil {
 		return err

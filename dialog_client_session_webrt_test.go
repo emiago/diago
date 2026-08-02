@@ -20,7 +20,7 @@ func newWebrtcDialer(ua *sipgo.UserAgent) *Diago {
 	return NewDiago(ua, WithTransport(Transport{Transport: "tcp", BindHost: "127.0.0.1", BindPort: 0}))
 }
 
-func TestDialogClientSessionWebrtc(t *testing.T) {
+func TestDialogClientSessionWebrtcPion(t *testing.T) {
 	ctx := t.Context()
 
 	// Create transaction users, as many as needed.
@@ -46,7 +46,7 @@ func TestDialogClientSessionWebrtc(t *testing.T) {
 			d.Trying()
 			d.Ringing()
 
-			med, err := d.AnswerWebrtc(AnswerWebrtcOptions{
+			med, err := d.AnswerWebrtcPion(AnswerWebrtcPionOptions{
 				WebrtcConfig: webrtc.Configuration{},
 			})
 			if err != nil {
@@ -65,7 +65,7 @@ func TestDialogClientSessionWebrtc(t *testing.T) {
 
 		if d.ToUser() == "hanguper" {
 			d.Trying()
-			med, err := d.AnswerWebrtc(AnswerWebrtcOptions{})
+			med, err := d.AnswerWebrtcPion(AnswerWebrtcPionOptions{})
 			if err != nil {
 				t.Log("Failed to asnwer webrtc", "error", err)
 				return
@@ -96,7 +96,7 @@ func TestDialogClientSessionWebrtc(t *testing.T) {
 		defer dialog.Close()
 
 		// Hanguped
-		med, err := dialog.InviteWebrtc(context.TODO(), InviteWebrtcOptions{})
+		med, err := dialog.InviteWebrtcPion(context.TODO(), InviteWebrtcPionOptions{})
 		require.NoError(t, err)
 		defer med.Close()
 		<-dialog.Context().Done()
@@ -143,17 +143,17 @@ func TestDialogClientSessionWebrtc(t *testing.T) {
 		require.NoError(t, err)
 		defer dialog.Close()
 
-		med, err := dialog.InviteWebrtc(context.TODO(), InviteWebrtcOptions{})
+		med, err := dialog.InviteWebrtcPion(context.TODO(), InviteWebrtcPionOptions{})
 		require.NoError(t, err)
 		defer med.Close()
 
 		audioReaderProps := MediaProps{}
-		audioR, err := med.AudioReader(WithAudioReaderWebrtcProps(&audioReaderProps))
+		audioR, err := med.AudioReader(WithAudioReaderWebrtcPionProps(&audioReaderProps))
 		require.NoError(t, err)
 		assert.Equal(t, media.CodecAudioUlaw, audioReaderProps.Codec)
 
 		audioWriterProps := MediaProps{}
-		audioW, err := med.AudioWriter(WithAudioWriterWebrtcProps(&audioWriterProps))
+		audioW, err := med.AudioWriter(WithAudioWriterWebrtcPionProps(&audioWriterProps))
 		require.NoError(t, err)
 		assert.Equal(t, media.CodecAudioUlaw, audioWriterProps.Codec)
 
@@ -166,7 +166,7 @@ func TestDialogClientSessionWebrtc(t *testing.T) {
 
 }
 
-func TestIntegrationDialogWebrtcClientReinviteMedia(t *testing.T) {
+func TestIntegrationDialogWebrtcPionClientReinviteMedia(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	beep, _ := audio.BeepLoadPCM(media.CodecAudioUlaw)
@@ -195,7 +195,7 @@ func TestIntegrationDialogWebrtcClientReinviteMedia(t *testing.T) {
 				return
 			}
 
-			med, err := d.AnswerWebrtc(AnswerWebrtcOptions{})
+			med, err := d.AnswerWebrtcPion(AnswerWebrtcPionOptions{})
 			if err != nil {
 				t.Log("Failed to answer webrtc", "error", err)
 				return
@@ -238,8 +238,8 @@ func TestIntegrationDialogWebrtcClientReinviteMedia(t *testing.T) {
 	require.NoError(t, err)
 	defer dialog.Close()
 
-	med, err := dialog.InviteWebrtc(ctx, InviteWebrtcOptions{
-		OnMediaUpdate: func(d *DialogWebrtc) {
+	med, err := dialog.InviteWebrtcPion(ctx, InviteWebrtcPionOptions{
+		OnMediaUpdate: func(d *DialogWebrtcPion) {
 			fmt.Println("Media update", d.mediaSession.PeerConnection().RemoteDescription().SDP)
 		},
 		Username: "test",
