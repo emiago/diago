@@ -12,6 +12,7 @@ import (
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
+	"github.com/pion/ice/v4"
 )
 
 // InviteWebrtcOptions configures a SIP call using diago's direct ICE +
@@ -29,6 +30,8 @@ type InviteWebrtcOptions struct {
 	EarlyMediaDetect bool
 
 	WebrtcConfig media.MediaSessionWebrtcConfig
+	// OnICEStateChange observes ICE transport state. It must not block.
+	OnICEStateChange func(ice.ConnectionState)
 }
 
 // InviteWebrtc sends an SDP offer, completes ICE/DTLS-SRTP negotiation and
@@ -44,10 +47,12 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 		return nil, err
 	}
 	sess := &media.MediaSessionWebrtc{Codecs: slices.Clone(d.mediaConfig.Codecs)}
-	if err = sess.Init(ctx, conf); err != nil {
+	if err = sess.Init(ctx, conf, opts.OnICEStateChange); err != nil {
 		return nil, err
 	}
 	med := &DialogWebrtc{}
+	answered := false
+	acked := false
 
 	d.Dialog.OnState(func(state sip.DialogState) {
 		if state == sip.DialogStateEnded {
@@ -98,6 +103,7 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 		if err = d.DialogClientSession.WaitAnswer(ctx, answerOpts); err != nil {
 			return err
 		}
+		answered = true
 		remoteSDP := d.InviteResponse.Body()
 		if remoteSDP == nil {
 			return fmt.Errorf("no SDP in response")
@@ -108,6 +114,7 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 		if err = d.Ack(ctx); err != nil {
 			return err
 		}
+		acked = true
 		return finalizeWebrtcMedia(ctx, sess, med)
 	}()
 	if err != nil {
@@ -115,7 +122,16 @@ func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrt
 			d.registerWebrtcDialogCallbacks(med, opts.OnRefer)
 			return med, err
 		}
-		return nil, errors.Join(err, sess.Close())
+		cleanupErr := sess.Close()
+		if answered {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), webrtcFailureCleanupTimeout)
+			defer cancel()
+			if !acked {
+				cleanupErr = errors.Join(cleanupErr, d.Ack(cleanupCtx))
+			}
+			cleanupErr = errors.Join(cleanupErr, d.Hangup(cleanupCtx))
+		}
+		return nil, errors.Join(err, cleanupErr)
 	}
 
 	d.registerWebrtcDialogCallbacks(med, opts.OnRefer)

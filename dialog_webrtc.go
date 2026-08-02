@@ -9,10 +9,13 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/emiago/diago/media"
 	"github.com/pion/rtcp"
 )
+
+const webrtcFailureCleanupTimeout = 5 * time.Second
 
 // DialogWebrtc exposes the direct ICE + DTLS-SRTP media stack negotiated
 // through SIP. It is independent from DialogWebrtcPion, which uses a Pion

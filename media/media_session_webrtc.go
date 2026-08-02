@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,13 +30,28 @@ import (
 // the codec-level media API. ICEURLs accepts STUN and TURN URLs understood by
 // Pion (for example stun:stun.example.org:3478).
 type MediaSessionWebrtcConfig struct {
-	ICEURLs         []string
-	NetworkTypes    []ice.NetworkType
-	PortMin         uint16
-	PortMax         uint16
+	ICEURLs        []string
+	IPFamilies     []ICEIPFamily
+	CandidateTypes []ICECandidateType
+	PortMin        uint16
+	PortMax        uint16
+	Timeouts       ICETimeouts
+
 	IncludeLoopback bool
 	InterfaceFilter func(interfaceName string) bool
-	DTLS            DTLSConfig
+	// IPFilter controls which local addresses may become ICE candidates.
+	IPFilter func(ip netip.Addr) bool
+	// RemoteIPFilter controls which addresses from remote SDP are accepted.
+	RemoteIPFilter func(ip netip.Addr) bool
+
+	// NetworkTypes is kept for source compatibility. Only UDP4 and UDP6 are
+	// accepted. New code should use IPFamilies so configuration is not tied to
+	// the current ICE implementation.
+	//
+	// Deprecated: use IPFamilies.
+	NetworkTypes []ice.NetworkType
+
+	DTLS DTLSConfig
 }
 
 // MediaSessionWebrtc is the direct ICE + DTLS-SRTP media stack. It intentionally
@@ -59,37 +75,48 @@ type MediaSessionWebrtc struct {
 
 	Config MediaSessionWebrtcConfig
 
-	mu              sync.Mutex
-	agent           *ice.Agent
-	localCandidates []ice.Candidate
-	localUfrag      string
-	localPwd        string
-	remoteUfrag     string
-	remotePwd       string
-	localSetup      string
-	codec           Codec
-	filterCodecs    []Codec
-	iceConn         *ice.Conn
-	mux             *webRTCPacketMux
-	dtlsConn        *dtls.Conn
-	localCtxSRTP    *srtp.Context
-	remoteCtxSRTP   *srtp.Context
-	ready           bool
-	closed          bool
-	writeRTPBuf     []byte
-	readRTPFromAddr net.Addr
+	mu               sync.Mutex
+	agent            *ice.Agent
+	localCandidates  []ice.Candidate
+	localUfrag       string
+	localPwd         string
+	remoteUfrag      string
+	remotePwd        string
+	localSetup       string
+	codec            Codec
+	filterCodecs     []Codec
+	iceConn          *ice.Conn
+	mux              *webRTCPacketMux
+	dtlsConn         *dtls.Conn
+	localCtxSRTP     *srtp.Context
+	remoteCtxSRTP    *srtp.Context
+	ready            bool
+	closed           bool
+	writeRTPBuf      []byte
+	readRTPFromAddr  net.Addr
+	onICEStateChange func(ice.ConnectionState)
 }
 
 // Init creates the ICE agent and waits for candidate gathering to finish. SIP
 // offer/answer has no standard trickle-ICE exchange, so the SDP returned later
 // contains a complete candidate set and a=end-of-candidates.
-func (m *MediaSessionWebrtc) Init(ctx context.Context, conf MediaSessionWebrtcConfig) error {
+func (m *MediaSessionWebrtc) Init(
+	ctx context.Context,
+	conf MediaSessionWebrtcConfig,
+	onICEStateChange ...func(ice.ConnectionState),
+) error {
+	if len(onICEStateChange) > 1 {
+		return fmt.Errorf("only one ICE state handler can be configured")
+	}
 	m.mu.Lock()
 	if m.agent != nil {
 		m.mu.Unlock()
 		return fmt.Errorf("webrtc media session is already initialized")
 	}
 	m.Config = conf
+	if len(onICEStateChange) == 1 {
+		m.onICEStateChange = onICEStateChange[0]
+	}
 	m.mu.Unlock()
 
 	if len(conf.DTLS.Certificates) == 0 {
@@ -99,14 +126,31 @@ func (m *MediaSessionWebrtc) Init(ctx context.Context, conf MediaSessionWebrtcCo
 		return fmt.Errorf("webrtc media session requires at least one codec")
 	}
 
-	networkTypes := conf.NetworkTypes
-	if len(networkTypes) == 0 {
-		networkTypes = []ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6}
+	networkTypes, err := webRTCNetworkTypes(conf)
+	if err != nil {
+		return &ICEError{Phase: ICEPhaseGathering, Err: err}
 	}
-	opts := []ice.AgentOption{ice.WithNetworkTypes(networkTypes)}
+	candidateTypes, err := webRTCCandidateTypes(conf)
+	if err != nil {
+		return &ICEError{Phase: ICEPhaseGathering, Err: err}
+	}
+	timeouts, err := normalizeICETimeouts(conf.Timeouts)
+	if err != nil {
+		return &ICEError{Phase: ICEPhaseGathering, Err: err}
+	}
+	opts := []ice.AgentOption{
+		ice.WithNetworkTypes(networkTypes),
+		ice.WithCandidateTypes(candidateTypes),
+		ice.WithDisconnectedTimeout(timeouts.Disconnected),
+		ice.WithFailedTimeout(timeouts.Failed),
+		ice.WithKeepaliveInterval(timeouts.Keepalive),
+	}
 	if conf.PortMin != 0 || conf.PortMax != 0 {
 		if conf.PortMin == 0 || conf.PortMax < conf.PortMin {
-			return fmt.Errorf("invalid ICE UDP port range %d-%d", conf.PortMin, conf.PortMax)
+			return &ICEError{
+				Phase: ICEPhaseGathering,
+				Err:   fmt.Errorf("invalid UDP port range %d-%d", conf.PortMin, conf.PortMax),
+			}
 		}
 		opts = append(opts, ice.WithPortRange(conf.PortMin, conf.PortMax))
 	}
@@ -116,12 +160,21 @@ func (m *MediaSessionWebrtc) Init(ctx context.Context, conf MediaSessionWebrtcCo
 	if conf.InterfaceFilter != nil {
 		opts = append(opts, ice.WithInterfaceFilter(conf.InterfaceFilter))
 	}
+	if filter := webRTCIPFilter(conf.IPFilter); filter != nil {
+		opts = append(opts, ice.WithIPFilter(filter))
+	}
+	if filter := webRTCIPFilter(conf.RemoteIPFilter); filter != nil {
+		opts = append(opts, ice.WithRemoteIPFilter(filter))
+	}
 	if len(conf.ICEURLs) > 0 {
 		urls := make([]*stun.URI, 0, len(conf.ICEURLs))
 		for _, rawURL := range conf.ICEURLs {
 			u, err := stun.ParseURI(rawURL)
 			if err != nil {
-				return fmt.Errorf("parse ICE URL %q: %w", rawURL, err)
+				return &ICEError{
+					Phase: ICEPhaseGathering,
+					Err:   fmt.Errorf("parse URL %q: %w", rawURL, err),
+				}
 			}
 			urls = append(urls, u)
 		}
@@ -130,7 +183,13 @@ func (m *MediaSessionWebrtc) Init(ctx context.Context, conf MediaSessionWebrtcCo
 
 	agent, err := ice.NewAgentWithOptions(opts...)
 	if err != nil {
-		return fmt.Errorf("create ICE agent: %w", err)
+		return &ICEError{Phase: ICEPhaseGathering, Err: fmt.Errorf("create ICE agent: %w", err)}
+	}
+	if err = agent.OnConnectionStateChange(func(state ice.ConnectionState) {
+		m.notifyICEStateChange(state)
+	}); err != nil {
+		_ = agent.Close()
+		return &ICEError{Phase: ICEPhaseGathering, Err: fmt.Errorf("set ICE state handler: %w", err)}
 	}
 	gathered := make(chan struct{})
 	var gatherOnce sync.Once
@@ -144,27 +203,28 @@ func (m *MediaSessionWebrtc) Init(ctx context.Context, conf MediaSessionWebrtcCo
 		m.mu.Unlock()
 	}); err != nil {
 		_ = agent.Close()
-		return fmt.Errorf("set ICE candidate handler: %w", err)
+		return &ICEError{Phase: ICEPhaseGathering, Err: fmt.Errorf("set candidate handler: %w", err)}
 	}
 	ufrag, pwd, err := agent.GetLocalUserCredentials()
 	if err != nil {
 		_ = agent.Close()
-		return fmt.Errorf("get local ICE credentials: %w", err)
+		return &ICEError{Phase: ICEPhaseGathering, Err: fmt.Errorf("get local credentials: %w", err)}
 	}
 	m.mu.Lock()
 	m.agent = agent
 	m.localUfrag = ufrag
 	m.localPwd = pwd
 	m.mu.Unlock()
+	m.notifyICEStateChange(ice.ConnectionStateNew)
 
 	if err = agent.GatherCandidates(); err != nil {
 		_ = m.Close()
-		return fmt.Errorf("gather ICE candidates: %w", err)
+		return &ICEError{Phase: ICEPhaseGathering, Err: fmt.Errorf("gather candidates: %w", err)}
 	}
 	select {
 	case <-ctx.Done():
 		_ = m.Close()
-		return fmt.Errorf("gather ICE candidates: %w", ctx.Err())
+		return &ICEError{Phase: ICEPhaseGathering, Err: ctx.Err()}
 	case <-gathered:
 	}
 	m.mu.Lock()
@@ -172,9 +232,18 @@ func (m *MediaSessionWebrtc) Init(ctx context.Context, conf MediaSessionWebrtcCo
 	m.mu.Unlock()
 	if count == 0 {
 		_ = m.Close()
-		return fmt.Errorf("ICE gathered no local candidates")
+		return &ICEError{Phase: ICEPhaseGathering, Err: fmt.Errorf("no local candidates matched the configured policy")}
 	}
 	return nil
+}
+
+func (m *MediaSessionWebrtc) notifyICEStateChange(state ice.ConnectionState) {
+	m.mu.Lock()
+	handler := m.onICEStateChange
+	m.mu.Unlock()
+	if handler != nil {
+		handler(state)
+	}
 }
 
 func (m *MediaSessionWebrtc) Codec() Codec {
@@ -343,14 +412,17 @@ func (m *MediaSessionWebrtc) RemoteSDP(_ context.Context, body []byte, offered b
 		}
 		candidate, candidateErr := ice.UnmarshalCandidate(attr.Value)
 		if candidateErr != nil {
-			return fmt.Errorf("parse remote ICE candidate: %w", candidateErr)
+			return &ICEError{Phase: ICEPhaseConnection, Err: fmt.Errorf("parse remote candidate: %w", candidateErr)}
 		}
 		if candidate.Component() == ice.ComponentRTP {
 			remoteCandidates = append(remoteCandidates, candidate)
 		}
 	}
 	if len(remoteCandidates) == 0 {
-		return fmt.Errorf("remote WebRTC SDP has no component-1 ICE candidates; trickle ICE is not supported")
+		return &ICEError{
+			Phase: ICEPhaseConnection,
+			Err:   fmt.Errorf("remote WebRTC SDP has no component-1 candidates; trickle ICE is not supported"),
+		}
 	}
 
 	remoteMode := sdp.ModeSendrecv
@@ -371,7 +443,7 @@ func (m *MediaSessionWebrtc) RemoteSDP(_ context.Context, body []byte, offered b
 	}
 	for _, candidate := range remoteCandidates {
 		if err = m.agent.AddRemoteCandidate(candidate); err != nil {
-			return fmt.Errorf("add remote ICE candidate: %w", err)
+			return &ICEError{Phase: ICEPhaseConnection, Err: fmt.Errorf("add remote candidate: %w", err)}
 		}
 	}
 	m.remoteUfrag = remoteUfrag
@@ -391,7 +463,7 @@ func (m *MediaSessionWebrtc) RemoteSDP(_ context.Context, body []byte, offered b
 		conn, err = m.agent.StartAccept(remoteUfrag, remotePwd)
 	}
 	if err != nil {
-		return fmt.Errorf("start ICE connectivity checks: %w", err)
+		return &ICEError{Phase: ICEPhaseConnection, Err: fmt.Errorf("start connectivity checks: %w", err)}
 	}
 	m.iceConn = conn
 	m.mux = newWebRTCPacketMux(conn)
@@ -443,7 +515,7 @@ func (m *MediaSessionWebrtc) Finalize(ctx context.Context) error {
 		return fmt.Errorf("remote WebRTC SDP is not configured")
 	}
 	if err := agent.AwaitConnect(ctx); err != nil {
-		return fmt.Errorf("ICE connectivity checks: %w", err)
+		return &ICEError{Phase: ICEPhaseConnection, Err: err}
 	}
 	if err := dtlsConn.HandshakeContext(ctx); err != nil {
 		return fmt.Errorf("DTLS handshake: %w", err)
