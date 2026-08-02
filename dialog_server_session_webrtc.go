@@ -1,104 +1,81 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2026, Emir Aganovic
+
 package diago
 
 import (
-	"context"
 	"errors"
+	"fmt"
+	"slices"
 
 	"github.com/emiago/diago/media"
-	"github.com/emiago/diago/media/sdp"
-	"github.com/emiago/diago/mediawebrtc"
 	"github.com/emiago/sipgo/sip"
-	"github.com/pion/webrtc/v3"
 )
 
-// AnswerWebrtcPionOptions configures an inbound SIP call backed by a Pion
-// PeerConnection.
-type AnswerWebrtcPionOptions struct {
-	// OnMediaUpdate triggers when media update happens. It is blocking func, so make sure you exit
-	OnMediaUpdate func(d *DialogWebrtcPion)
+// AnswerWebrtcOptions configures an inbound SIP call using diago's direct
+// ICE + DTLS-SRTP media stack. A temporary DTLS certificate is generated when
+// the configuration does not provide one.
+type AnswerWebrtcOptions struct {
+	OnRefer func(*DialogClientSession) error
+	Codecs  []media.Codec
 
-	// OnRefer is called on successfull REFER handling
-	//
-	// It creates new dialog (NewDialog) on which you need to call Invite() and Ack()
-	// Any error from invite, ack or other processing should be returned for correct Notify handling
-	//
-	// NOTE: IT is SCOPED to handler and exiting handler will Close/Terminate this dialog!
-	OnRefer func(referDialog *DialogClientSession) error
-	// Codecs that will be used
-	Codecs []media.Codec
-
-	WebrtcConfig webrtc.Configuration
+	WebrtcConfig media.MediaSessionWebrtcConfig
 }
 
-// AnswerWebrtcPion answers a SIP call using the Pion WebRTC backend.
-func (d *DialogServerSession) AnswerWebrtcPion(opts AnswerWebrtcPionOptions) (*DialogWebrtcPion, error) {
-	m := &DialogWebrtcPion{
-		log: sip.DefaultLogger().With("call_id", d.InviteRequest.CallID().Value()),
+// AnswerWebrtc consumes the WebRTC SDP offer, sends a SIP 200 answer and
+// completes ICE/DTLS-SRTP negotiation before returning.
+func (d *DialogServerSession) AnswerWebrtc(opts AnswerWebrtcOptions) (*DialogWebrtc, error) {
+	remoteSDP := d.InviteRequest.Body()
+	if remoteSDP == nil {
+		return nil, fmt.Errorf("no SDP present in INVITE")
 	}
-
-	if len(opts.Codecs) == 0 {
-		opts.Codecs = d.mediaConf.Codecs
+	conf, err := prepareWebrtcConfig(opts.WebrtcConfig)
+	if err != nil {
+		return nil, err
 	}
-
-	d.OnState(func(s sip.DialogState) {
-		if s == sip.DialogStateEnded {
-			m.Close()
+	codecs := opts.Codecs
+	if len(codecs) == 0 {
+		codecs = d.mediaConf.Codecs
+	}
+	sess := &media.MediaSessionWebrtc{Codecs: slices.Clone(codecs)}
+	if err = sess.Init(d.Context(), conf); err != nil {
+		return nil, err
+	}
+	med := &DialogWebrtc{}
+	d.OnState(func(state sip.DialogState) {
+		if state == sip.DialogStateEnded {
+			_ = med.Close()
 		}
 	})
 
-	return m, d.answerWebrtcPion(m, d.InviteRequest.Body(), opts)
-}
-
-func (d *DialogServerSession) answerWebrtcPion(m *DialogWebrtcPion, sdpBody []byte, opts AnswerWebrtcPionOptions) error {
-	sess := &mediawebrtc.MediaSession{
-		Codecs: opts.Codecs,
-	}
-	if err := sess.Init(opts.WebrtcConfig); err != nil {
-		return err
-	}
-
-	err := func() error {
-		if err := sess.RemoteSDP(context.TODO(), sdpBody, false); err != nil {
+	err = func() error {
+		if err = sess.RemoteSDP(d.Context(), remoteSDP, false); err != nil {
 			return err
 		}
-
-		localSDP, err := sess.LocalSDP(context.TODO(), true)
+		localSDP, err := sess.LocalSDP(d.Context(), true)
 		if err != nil {
 			return err
 		}
-
-		if err := d.RespondSDP(localSDP); err != nil {
+		if err = d.RespondSDP(localSDP); err != nil {
 			return err
 		}
-
-		if err := sess.Finalize(context.TODO()); err != nil {
+		if err = sess.Finalize(d.Context()); err != nil {
+			return err
+		}
+		rtpSess := media.NewRTPSessionWebrtc(sess)
+		med.init(sess, rtpSess)
+		if err = rtpSess.MonitorBackground(); err != nil {
 			return err
 		}
 		return nil
 	}()
-
 	if err != nil {
-		return errors.Join(err, sess.Close())
+		return nil, errors.Join(err, sess.Close())
 	}
 
-	m.OnClose(func() error {
-		return sess.Close()
-	})
-
-	m.mediaSession = sess
-	m.registerDialogCallbacks(&d.dialogCallbacks, opts.OnMediaUpdate)
-
-	// Make this faster access for now
-	m.RTPPacketReader = m.mediaSession.RTPPacketReader
-	m.RTPPacketWriter = m.mediaSession.RTPPacketWriter
-	return nil
-}
-
-func sdReadAddress(sd sdp.SessionDescription) string {
-	ci, _ := sd.ConnectionInformation()
-	if ci.IP == nil {
-		return ""
-	}
-
-	return ci.IP.String()
+	d.dialogCallbacks.mu.Lock()
+	d.onReferDialog = opts.OnRefer
+	d.onClose = append(d.onClose, med.Close)
+	d.dialogCallbacks.mu.Unlock()
+	return med, nil
 }

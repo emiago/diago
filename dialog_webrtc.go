@@ -1,332 +1,306 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2026, Emir Aganovic
+
 package diago
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/emiago/diago/media"
-	"github.com/emiago/diago/mediawebrtc"
 	"github.com/pion/rtcp"
 )
 
-type webrtcPionSession struct {
-	Laddr string
-	Raddr string
-	Codec media.Codec
+// DialogWebrtc exposes the direct ICE + DTLS-SRTP media stack negotiated
+// through SIP. It is independent from DialogWebrtcPion, which uses a Pion
+// PeerConnection and remains available for browser-oriented calls.
+type DialogWebrtc struct {
+	mu sync.Mutex
 
-	writer *mediawebrtc.RTPWriterTrack
-	reader *mediawebrtc.RTPReaderTrack
-}
+	mediaSession *media.MediaSessionWebrtc
+	rtpSession   *media.RTPSessionWebrtc
 
-func (s *webrtcPionSession) StopRTP(rw int8, dur time.Duration) error {
-	t := time.Now().Add(dur)
-	if rw&1 > 0 {
-		return s.reader.Receiver.SetReadDeadline(t)
-	}
-	if rw&2 > 0 {
-		// if dur == 0 {
-		// 	return s.writer.sender.Stop()
-		// }
-		return fmt.Errorf("no support for duration based RTP write stop")
-	}
-
-	e1 := s.reader.Receiver.SetReadDeadline(t)
-	// e2 := s.writer.sender.Stop()
-	return e1
-}
-func (s *webrtcPionSession) StartRTP(rw int8) error {
-	if rw&1 > 0 {
-		return s.reader.Receiver.SetReadDeadline(time.Time{})
-	}
-	if rw&2 > 0 {
-		return fmt.Errorf("no support to restart writer")
-	}
-	return s.reader.Receiver.SetReadDeadline(time.Time{})
-}
-
-// DialogWebrtcPion exposes media negotiated through a Pion PeerConnection.
-type DialogWebrtcPion struct {
-	mu      sync.Mutex
-	onClose func() error
-	log     *slog.Logger
-	// peerConnection *webrtc.PeerConnection
-	mediaSession *mediawebrtc.MediaSession
-
-	RTPPacketWriter *media.RTPPacketWriter
+	// RTPPacketReader is the default RTP payload reader. Prefer AudioReader when
+	// an application may install media interceptors.
 	RTPPacketReader *media.RTPPacketReader
+	// RTPPacketWriter is the default RTP packetizer. Prefer AudioWriter when an
+	// application may install media interceptors.
+	RTPPacketWriter *media.RTPPacketWriter
 
 	audioReader io.Reader
 	audioWriter io.Writer
+	onClose     func() error
+	closed      bool
 }
 
-func (d *DialogWebrtcPion) registerDialogCallbacks(c *dialogCallbacks, onMediaUpdate func(*DialogWebrtcPion)) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	var pendingSession *mediawebrtc.MediaSession
-	c.onRemoteSDP = func(ctx context.Context, remoteSDP []byte, offered bool) error {
-		d.mu.Lock()
-		defer d.mu.Unlock()
-
-		if d.mediaSession == nil {
-			return fmt.Errorf("reinvite called on non initialized media")
-		}
-
-		sess := d.mediaSession
-		if !offered {
-			sess = d.mediaSession.Fork()
-			pendingSession = sess
-		}
-
-		if err := sess.RemoteSDP(ctx, remoteSDP, offered); err != nil {
-			return err
-		}
-		if onMediaUpdate != nil {
-			onMediaUpdate(d)
-		}
-		return nil
-	}
-	c.onLocalSDP = func(ctx context.Context, answered bool, mode string, mediaSession ...*media.MediaSession) ([]byte, error) {
-		d.mu.Lock()
-		defer d.mu.Unlock()
-		if d.mediaSession == nil {
-			return nil, fmt.Errorf("reinvite called on non initialized media")
-		}
-
-		sess := d.mediaSession
-		if pendingSession != nil {
-			sess = pendingSession
-		}
-		localSDP, err := sess.LocalSDP(ctx, answered)
-		if err != nil {
-			return nil, err
-		}
-		if pendingSession != nil && answered {
-			d.mediaSession = pendingSession
-			pendingSession = nil
-		}
-		return localSDP, nil
-	}
-	c.onFinalize = func(ctx context.Context) error {
-		return nil
-	}
-	c.onClose = append(c.onClose, d.Close)
+func (d *DialogWebrtc) init(sess *media.MediaSessionWebrtc, rtpSess *media.RTPSessionWebrtc) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.mediaSession = sess
+	d.rtpSession = rtpSess
+	codec := sess.Codec()
+	d.RTPPacketReader = media.NewRTPPacketReader(rtpSess, codec)
+	d.RTPPacketWriter = media.NewRTPPacketWriter(rtpSess, codec)
 }
 
-func (d *DialogWebrtcPion) MediaSession() *mediawebrtc.MediaSession {
+// MediaSession returns the direct WebRTC transport session.
+func (d *DialogWebrtc) MediaSession() *media.MediaSessionWebrtc {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	return d.mediaSession
 }
 
-// OnReadRTCP sets a callback for each RTCP packet received by the WebRTC
-// media session. Passing nil disables the callback.
-func (d *DialogWebrtcPion) OnReadRTCP(f func(pkt rtcp.Packet, rtpStats mediawebrtc.RTPReadStats)) {
+// RTPSession returns the RTP/RTCP statistics session.
+func (d *DialogWebrtc) RTPSession() *media.RTPSessionWebrtc {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.mediaSession != nil {
-		d.mediaSession.OnReadRTCP(f)
+	return d.rtpSession
+}
+
+// OnReadRTCP sets a callback for received RTCP packets. Passing nil disables it.
+func (d *DialogWebrtc) OnReadRTCP(f func(rtcp.Packet, media.RTPReadStats)) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.rtpSession != nil {
+		d.rtpSession.OnReadRTCP(f)
 	}
 }
 
-// OnWriteRTCP sets a callback for each RTCP packet sent by the WebRTC media
-// session, including reports generated by Pion. Passing nil disables it.
-func (d *DialogWebrtcPion) OnWriteRTCP(f func(pkt rtcp.Packet, rtpStats mediawebrtc.RTPWriteStats)) {
+// OnWriteRTCP sets a callback for sent RTCP packets. Passing nil disables it.
+func (d *DialogWebrtc) OnWriteRTCP(f func(rtcp.Packet, media.RTPWriteStats)) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.mediaSession != nil {
-		d.mediaSession.OnWriteRTCP(f)
+	if d.rtpSession != nil {
+		d.rtpSession.OnWriteRTCP(f)
 	}
 }
 
-func (d *DialogWebrtcPion) OnClose(f func() error) {
+// OnClose adds a cleanup hook. Hooks run once when Close is first called.
+func (d *DialogWebrtc) OnClose(f func() error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.onCloseUnsafe(f)
-}
-
-func (d *DialogWebrtcPion) onCloseUnsafe(f func() error) {
-	if d.onClose != nil {
-		prev := d.onClose
-		d.onClose = func() error {
-			return errors.Join(prev(), f())
-		}
+	if f == nil {
 		return
 	}
-	d.onClose = f
+	if d.onClose == nil {
+		d.onClose = f
+		return
+	}
+	previous := d.onClose
+	d.onClose = func() error { return errors.Join(previous(), f()) }
 }
 
-func (d *DialogWebrtcPion) Close() error {
+// Close stops RTCP monitoring and closes ICE, DTLS and SRTP resources.
+func (d *DialogWebrtc) Close() error {
 	d.mu.Lock()
+	if d.closed {
+		d.mu.Unlock()
+		return nil
+	}
+	d.closed = true
 	onClose := d.onClose
 	d.onClose = nil
+	rtpSess := d.rtpSession
+	sess := d.mediaSession
 	d.mu.Unlock()
-	if onClose == nil {
-		return nil
+
+	var hookErr, rtpErr, mediaErr error
+	if onClose != nil {
+		hookErr = onClose()
 	}
-	return onClose()
+	if rtpSess != nil {
+		rtpErr = rtpSess.MonitorClose()
+	}
+	if sess != nil {
+		mediaErr = sess.Close()
+	}
+	return errors.Join(hookErr, rtpErr, mediaErr)
 }
 
-type AudioReaderWebrtcPionOption func(d *DialogWebrtcPion) error
+type AudioReaderWebrtcOption func(*DialogWebrtc) error
 
-func WithAudioReaderWebrtcPionProps(p *MediaProps) AudioReaderWebrtcPionOption {
-	return func(d *DialogWebrtcPion) error {
-		p.Codec = d.mediaSession.Codec()
-		p.Laddr = d.mediaSession.Laddr
-		p.Raddr = d.mediaSession.Raddr
+// WithAudioReaderWebrtcProps returns the negotiated codec and ICE pair.
+func WithAudioReaderWebrtcProps(props *MediaProps) AudioReaderWebrtcOption {
+	return func(d *DialogWebrtc) error {
+		if props == nil {
+			return fmt.Errorf("media props are nil")
+		}
+		if d.mediaSession == nil {
+			return fmt.Errorf("no media setup")
+		}
+		props.Codec = d.mediaSession.Codec()
+		props.Laddr = d.mediaSession.Laddr
+		props.Raddr = d.mediaSession.Raddr
 		return nil
 	}
 }
 
-func WithAudioReaderWebrtcPionDTMF(r *DTMFReader) AudioReaderWebrtcPionOption {
-	return func(d *DialogWebrtcPion) error {
-		ar := d.audioReaderUnsafe()
-		r.dtmfReader = media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, d.RTPPacketReader, ar)
-		r.rtpDeadline = d.mediaSession
+func WithAudioReaderWebrtcDTMF(reader *DTMFReader) AudioReaderWebrtcOption {
+	return func(d *DialogWebrtc) error {
+		if reader == nil {
+			return fmt.Errorf("DTMF reader is nil")
+		}
+		if d.mediaSession == nil || d.RTPPacketReader == nil {
+			return fmt.Errorf("no media setup")
+		}
+		reader.dtmfReader = media.NewRTPDTMFReader(
+			media.CodecTelephoneEvent8000,
+			d.RTPPacketReader,
+			d.audioReaderUnsafe(),
+		)
+		reader.rtpDeadline = d.mediaSession
+		d.audioReader = reader
 		return nil
 	}
 }
 
-func (d *DialogWebrtcPion) AudioReader(opts ...AudioReaderWebrtcPionOption) (io.Reader, error) {
+// AudioReader returns an encoded audio payload reader.
+func (d *DialogWebrtc) AudioReader(opts ...AudioReaderWebrtcOption) (io.Reader, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-
-	for _, o := range opts {
-		if err := o(d); err != nil {
+	if d.mediaSession == nil || d.RTPPacketReader == nil {
+		return nil, fmt.Errorf("no media setup")
+	}
+	for _, opt := range opts {
+		if err := opt(d); err != nil {
 			return nil, err
 		}
 	}
 	return d.audioReaderUnsafe(), nil
 }
 
-func (d *DialogWebrtcPion) audioReaderUnsafe() io.Reader {
+func (d *DialogWebrtc) audioReaderUnsafe() io.Reader {
 	if d.audioReader != nil {
 		return d.audioReader
 	}
-
-	return d.mediaSession.RTPPacketReader
+	return d.RTPPacketReader
 }
 
-func (d *DialogWebrtcPion) SetAudioReader(r io.Reader) {
+func (d *DialogWebrtc) SetAudioReader(reader io.Reader) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.audioReader = r
+	d.audioReader = reader
 }
 
-type AudioWriterWebrtcPionOption func(d *DialogWebrtcPion) error
+type AudioWriterWebrtcOption func(*DialogWebrtc) error
 
-func WithAudioWriterWebrtcPionProps(p *MediaProps) AudioWriterWebrtcPionOption {
-	return func(d *DialogWebrtcPion) error {
-		p.Codec = d.mediaSession.Codec()
-		p.Laddr = d.mediaSession.Laddr
-		p.Raddr = d.mediaSession.Raddr
+// WithAudioWriterWebrtcProps returns the negotiated codec and ICE pair.
+func WithAudioWriterWebrtcProps(props *MediaProps) AudioWriterWebrtcOption {
+	return func(d *DialogWebrtc) error {
+		if props == nil {
+			return fmt.Errorf("media props are nil")
+		}
+		if d.mediaSession == nil {
+			return fmt.Errorf("no media setup")
+		}
+		props.Codec = d.mediaSession.Codec()
+		props.Laddr = d.mediaSession.Laddr
+		props.Raddr = d.mediaSession.Raddr
 		return nil
 	}
 }
 
-func WithAudioWriterWebrtcPionDTMF(r *DTMFWriter) AudioWriterWebrtcPionOption {
-	return func(m *DialogWebrtcPion) error {
-		aw := m.audioWriterUnsafe()
-		r.dtmfWriter = media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, m.RTPPacketWriter, aw)
+func WithAudioWriterWebrtcDTMF(writer *DTMFWriter) AudioWriterWebrtcOption {
+	return func(d *DialogWebrtc) error {
+		if writer == nil {
+			return fmt.Errorf("DTMF writer is nil")
+		}
+		if d.RTPPacketWriter == nil {
+			return fmt.Errorf("no media setup")
+		}
+		writer.dtmfWriter = media.NewRTPDTMFWriter(
+			media.CodecTelephoneEvent8000,
+			d.RTPPacketWriter,
+			d.audioWriterUnsafe(),
+		)
+		d.audioWriter = writer
 		return nil
 	}
 }
 
-func (d *DialogWebrtcPion) AudioWriter(opts ...AudioWriterWebrtcPionOption) (io.Writer, error) {
+// AudioWriter returns an encoded audio payload writer.
+func (d *DialogWebrtc) AudioWriter(opts ...AudioWriterWebrtcOption) (io.Writer, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-
-	for _, o := range opts {
-		if err := o(d); err != nil {
+	if d.mediaSession == nil || d.RTPPacketWriter == nil {
+		return nil, fmt.Errorf("no media setup")
+	}
+	for _, opt := range opts {
+		if err := opt(d); err != nil {
 			return nil, err
 		}
 	}
 	return d.audioWriterUnsafe(), nil
 }
 
-func (d *DialogWebrtcPion) audioWriterUnsafe() io.Writer {
+func (d *DialogWebrtc) audioWriterUnsafe() io.Writer {
 	if d.audioWriter != nil {
 		return d.audioWriter
 	}
-
 	return d.RTPPacketWriter
 }
 
-func (d *DialogWebrtcPion) SetAudioWriter(w io.Writer) {
+func (d *DialogWebrtc) SetAudioWriter(writer io.Writer) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.audioWriter = w
+	d.audioWriter = writer
 }
 
-func (m *DialogWebrtcPion) AudioReaderDTMF() (*DTMFReader, error) {
-	r := &DTMFReader{}
-	return r, WithAudioReaderWebrtcPionDTMF(r)(m)
+func (d *DialogWebrtc) AudioReaderDTMF() (*DTMFReader, error) {
+	reader := &DTMFReader{}
+	_, err := d.AudioReader(WithAudioReaderWebrtcDTMF(reader))
+	return reader, err
 }
 
-func (m *DialogWebrtcPion) AudioWriterDTMF() (*DTMFWriter, error) {
-	w := &DTMFWriter{}
-	return w, WithAudioWriterWebrtcPionDTMF(w)(m)
+func (d *DialogWebrtc) AudioWriterDTMF() (*DTMFWriter, error) {
+	writer := &DTMFWriter{}
+	_, err := d.AudioWriter(WithAudioWriterWebrtcDTMF(writer))
+	return writer, err
 }
 
-func (m *DialogWebrtcPion) Echo() error {
-	audioR, err := m.AudioReader()
+// Echo copies received encoded audio back to the remote peer.
+func (d *DialogWebrtc) Echo() error {
+	reader, err := d.AudioReader()
 	if err != nil {
 		return err
 	}
-
-	audioW, err := m.AudioWriter()
+	writer, err := d.AudioWriter()
 	if err != nil {
 		return err
 	}
-
-	_, err = media.Copy(audioR, audioW)
-	if err != nil {
-		return err
-	}
-	return nil
+	_, err = media.Copy(reader, writer)
+	return err
 }
 
-// PlaybackCreate creates playback for audio
-func (d *DialogWebrtcPion) PlaybackCreate() (AudioPlayback, error) {
-	mprops := MediaProps{}
-	w := d.audioWriterProps(&mprops)
-	if w == nil {
-		return AudioPlayback{}, fmt.Errorf("no media setup")
+// PlaybackCreate creates playback over the negotiated WebRTC RTP writer.
+func (d *DialogWebrtc) PlaybackCreate() (AudioPlayback, error) {
+	props := MediaProps{}
+	writer, err := d.AudioWriter(WithAudioWriterWebrtcProps(&props))
+	if err != nil {
+		return AudioPlayback{}, err
 	}
-
-	if mprops.Codec.SampleRate == 0 {
+	if props.Codec.SampleRate == 0 {
 		return AudioPlayback{}, fmt.Errorf("no codec defined")
 	}
-	p := NewAudioPlayback(w, mprops.Codec)
-	// On each play it needs reset RTP timestamp
-	p.onPlay = d.RTPPacketWriter.ResetTimestamp
-	return p, nil
+	playback := NewAudioPlayback(writer, props.Codec)
+	playback.onPlay = d.RTPPacketWriter.ResetTimestamp
+	return playback, nil
 }
 
-func (d *DialogWebrtcPion) audioWriterProps(p *MediaProps) io.Writer {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	WithAudioWriterWebrtcPionProps(p)(d)
-	return d.RTPPacketWriter
-}
-
-// AudioStereoRecordingCreate creates wav recording.
-// MUST call Close for correct storing
-func (d *DialogWebrtcPion) AudioStereoRecordingCreate(wawFile *os.File) (AudioStereoRecordingWav, error) {
-	arProps, awProps := MediaProps{}, MediaProps{}
-	ar, err := d.AudioReader(WithAudioReaderWebrtcPionProps(&arProps))
+// AudioStereoRecordingCreate creates a stereo WAV recording pipeline. The
+// caller must use the returned recording's reader and writer and call Close.
+func (d *DialogWebrtc) AudioStereoRecordingCreate(wavFile *os.File) (AudioStereoRecordingWav, error) {
+	readerProps, writerProps := MediaProps{}, MediaProps{}
+	reader, err := d.AudioReader(WithAudioReaderWebrtcProps(&readerProps))
 	if err != nil {
 		return AudioStereoRecordingWav{}, err
 	}
-
-	aw, err := d.AudioWriter(WithAudioWriterWebrtcPionProps(&awProps))
+	writer, err := d.AudioWriter(WithAudioWriterWebrtcProps(&writerProps))
 	if err != nil {
 		return AudioStereoRecordingWav{}, err
 	}
-	return newDialogRecordingWav(wawFile, ar, arProps, aw, awProps)
+	return newDialogRecordingWav(wavFile, reader, readerProps, writer, writerProps)
 }
