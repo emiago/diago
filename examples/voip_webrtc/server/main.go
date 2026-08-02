@@ -42,7 +42,7 @@ func run(ctx context.Context) error {
 	return server.Serve(ctx, func(dialog *diago.DialogServerSession) {
 		dialog.Trying()
 		dialog.Ringing()
-		med, answerErr := dialog.AnswerVoipWebrtc(diago.AnswerVoipWebrtcOptions{
+		med, answerErr := dialog.AnswerWebrtc(diago.AnswerWebrtcOptions{
 			WebrtcConfig: media.MediaSessionWebrtcConfig{
 				NetworkTypes:    []ice.NetworkType{ice.NetworkTypeUDP4},
 				IncludeLoopback: true,

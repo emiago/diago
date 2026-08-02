@@ -11,9 +11,11 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-type AnswerWebrtcOptions struct {
+// AnswerWebrtcPionOptions configures an inbound SIP call backed by a Pion
+// PeerConnection.
+type AnswerWebrtcPionOptions struct {
 	// OnMediaUpdate triggers when media update happens. It is blocking func, so make sure you exit
-	OnMediaUpdate func(d *DialogWebrtc)
+	OnMediaUpdate func(d *DialogWebrtcPion)
 
 	// OnRefer is called on successfull REFER handling
 	//
@@ -28,8 +30,9 @@ type AnswerWebrtcOptions struct {
 	WebrtcConfig webrtc.Configuration
 }
 
-func (d *DialogServerSession) AnswerWebrtc(opts AnswerWebrtcOptions) (*DialogWebrtc, error) {
-	m := &DialogWebrtc{
+// AnswerWebrtcPion answers a SIP call using the Pion WebRTC backend.
+func (d *DialogServerSession) AnswerWebrtcPion(opts AnswerWebrtcPionOptions) (*DialogWebrtcPion, error) {
+	m := &DialogWebrtcPion{
 		log: sip.DefaultLogger().With("call_id", d.InviteRequest.CallID().Value()),
 	}
 
@@ -43,10 +46,10 @@ func (d *DialogServerSession) AnswerWebrtc(opts AnswerWebrtcOptions) (*DialogWeb
 		}
 	})
 
-	return m, d.answerWebrtc(m, d.InviteRequest.Body(), opts)
+	return m, d.answerWebrtcPion(m, d.InviteRequest.Body(), opts)
 }
 
-func (d *DialogServerSession) answerWebrtc(m *DialogWebrtc, sdpBody []byte, opts AnswerWebrtcOptions) error {
+func (d *DialogServerSession) answerWebrtcPion(m *DialogWebrtcPion, sdpBody []byte, opts AnswerWebrtcPionOptions) error {
 	sess := &mediawebrtc.MediaSession{
 		Codecs: opts.Codecs,
 	}

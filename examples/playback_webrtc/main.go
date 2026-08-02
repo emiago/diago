@@ -54,7 +54,7 @@ func start(ctx context.Context) error {
 func Playback(inDialog *diago.DialogServerSession) error {
 	inDialog.Trying()  // Progress -> 100 Trying
 	inDialog.Ringing() // Ringing -> 180 Response
-	med, err := inDialog.AnswerWebrtc(diago.AnswerWebrtcOptions{})
+	med, err := inDialog.AnswerWebrtcPion(diago.AnswerWebrtcPionOptions{})
 	if err != nil {
 		return err
 	} // Answer -> 200 Response
