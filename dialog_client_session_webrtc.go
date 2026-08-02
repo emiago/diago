@@ -1,214 +1,162 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2026, Emir Aganovic
+
 package diago
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/emiago/diago/media"
-	mediasdp "github.com/emiago/diago/media/sdp"
-	"github.com/emiago/diago/mediawebrtc"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/pion/webrtc/v3"
 )
 
-// InviteWebrtcPionOptions configures a SIP call backed by a Pion
-// PeerConnection.
-type InviteWebrtcPionOptions struct {
-	Originator DialogSession
-	OnResponse func(res *sip.Response) error
-	// OnMediaUpdate called when media is changed.
-	// NOTE: you should not block this call as it blocks response processing.
-	OnMediaUpdate func(d *DialogWebrtcPion)
-	// OnRefer is called on successfull REFER handling
-	//
-	// It creates new dialog (NewDialog) on which you need to call Invite() and Ack()
-	// Any error from invite, ack or other processing should be returned for correct Notify handling
-	//
-	// NOTE: IT is SCOPED to handler and exiting handler will Close/Terminate this dialog!
-	// OnRefer OnReferDialogFunc
-	// For digest authentication
-	Username string
-	Password string
-
-	// Custom headers to pass. DO NOT SET THIS to nil
-	Headers []sip.Header
-	// Stop on early media. ErrClientEarlyMedia will be returned
+// InviteWebrtcOptions configures a SIP call using diago's direct ICE +
+// DTLS-SRTP media stack. A temporary DTLS certificate is generated when the
+// configuration does not provide one.
+type InviteWebrtcOptions struct {
+	OnResponse func(*sip.Response) error
+	OnRefer    OnReferDialogFunc
+	Username   string
+	Password   string
+	Headers    []sip.Header
+	// Stop after WebRTC media is established from a 183 Session Progress
+	// response. InviteWebrtc returns the usable media together with
+	// ErrClientEarlyMedia; call WaitAnswerWebrtc to finish the call.
 	EarlyMediaDetect bool
 
-	WebrtcConfig webrtc.Configuration
+	WebrtcConfig media.MediaSessionWebrtcConfig
 }
 
-// InviteWebrtcPion creates a SIP call using the Pion WebRTC backend.
-func (d *DialogClientSession) InviteWebrtcPion(ctx context.Context, opts InviteWebrtcPionOptions) (*DialogWebrtcPion, error) {
-	m := &DialogWebrtcPion{}
+// InviteWebrtc sends an SDP offer, completes ICE/DTLS-SRTP negotiation and
+// returns encoded audio RTP access for the established SIP dialog.
+//
+// When EarlyMediaDetect is enabled and a 183 response contains SDP, the method
+// establishes the WebRTC transport and returns it with ErrClientEarlyMedia.
+// The caller can use the returned media immediately, then call
+// WaitAnswerWebrtc to wait for the final response and ACK it.
+func (d *DialogClientSession) InviteWebrtc(ctx context.Context, opts InviteWebrtcOptions) (*DialogWebrtc, error) {
+	conf, err := prepareWebrtcConfig(opts.WebrtcConfig)
+	if err != nil {
+		return nil, err
+	}
+	sess := &media.MediaSessionWebrtc{Codecs: slices.Clone(d.mediaConfig.Codecs)}
+	if err = sess.Init(ctx, conf); err != nil {
+		return nil, err
+	}
+	med := &DialogWebrtc{}
 
-	// TODO this can be racy
-	d.Dialog.OnState(func(s sip.DialogState) {
-		if s == sip.DialogStateEnded {
-			m.Close()
-		}
-
-		if s == sip.DialogStateConfirmed {
-			// Do some finalize on ACK?
-
+	d.Dialog.OnState(func(state sip.DialogState) {
+		if state == sip.DialogStateEnded {
+			_ = med.Close()
 		}
 	})
 
-	if err := d.inviteWebrtcPion(ctx, m, opts); err != nil {
-		m.Close()
-		return nil, err
-	}
-	m.registerDialogCallbacks(&d.dialogCallbacks, opts.OnMediaUpdate)
-
-	if m.mediaSession.Codec().SampleRate == 0 {
-		panic("no codec")
-	}
-
-	// Make this faster access for now
-	m.RTPPacketReader = m.mediaSession.RTPPacketReader
-	m.RTPPacketWriter = m.mediaSession.RTPPacketWriter
-
-	return m, nil
-}
-
-func webrtcPionSDPMediaDirection(body []byte) string {
-	sd := mediasdp.SessionDescription{}
-	if err := mediasdp.Unmarshal(body, &sd); err != nil {
-		return mediasdp.ModeSendrecv
-	}
-
-	direction := sd.MediaDirection()
-	if direction == "" {
-		return mediasdp.ModeSendrecv
-	}
-	return direction
-}
-
-func webrtcPionSDPAudioCodec(body []byte, current media.Codec) (media.Codec, error) {
-	sd := mediasdp.SessionDescription{}
-	if err := mediasdp.Unmarshal(body, &sd); err != nil {
-		return current, err
-	}
-
-	md, err := sd.MediaDescription("audio")
-	if err != nil {
-		return current, err
-	}
-
-	remoteCodecs := make([]media.Codec, len(md.Formats))
-	n, err := media.CodecsFromSDPRead(md.Formats, sd.Values("a"), remoteCodecs)
-	if err != nil {
-		return current, err
-	}
-	remoteCodecs = remoteCodecs[:n]
-
-	for _, c := range remoteCodecs {
-		switch c.PayloadType {
-		case media.CodecAudioUlaw.PayloadType, media.CodecAudioAlaw.PayloadType:
-			return c, nil
-		}
-	}
-
-	return current, fmt.Errorf("reinvite has no supported webrtc audio codec: remote=%v", remoteCodecs)
-}
-
-func applyWebrtcPionRemoteCodec(sess *webrtcPionSession, rtpWriter *media.RTPPacketWriter, body []byte) error {
-	if sess == nil || sess.writer == nil {
-		return fmt.Errorf("webrtc media session is not initialized")
-	}
-	if rtpWriter == nil {
-		return fmt.Errorf("webrtc rtp packet writer is not initialized")
-	}
-
-	codec, err := webrtcPionSDPAudioCodec(body, sess.Codec)
-	if err != nil {
-		return err
-	}
-	if codec == sess.Codec {
-		return nil
-	}
-
-	mimeType, err := parseWebrtcPionCodecMimeType(codec.PayloadType)
-	if err != nil {
-		return err
-	}
-
-	track, err := webrtc.NewTrackLocalStaticRTP(
-		webrtc.RTPCodecCapability{MimeType: mimeType},
-		"audio",
-		"diago",
-	)
-	if err != nil {
-		return err
-	}
-
-	if err := sess.writer.ReplaceTrack(track); err != nil {
-		return err
-	}
-
-	sess.Codec = codec
-	rtpWriter.UpdateWriter(sess.writer, codec)
-	return nil
-}
-
-// func applyWebrtcPionRemoteDirection(writer *WebrtcTrackRTPWriter, remoteDirection string) error {
-// 	shouldSend := remoteDirection == mediasdp.ModeSendrecv || remoteDirection == mediasdp.ModeRecvonly || remoteDirection == ""
-// 	return writer.UpdateDirection(shouldSend)
-// }
-
-func (d *DialogClientSession) inviteWebrtcPion(ctx context.Context, m *DialogWebrtcPion, opts InviteWebrtcPionOptions) error {
-	sess := &mediawebrtc.MediaSession{
-		// Keep the WebRTC media session aligned with the dialog codec config so
-		// later re-INVITEs can negotiate against the same codec set.
-		Codecs: d.mediaConfig.Codecs,
-	}
-	if err := sess.Init(opts.WebrtcConfig); err != nil {
-		return err
-	}
-
-	err := func() error {
-		sd, err := sess.LocalSDP(ctx, false)
+	err = func() error {
+		localSDP, err := sess.LocalSDP(ctx, false)
 		if err != nil {
 			return err
 		}
-
-		if err := d.doInvite(ctx, sd); err != nil {
+		for _, header := range opts.Headers {
+			if header == nil {
+				return fmt.Errorf("invite header is nil")
+			}
+			d.InviteRequest.AppendHeader(header)
+		}
+		if err = d.doInvite(ctx, localSDP); err != nil {
 			return err
 		}
-
-		if err := d.DialogClientSession.WaitAnswer(ctx, sipgo.AnswerOptions{
+		answerOpts := sipgo.AnswerOptions{
 			OnResponse: opts.OnResponse,
 			Username:   opts.Username,
 			Password:   opts.Password,
-		}); err != nil {
+		}
+		if opts.EarlyMediaDetect {
+			onResponse := answerOpts.OnResponse
+			answerOpts.OnResponse = func(res *sip.Response) error {
+				if onResponse != nil {
+					if err := onResponse(res); err != nil {
+						return err
+					}
+				}
+				if res.StatusCode != sip.StatusSessionInProgress {
+					return nil
+				}
+				contentType := res.ContentType()
+				if contentType == nil || contentType.Value() != "application/sdp" || res.Body() == nil {
+					return nil
+				}
+				if err := setupWebrtcMedia(ctx, sess, med, res.Body()); err != nil {
+					return err
+				}
+				return ErrClientEarlyMedia
+			}
+		}
+		if err = d.DialogClientSession.WaitAnswer(ctx, answerOpts); err != nil {
 			return err
 		}
-
-		remoteSD := d.InviteResponse.Body()
-		if err := sess.RemoteSDP(ctx, remoteSD, true); err != nil {
+		remoteSDP := d.InviteResponse.Body()
+		if remoteSDP == nil {
+			return fmt.Errorf("no SDP in response")
+		}
+		if err = sess.RemoteSDP(ctx, remoteSDP, true); err != nil {
 			return err
 		}
-
-		if err := d.Ack(ctx); err != nil {
+		if err = d.Ack(ctx); err != nil {
 			return err
 		}
-
-		if err := sess.Finalize(ctx); err != nil {
-			return err
-		}
-		return nil
+		return finalizeWebrtcMedia(ctx, sess, med)
 	}()
-
 	if err != nil {
-		return errors.Join(err, sess.Close())
+		if errors.Is(err, ErrClientEarlyMedia) && med.MediaSession() != nil {
+			d.registerWebrtcDialogCallbacks(med, opts.OnRefer)
+			return med, err
+		}
+		return nil, errors.Join(err, sess.Close())
 	}
 
-	m.OnClose(func() error {
-		return sess.Close()
-	})
+	d.registerWebrtcDialogCallbacks(med, opts.OnRefer)
+	return med, nil
+}
 
-	m.mediaSession = sess
+func setupWebrtcMedia(ctx context.Context, sess *media.MediaSessionWebrtc, med *DialogWebrtc, remoteSDP []byte) error {
+	if err := sess.RemoteSDP(ctx, remoteSDP, true); err != nil {
+		return err
+	}
+	return finalizeWebrtcMedia(ctx, sess, med)
+}
+
+func finalizeWebrtcMedia(ctx context.Context, sess *media.MediaSessionWebrtc, med *DialogWebrtc) error {
+	if err := sess.Finalize(ctx); err != nil {
+		return err
+	}
+	rtpSess := media.NewRTPSessionWebrtc(sess)
+	med.init(sess, rtpSess)
+	if err := rtpSess.MonitorBackground(); err != nil {
+		return errors.Join(err, rtpSess.Close())
+	}
 	return nil
+}
+
+func (d *DialogClientSession) registerWebrtcDialogCallbacks(med *DialogWebrtc, onRefer OnReferDialogFunc) {
+	d.dialogCallbacks.mu.Lock()
+	d.onReferDialog = onRefer
+	d.onClose = append(d.onClose, med.Close)
+	d.dialogCallbacks.mu.Unlock()
+}
+
+// WaitAnswerWebrtc continues an InviteWebrtc call that returned
+// ErrClientEarlyMedia. The early WebRTC transport remains active while this
+// method waits for the final response; on success it sends the ACK.
+func (d *DialogClientSession) WaitAnswerWebrtc(ctx context.Context, med *DialogWebrtc, opts sipgo.AnswerOptions) error {
+	if med == nil || med.MediaSession() == nil {
+		return fmt.Errorf("dialog WebRTC media is not initialized")
+	}
+	if err := d.DialogClientSession.WaitAnswer(ctx, opts); err != nil {
+		return err
+	}
+	return d.Ack(ctx)
 }
