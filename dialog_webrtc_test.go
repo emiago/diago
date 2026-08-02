@@ -1,115 +1,65 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2026, Emir Aganovic
+
 package diago
 
 import (
 	"bytes"
 	"context"
-	"net"
 	"testing"
 	"time"
 
 	"github.com/emiago/diago/media"
-	"github.com/emiago/diago/mediawebrtc"
-	"github.com/emiago/diago/testdata"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/pion/rtp"
-	"github.com/stretchr/testify/assert"
+	"github.com/pion/ice/v4"
 	"github.com/stretchr/testify/require"
 )
 
-func TestDialogWebrtcPionAudioReaderWriterProps(t *testing.T) {
-	dialog := &DialogWebrtcPion{
-		mediaSession: &mediawebrtc.MediaSession{
-			Codecs: []media.Codec{media.CodecAudioUlaw},
-			Laddr:  "local",
-			Raddr:  "remote",
-		},
-	}
-
-	readerProps := MediaProps{}
-	_, err := dialog.AudioReader(WithAudioReaderWebrtcPionProps(&readerProps))
-	require.NoError(t, err)
-	assert.Equal(t, media.CodecAudioUlaw, readerProps.Codec)
-	assert.Equal(t, "local", readerProps.Laddr)
-	assert.Equal(t, "remote", readerProps.Raddr)
-
-	writerProps := MediaProps{}
-	_, err = dialog.AudioWriter(WithAudioWriterWebrtcPionProps(&writerProps))
-	require.NoError(t, err)
-	assert.Equal(t, media.CodecAudioUlaw, writerProps.Codec)
-	assert.Equal(t, "local", writerProps.Laddr)
-	assert.Equal(t, "remote", writerProps.Raddr)
-}
-
-func TestDialogWebrtcPionServerPlaybackClientReceivesRTP(t *testing.T) {
-	require.NoError(t, webrtcPionInit([]net.IP{net.IPv4(127, 0, 0, 1)}))
-	t.Cleanup(func() {
-		require.NoError(t, webrtcPionInit([]net.IP{}))
-	})
-
+func TestIntegrationDialogWebrtcBidirectionalRTP(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	serverUA, err := sipgo.NewUA()
+	webRTCConfig := media.MediaSessionWebrtcConfig{
+		NetworkTypes:    []ice.NetworkType{ice.NetworkTypeUDP4},
+		IncludeLoopback: true,
+	}
+
+	serverUA, err := sipgo.NewUA(sipgo.WithUserAgent("voip-webrtc-server"))
 	require.NoError(t, err)
 	defer serverUA.Close()
+	server := NewDiago(serverUA, WithTransport(Transport{
+		Transport: "tcp",
+		BindHost:  "127.0.0.1",
+		BindPort:  0,
+	}))
 
-	server := NewDiago(serverUA,
-		WithTransport(Transport{
-			Transport: "tcp",
-			BindHost:  "127.0.0.1",
-			BindPort:  0,
-		}),
-	)
-
-	playDone := make(chan error, 1)
-	err = server.ServeBackground(ctx, func(inDialog *DialogServerSession) {
-		err := func() error {
-			inDialog.Trying()
-			inDialog.Ringing()
-
-			med, err := inDialog.AnswerWebrtcPion(AnswerWebrtcPionOptions{})
-			if err != nil {
-				return err
-			}
-			defer med.Close()
-
-			playfile, err := testdata.OpenFile("demo-echodone.wav")
-			if err != nil {
-				return err
-			}
-			defer playfile.Close()
-
-			pb, err := med.PlaybackCreate()
-			if err != nil {
-				return err
-			}
-			_, err = pb.Play(playfile, "audio/wav")
-			return err
-		}()
-
-		playDone <- err
-		if err == nil {
-			_ = inDialog.Hangup(context.Background())
+	serverMedia := make(chan *DialogWebrtc, 1)
+	serverErr := make(chan error, 1)
+	require.NoError(t, server.ServeBackground(ctx, func(dialog *DialogServerSession) {
+		med, answerErr := dialog.AnswerWebrtc(AnswerWebrtcOptions{
+			WebrtcConfig: webRTCConfig,
+		})
+		if answerErr != nil {
+			serverErr <- answerErr
+			return
 		}
-	})
-	require.NoError(t, err)
+		serverMedia <- med
+		<-dialog.Context().Done()
+	}))
 	require.NotZero(t, server.transports[0].BindPort)
 
-	clientUA, err := sipgo.NewUA()
+	clientUA, err := sipgo.NewUA(sipgo.WithUserAgent("voip-webrtc-client"))
 	require.NoError(t, err)
 	defer clientUA.Close()
-
-	client := NewDiago(clientUA,
-		WithTransport(Transport{
-			Transport: "tcp",
-			BindHost:  "127.0.0.1",
-			BindPort:  0,
-		}),
-	)
-
+	client := NewDiago(clientUA, WithTransport(Transport{
+		Transport: "tcp",
+		BindHost:  "127.0.0.1",
+		BindPort:  0,
+	},
+	))
 	dialog, err := client.NewDialog(sip.Uri{
-		User: "playback",
+		User: "media",
 		Host: "127.0.0.1",
 		Port: server.transports[0].BindPort,
 	}, NewDialogOptions{Transport: "tcp"})
@@ -118,150 +68,157 @@ func TestDialogWebrtcPionServerPlaybackClientReceivesRTP(t *testing.T) {
 
 	inviteCtx, inviteCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer inviteCancel()
-
-	med, err := dialog.InviteWebrtcPion(inviteCtx, InviteWebrtcPionOptions{})
-	require.NoError(t, err)
-	defer med.Close()
-
-	require.Eventually(t, func() bool {
-		med.mu.Lock()
-		defer med.mu.Unlock()
-		return med.mediaSession.RTPReaderReady()
-	}, 5*time.Second, 10*time.Millisecond)
-
-	require.NoError(t, med.mediaSession.StopRTP(1, 5*time.Second))
-
-	props := MediaProps{}
-	audioR, err := med.AudioReader(WithAudioReaderWebrtcPionProps(&props))
-	require.NoError(t, err)
-	require.Equal(t, media.CodecAudioUlaw, props.Codec)
-
-	buf := make([]byte, media.RTPBufSize)
-	var prevSeq uint16
-	var prevTimestamp uint32
-	for i := range 20 {
-		n, err := audioR.Read(buf)
-		require.NoError(t, err)
-		require.Equal(t, int(media.CodecAudioUlaw.SampleTimestamp()), n)
-
-		header := med.RTPPacketReader.PacketHeader
-		require.Equal(t, uint8(2), header.Version)
-		require.Equal(t, media.CodecAudioUlaw.PayloadType, header.PayloadType)
-		require.NotZero(t, header.SSRC)
-		require.NotEmpty(t, buf[:n])
-
-		if i > 0 {
-			require.Equal(t, prevSeq+1, header.SequenceNumber)
-			require.Equal(t, prevTimestamp+media.CodecAudioUlaw.SampleTimestamp(), header.Timestamp)
-		}
-		prevSeq = header.SequenceNumber
-		prevTimestamp = header.Timestamp
-	}
-
-	require.NoError(t, <-playDone)
-}
-
-type capturedRTPPacket struct {
-	header  rtp.Header
-	payload []byte
-}
-
-type recordingRTPWriter struct {
-	next    media.RTPWriter
-	packets chan capturedRTPPacket
-}
-
-func (w *recordingRTPWriter) WriteRTP(p *rtp.Packet) error {
-	payload := append([]byte(nil), p.Payload...)
-	select {
-	case w.packets <- capturedRTPPacket{header: p.Header, payload: payload}:
-	default:
-	}
-	return w.next.WriteRTP(p)
-}
-
-func TestDialogWebrtcPionServerPlaybackPayloadSurvivesWebrtc(t *testing.T) {
-	require.NoError(t, webrtcPionInit([]net.IP{net.IPv4(127, 0, 0, 1)}))
-	t.Cleanup(func() {
-		require.NoError(t, webrtcPionInit([]net.IP{}))
+	clientMed, err := dialog.InviteWebrtc(inviteCtx, InviteWebrtcOptions{
+		WebrtcConfig: webRTCConfig,
 	})
+	require.NoError(t, err)
+	defer clientMed.Close()
 
+	var serverMed *DialogWebrtc
+	select {
+	case serverMed = <-serverMedia:
+	case err = <-serverErr:
+		t.Fatalf("server failed to answer direct WebRTC call: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for direct WebRTC server media")
+	}
+	defer serverMed.Close()
+
+	require.NoError(t, clientMed.MediaSession().StopRTP(1, 5*time.Second))
+	require.NoError(t, serverMed.MediaSession().StopRTP(1, 5*time.Second))
+
+	clientWriter, err := clientMed.AudioWriter()
+	require.NoError(t, err)
+	serverReader, err := serverMed.AudioReader()
+	require.NoError(t, err)
+	clientPayload := bytes.Repeat([]byte{0x31}, int(media.CodecAudioUlaw.SampleTimestamp()))
+	n, err := clientWriter.Write(clientPayload)
+	require.NoError(t, err)
+	require.Equal(t, len(clientPayload), n)
+	received := make([]byte, media.RTPBufSize)
+	n, err = serverReader.Read(received)
+	require.NoError(t, err)
+	require.Equal(t, clientPayload, received[:n])
+
+	serverWriter, err := serverMed.AudioWriter()
+	require.NoError(t, err)
+	clientReader, err := clientMed.AudioReader()
+	require.NoError(t, err)
+	serverPayload := bytes.Repeat([]byte{0x73}, int(media.CodecAudioUlaw.SampleTimestamp()))
+	n, err = serverWriter.Write(serverPayload)
+	require.NoError(t, err)
+	require.Equal(t, len(serverPayload), n)
+	n, err = clientReader.Read(received)
+	require.NoError(t, err)
+	require.Equal(t, serverPayload, received[:n])
+
+	require.Equal(t, uint64(1), clientMed.RTPSession().WriteStats().PacketsCount)
+	require.Equal(t, uint64(1), clientMed.RTPSession().ReadStats().PacketsCount)
+	require.Equal(t, uint64(1), serverMed.RTPSession().WriteStats().PacketsCount)
+	require.Equal(t, uint64(1), serverMed.RTPSession().ReadStats().PacketsCount)
+	require.NoError(t, dialog.Hangup(ctx))
+}
+
+func TestIntegrationDialogWebrtcEarlyMedia(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	serverUA, err := sipgo.NewUA()
+	webRTCConfig := media.MediaSessionWebrtcConfig{
+		NetworkTypes:    []ice.NetworkType{ice.NetworkTypeUDP4},
+		IncludeLoopback: true,
+	}
+
+	serverUA, err := sipgo.NewUA(sipgo.WithUserAgent("voip-webrtc-early-media-server"))
 	require.NoError(t, err)
 	defer serverUA.Close()
+	server := NewDiago(serverUA, WithTransport(Transport{
+		Transport: "tcp",
+		BindHost:  "127.0.0.1",
+		BindPort:  0,
+	}))
 
-	sentPackets := make(chan capturedRTPPacket, 256)
-	startPlayback := make(chan struct{})
-	playDone := make(chan error, 1)
-
-	server := NewDiago(serverUA,
-		WithTransport(Transport{
-			Transport: "tcp",
-			BindHost:  "127.0.0.1",
-			BindPort:  0,
-		}),
-	)
-
-	err = server.ServeBackground(ctx, func(inDialog *DialogServerSession) {
-		err := func() error {
-			inDialog.Trying()
-			inDialog.Ringing()
-
-			med, err := inDialog.AnswerWebrtcPion(AnswerWebrtcPionOptions{})
-			if err != nil {
-				return err
-			}
-			defer med.Close()
-
-			med.RTPPacketWriter = media.NewRTPPacketWriter(&recordingRTPWriter{
-				next:    med.RTPPacketWriter.Writer(),
-				packets: sentPackets,
-			}, media.CodecAudioUlaw)
-
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-startPlayback:
-			}
-
-			playfile, err := testdata.OpenFile("demo-echodone.wav")
-			if err != nil {
-				return err
-			}
-			defer playfile.Close()
-
-			pb, err := med.PlaybackCreate()
-			if err != nil {
-				return err
-			}
-			_, err = pb.Play(playfile, "audio/wav")
-			return err
-		}()
-
-		playDone <- err
-		if err == nil {
-			_ = inDialog.Hangup(context.Background())
+	allowAnswer := make(chan struct{})
+	serverErr := make(chan error, 1)
+	reportServerErr := func(err error) {
+		select {
+		case serverErr <- err:
+		default:
 		}
-	})
-	require.NoError(t, err)
+	}
+	require.NoError(t, server.ServeBackground(ctx, func(dialog *DialogServerSession) {
+		conf, confErr := prepareWebrtcConfig(webRTCConfig)
+		if confErr != nil {
+			reportServerErr(confErr)
+			return
+		}
+		sess := &media.MediaSessionWebrtc{Codecs: dialog.mediaConf.Codecs}
+		if initErr := sess.Init(dialog.Context(), conf); initErr != nil {
+			reportServerErr(initErr)
+			return
+		}
+		med := &DialogWebrtc{}
+		defer med.Close()
+		if remoteErr := sess.RemoteSDP(dialog.Context(), dialog.InviteRequest.Body(), false); remoteErr != nil {
+			reportServerErr(remoteErr)
+			return
+		}
+		localSDP, localErr := sess.LocalSDP(dialog.Context(), true)
+		if localErr != nil {
+			reportServerErr(localErr)
+			return
+		}
+		if responseErr := dialog.DialogServerSession.Respond(
+			sip.StatusSessionInProgress,
+			"Session Progress",
+			localSDP,
+			sip.NewHeader("Content-Type", "application/sdp"),
+		); responseErr != nil {
+			reportServerErr(responseErr)
+			return
+		}
+		if finalizeErr := sess.Finalize(dialog.Context()); finalizeErr != nil {
+			reportServerErr(finalizeErr)
+			return
+		}
+		rtpSess := media.NewRTPSessionWebrtc(sess)
+		med.init(sess, rtpSess)
+		if monitorErr := rtpSess.MonitorBackground(); monitorErr != nil {
+			reportServerErr(monitorErr)
+			return
+		}
+		writer, writerErr := med.AudioWriter()
+		if writerErr != nil {
+			reportServerErr(writerErr)
+			return
+		}
+		payload := bytes.Repeat([]byte{0x45}, int(media.CodecAudioUlaw.SampleTimestamp()))
+		if _, writeErr := writer.Write(payload); writeErr != nil {
+			reportServerErr(writeErr)
+			return
+		}
 
-	clientUA, err := sipgo.NewUA()
+		select {
+		case <-allowAnswer:
+		case <-dialog.Context().Done():
+			return
+		}
+		if responseErr := dialog.RespondSDP(localSDP); responseErr != nil {
+			reportServerErr(responseErr)
+			return
+		}
+		<-dialog.Context().Done()
+	}))
+
+	clientUA, err := sipgo.NewUA(sipgo.WithUserAgent("voip-webrtc-early-media-client"))
 	require.NoError(t, err)
 	defer clientUA.Close()
-
-	client := NewDiago(clientUA,
-		WithTransport(Transport{
-			Transport: "tcp",
-			BindHost:  "127.0.0.1",
-			BindPort:  0,
-		}),
-	)
-
+	client := NewDiago(clientUA, WithTransport(Transport{
+		Transport: "tcp",
+		BindHost:  "127.0.0.1",
+		BindPort:  0,
+	}))
 	dialog, err := client.NewDialog(sip.Uri{
-		User: "playback",
+		User: "early-media",
 		Host: "127.0.0.1",
 		Port: server.transports[0].BindPort,
 	}, NewDialogOptions{Transport: "tcp"})
@@ -270,57 +227,28 @@ func TestDialogWebrtcPionServerPlaybackPayloadSurvivesWebrtc(t *testing.T) {
 
 	inviteCtx, inviteCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer inviteCancel()
+	clientMed, err := dialog.InviteWebrtc(inviteCtx, InviteWebrtcOptions{
+		EarlyMediaDetect: true,
+		WebrtcConfig:     webRTCConfig,
+	})
+	require.ErrorIs(t, err, ErrClientEarlyMedia)
+	require.NotNil(t, clientMed)
+	defer clientMed.Close()
 
-	med, err := dialog.InviteWebrtcPion(inviteCtx, InviteWebrtcPionOptions{})
+	reader, err := clientMed.AudioReader()
 	require.NoError(t, err)
-	defer med.Close()
-
-	close(startPlayback)
-
-	require.Eventually(t, func() bool {
-		med.mu.Lock()
-		defer med.mu.Unlock()
-		return med.mediaSession.RTPReaderReady()
-	}, 5*time.Second, 10*time.Millisecond)
-
-	require.NoError(t, med.mediaSession.StopRTP(1, 5*time.Second))
-
-	audioR, err := med.AudioReader()
+	received := make([]byte, media.RTPBufSize)
+	n, err := reader.Read(received)
 	require.NoError(t, err)
+	require.Equal(t, bytes.Repeat([]byte{0x45}, int(media.CodecAudioUlaw.SampleTimestamp())), received[:n])
 
-	buf := make([]byte, media.RTPBufSize)
-	var prevSentSeq uint16
-	var prevSentTimestamp uint32
-	var prevRecvSeq uint16
-	var prevRecvTimestamp uint32
-	for i := range 20 {
-		var sent capturedRTPPacket
-		select {
-		case sent = <-sentPackets:
-		case <-time.After(5 * time.Second):
-			t.Fatalf("timed out waiting for sent RTP packet %d", i)
-		}
+	close(allowAnswer)
+	require.NoError(t, dialog.WaitAnswerWebrtc(inviteCtx, clientMed, sipgo.AnswerOptions{}))
+	require.NoError(t, dialog.Hangup(ctx))
 
-		n, err := audioR.Read(buf)
-		require.NoError(t, err)
-
-		recvHeader := med.RTPPacketReader.PacketHeader
-		require.Equal(t, int(media.CodecAudioUlaw.SampleTimestamp()), len(sent.payload))
-		require.Equal(t, int(media.CodecAudioUlaw.SampleTimestamp()), n)
-		require.True(t, bytes.Equal(sent.payload, buf[:n]), "payload changed at packet %d", i)
-
-		if i > 0 {
-			require.Equal(t, prevSentSeq+1, sent.header.SequenceNumber)
-			require.Equal(t, prevSentTimestamp+media.CodecAudioUlaw.SampleTimestamp(), sent.header.Timestamp)
-			require.Equal(t, prevRecvSeq+1, recvHeader.SequenceNumber)
-			require.Equal(t, prevRecvTimestamp+media.CodecAudioUlaw.SampleTimestamp(), recvHeader.Timestamp)
-		}
-
-		prevSentSeq = sent.header.SequenceNumber
-		prevSentTimestamp = sent.header.Timestamp
-		prevRecvSeq = recvHeader.SequenceNumber
-		prevRecvTimestamp = recvHeader.Timestamp
+	select {
+	case err = <-serverErr:
+		t.Fatalf("server failed during direct WebRTC early media: %v", err)
+	default:
 	}
-
-	require.NoError(t, <-playDone)
 }
