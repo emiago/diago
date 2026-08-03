@@ -131,17 +131,17 @@ Direct WebRTC dialogs currently do not install the remote/local SDP and
 finalization callbacks used by the Pion-backed implementation, and
 `MediaSessionWebrtc.RemoteSDP` rejects a second description once ICE is active.
 
-- [ ] Register re-INVITE callbacks for direct WebRTC dialogs.
+- [x] Register re-INVITE callbacks for direct WebRTC dialogs.
 - [ ] Support hold/resume and media-direction changes.
 - [ ] Support codec and telephone-event renegotiation.
 - [ ] Keep a stable SDP `o=` session ID and increment the session version for
   each locally generated offer or answer.
-- [ ] Treat unchanged ICE credentials as an update to the current generation.
-- [ ] Treat changed ICE username fragment/password as an ICE restart.
-- [ ] For an ICE restart, build a pending transport while the previous media
+- [x] Treat unchanged ICE credentials as an update to the current generation.
+- [x] Treat changed ICE username fragment/password as an ICE restart.
+- [x] For an ICE restart, build a pending transport while the previous media
   path remains live, then atomically swap after successful validation and
   finalization.
-- [ ] Roll back cleanly if the replacement path fails.
+- [x] Roll back cleanly if the replacement path fails.
 - [ ] Reject stale candidates and SDP fragments from earlier ICE generations.
 - [ ] Cover local and remote re-INVITEs, glare, hold/resume, restart success,
   restart failure, and rollback.

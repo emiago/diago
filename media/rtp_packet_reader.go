@@ -240,6 +240,9 @@ func (r *RTPPacketReader) UpdateReader(reader RTPReader) {
 	if s, ok := r.reader.(*RTPSession); ok {
 		s.Sess.rtpConn.SetReadDeadline(time.Now())
 	}
+	if s, ok := r.reader.(*RTPSessionWebrtc); ok {
+		_ = s.Sess.StopRTP(1, -time.Nanosecond)
+	}
 	r.reader = reader
 	// TODO we need to make sure that current Audio Reading is really stopped before updating
 	r.mu.Unlock()

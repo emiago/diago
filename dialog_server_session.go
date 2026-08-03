@@ -318,6 +318,12 @@ func (d *DialogServerSession) ReInvite(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	committed := false
+	defer func() {
+		if !committed {
+			d.dialogCallbacks.abortMedia()
+		}
+	}()
 	contact := d.RemoteContact()
 	req := sip.NewRequest(sip.INVITE, contact.Address)
 	req.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
@@ -344,7 +350,11 @@ func (d *DialogServerSession) ReInvite(ctx context.Context) error {
 		return err
 	}
 	d.setRemoteContact(cont)
-	return onRemoteSDP(ctx, res.Body(), true)
+	if err := onRemoteSDP(ctx, res.Body(), true); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 func (d *DialogServerSession) reInviteSDP(ctx context.Context, sdp []byte) ([]byte, error) {
@@ -377,6 +387,12 @@ func (d *DialogServerSession) reInviteMediaSession(ctx context.Context, ms *medi
 	if err != nil {
 		return err
 	}
+	committed := false
+	defer func() {
+		if !committed {
+			d.dialogCallbacks.abortMedia()
+		}
+	}()
 	contact := d.RemoteContact()
 
 	req := sip.NewRequest(sip.INVITE, contact.Address)
@@ -388,7 +404,11 @@ func (d *DialogServerSession) reInviteMediaSession(ctx context.Context, ms *medi
 		return err
 	}
 	d.setRemoteContact(res.Contact())
-	return onRemoteSDP(ctx, res.Body(), true)
+	if err := onRemoteSDP(ctx, res.Body(), true); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 func (d *DialogServerSession) reInviteDo(ctx context.Context, req *sip.Request) (*sip.Response, error) {
@@ -568,6 +588,7 @@ func (d *DialogServerSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 		}
 		localSDP, err := onLocalSDP(d.Context(), true, "")
 		if err != nil {
+			d.dialogCallbacks.abortMedia()
 			return errors.Join(
 				err,
 				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil)),
@@ -576,7 +597,11 @@ func (d *DialogServerSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 		res := sip.NewResponseFromRequest(req, sip.StatusOK, "OK", localSDP)
 		res.AppendHeader(d.InviteResponse.Contact())
 		res.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
-		return tx.Respond(res)
+		if err := tx.Respond(res); err != nil {
+			d.dialogCallbacks.abortMedia()
+			return err
+		}
+		return nil
 	}
 
 	return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
@@ -637,6 +662,12 @@ func (d *DialogServerSession) reInviteMode(
 	if err != nil {
 		return err
 	}
+	committed := false
+	defer func() {
+		if !committed {
+			d.dialogCallbacks.abortMedia()
+		}
+	}()
 	contact := d.RemoteContact()
 
 	req := sip.NewRequest(sip.INVITE, contact.Address)
@@ -648,5 +679,9 @@ func (d *DialogServerSession) reInviteMode(
 		return err
 	}
 	d.setRemoteContact(res.Contact())
-	return onRemoteSDP(ctx, res.Body(), true)
+	if err := onRemoteSDP(ctx, res.Body(), true); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }

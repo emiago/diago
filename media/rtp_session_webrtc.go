@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"slices"
 	"sync"
 	"time"
 
@@ -74,6 +75,35 @@ func NewRTPSessionWebrtc(sess *MediaSessionWebrtc) *RTPSessionWebrtc {
 		onWriteRTCP:        DefaultOnWriteRTCP,
 		RTCPReportInterval: 5 * time.Second,
 	}
+}
+
+// Fork creates the RTCP/statistics lifecycle for a replacement WebRTC
+// transport. RTP sequence numbers, timestamps and SSRC remain owned by the
+// stable RTPPacketWriter; cumulative report state and callbacks continue here.
+func (s *RTPSessionWebrtc) Fork(sess *MediaSessionWebrtc) *RTPSessionWebrtc {
+	s.rtcpMU.Lock()
+	defer s.rtcpMU.Unlock()
+
+	fork := NewRTPSessionWebrtc(sess)
+	fork.readStats = s.readStats
+	fork.writeStats = s.writeStats
+	fork.intervalFirstExtended = s.intervalFirstExtended
+	fork.lastReportPackets = s.lastReportPackets
+	fork.previousReportPackets = s.previousReportPackets
+	fork.intervalStarted = s.intervalStarted
+	fork.reportSSRC = s.reportSSRC
+	fork.onReadRTCP = s.onReadRTCP
+	fork.onWriteRTCP = s.onWriteRTCP
+	fork.RTCPReportInterval = s.RTCPReportInterval
+	if s.sourceDescription != nil {
+		sourceDescription := *s.sourceDescription
+		sourceDescription.Chunks = slices.Clone(s.sourceDescription.Chunks)
+		for i := range sourceDescription.Chunks {
+			sourceDescription.Chunks[i].Items = slices.Clone(sourceDescription.Chunks[i].Items)
+		}
+		fork.sourceDescription = &sourceDescription
+	}
+	return fork
 }
 
 func (s *RTPSessionWebrtc) OnReadRTCP(f func(pkt rtcp.Packet, rtpStats RTPReadStats)) {
