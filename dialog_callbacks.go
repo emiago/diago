@@ -22,9 +22,19 @@ type dialogCallbacks struct {
 	onRemoteSDP         dialogRemoteSDP
 	onLocalSDP          dialogLocalSDP
 	onFinalize          func(ctx context.Context) error
+	onMediaFailure      func()
 	onReferDialog       OnReferDialogFunc
 	onReferNotify       func(statusCode int)
 	onClose             []func() error
+}
+
+func (d *dialogCallbacks) abortMedia() {
+	d.mu.Lock()
+	onMediaFailure := d.onMediaFailure
+	d.mu.Unlock()
+	if onMediaFailure != nil {
+		onMediaFailure()
+	}
 }
 
 func (d *dialogCallbacks) setRemoteContact(contact *sip.ContactHeader) {

@@ -475,6 +475,12 @@ func (d *DialogClientSession) ReInvite(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	committed := false
+	defer func() {
+		if !committed {
+			d.dialogCallbacks.abortMedia()
+		}
+	}()
 	contact := d.RemoteContact()
 
 	req := sip.NewRequest(sip.INVITE, contact.Address)
@@ -489,14 +495,9 @@ func (d *DialogClientSession) ReInvite(ctx context.Context) error {
 	if err := onRemoteSDP(ctx, res.Body(), true); err != nil {
 		return err
 	}
-
-	cont := res.Contact()
-	if cont == nil {
-		return fmt.Errorf("no contact header present")
-	}
-
-	ack := sip.NewRequest(sip.ACK, cont.Address)
-	return d.WriteRequest(ack)
+	d.setRemoteContact(res.Contact())
+	committed = true
+	return nil
 }
 
 func (d *DialogClientSession) reInviteDo(ctx context.Context, req *sip.Request) (*sip.Response, error) {
@@ -633,6 +634,7 @@ func (d *DialogClientSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 		}
 		localSDP, err := onLocalSDP(d.Context(), true, "")
 		if err != nil {
+			d.dialogCallbacks.abortMedia()
 			return errors.Join(
 				err,
 				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil)),
@@ -641,7 +643,11 @@ func (d *DialogClientSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 		res := sip.NewResponseFromRequest(req, sip.StatusOK, "OK", localSDP)
 		res.AppendHeader(d.InviteRequest.Contact())
 		res.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
-		return tx.Respond(res)
+		if err := tx.Respond(res); err != nil {
+			d.dialogCallbacks.abortMedia()
+			return err
+		}
+		return nil
 	}
 
 	return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptable, "Not Acceptable", nil))
@@ -705,6 +711,12 @@ func (d *DialogClientSession) reInviteMode(
 	if err != nil {
 		return err
 	}
+	committed := false
+	defer func() {
+		if !committed {
+			d.dialogCallbacks.abortMedia()
+		}
+	}()
 	contact := d.RemoteContact()
 
 	req := sip.NewRequest(sip.INVITE, contact.Address)
@@ -720,5 +732,6 @@ func (d *DialogClientSession) reInviteMode(
 		return err
 	}
 	d.setRemoteContact(res.Contact())
+	committed = true
 	return nil
 }

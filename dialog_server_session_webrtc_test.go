@@ -158,3 +158,105 @@ func TestIntegrationDialogWebrtcICEControlsBidirectionalRTP(t *testing.T) {
 	require.Equal(t, uint64(1), serverMed.RTPSession().ReadStats().PacketsCount)
 	require.NoError(t, dialog.Hangup(ctx))
 }
+
+func TestIntegrationDialogWebrtcServerReInviteKeepsMediaWrappers(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	loopbackOnly := func(addr netip.Addr) bool { return addr.IsLoopback() }
+	webRTCConfig := media.MediaSessionWebrtcConfig{
+		IPFamilies:      []media.ICEIPFamily{media.ICEIPFamilyIPv4},
+		CandidateTypes:  []media.ICECandidateType{media.ICECandidateHost},
+		IncludeLoopback: true,
+		IPFilter:        loopbackOnly,
+		RemoteIPFilter:  loopbackOnly,
+	}
+
+	serverUA, err := sipgo.NewUA(sipgo.WithUserAgent("webrtc-server-reinvite"))
+	require.NoError(t, err)
+	defer serverUA.Close()
+	server := NewDiago(serverUA, WithTransport(Transport{
+		Transport: "tcp", BindHost: "127.0.0.1", BindPort: 0,
+	}))
+	type serverCall struct {
+		dialog *DialogServerSession
+		media  *DialogWebrtc
+	}
+	serverCallReady := make(chan serverCall, 1)
+	serverErr := make(chan error, 1)
+	require.NoError(t, server.ServeBackground(ctx, func(dialog *DialogServerSession) {
+		med, answerErr := dialog.AnswerWebrtc(AnswerWebrtcOptions{WebrtcConfig: webRTCConfig})
+		if answerErr != nil {
+			serverErr <- answerErr
+			return
+		}
+		serverCallReady <- serverCall{dialog: dialog, media: med}
+		<-dialog.Context().Done()
+	}))
+
+	clientUA, err := sipgo.NewUA(sipgo.WithUserAgent("webrtc-client-reinvite-peer"))
+	require.NoError(t, err)
+	defer clientUA.Close()
+	client := NewDiago(clientUA, WithTransport(Transport{
+		Transport: "tcp", BindHost: "127.0.0.1", BindPort: 0,
+	}))
+	dialog, err := client.NewDialog(sip.Uri{
+		User: "media", Host: "127.0.0.1", Port: server.transports[0].BindPort,
+	}, NewDialogOptions{Transport: "tcp"})
+	require.NoError(t, err)
+	defer dialog.Close()
+
+	callCtx, callCancel := context.WithTimeout(ctx, 15*time.Second)
+	defer callCancel()
+	clientMed, err := dialog.InviteWebrtc(callCtx, InviteWebrtcOptions{WebrtcConfig: webRTCConfig})
+	require.NoError(t, err)
+	defer clientMed.Close()
+
+	var call serverCall
+	select {
+	case call = <-serverCallReady:
+	case err = <-serverErr:
+		t.Fatalf("server failed to answer direct WebRTC call: %v", err)
+	case <-callCtx.Done():
+		t.Fatal("timed out waiting for direct WebRTC server media")
+	}
+	defer call.media.Close()
+
+	clientReader := clientMed.RTPPacketReader
+	clientWriter := clientMed.RTPPacketWriter
+	serverReader := call.media.RTPPacketReader
+	serverWriter := call.media.RTPPacketWriter
+	oldClientMedia := clientMed.MediaSession()
+	oldServerMedia := call.media.MediaSession()
+
+	require.NoError(t, call.dialog.ReInvite(callCtx))
+	require.Eventually(t, func() bool {
+		return clientMed.MediaSession() != oldClientMedia
+	}, time.Second, time.Millisecond, "client did not commit the re-INVITE on ACK")
+	require.NotSame(t, oldClientMedia, clientMed.MediaSession())
+	require.NotSame(t, oldServerMedia, call.media.MediaSession())
+	require.Same(t, clientReader, clientMed.RTPPacketReader)
+	require.Same(t, clientWriter, clientMed.RTPPacketWriter)
+	require.Same(t, serverReader, call.media.RTPPacketReader)
+	require.Same(t, serverWriter, call.media.RTPPacketWriter)
+
+	require.NoError(t, clientMed.MediaSession().StopRTP(1, 5*time.Second))
+	require.NoError(t, call.media.MediaSession().StopRTP(1, 5*time.Second))
+	serverPayload := bytes.Repeat([]byte{0x62}, int(media.CodecAudioUlaw.SampleTimestamp()))
+	n, err := serverWriter.Write(serverPayload)
+	require.NoError(t, err)
+	require.Equal(t, len(serverPayload), n)
+	received := make([]byte, media.RTPBufSize)
+	n, err = clientReader.Read(received)
+	require.NoError(t, err)
+	require.Equal(t, serverPayload, received[:n])
+
+	clientPayload := bytes.Repeat([]byte{0x26}, int(media.CodecAudioUlaw.SampleTimestamp()))
+	n, err = clientWriter.Write(clientPayload)
+	require.NoError(t, err)
+	require.Equal(t, len(clientPayload), n)
+	n, err = serverReader.Read(received)
+	require.NoError(t, err)
+	require.Equal(t, clientPayload, received[:n])
+	require.NoError(t, dialog.Hangup(ctx))
+}
