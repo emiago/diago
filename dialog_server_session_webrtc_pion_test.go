@@ -1,5 +1,7 @@
 package diago
 
+// Pion-backed WebRTC server-dialog and media integration tests.
+
 import (
 	"bytes"
 	"context"

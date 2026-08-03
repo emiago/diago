@@ -3,6 +3,8 @@
 
 package diago
 
+// Direct WebRTC server-dialog integration tests.
+
 import (
 	"bytes"
 	"context"

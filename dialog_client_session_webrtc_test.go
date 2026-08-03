@@ -3,16 +3,18 @@
 
 package diago
 
+// Direct WebRTC client-dialog integration tests.
+
 import (
 	"bytes"
 	"context"
+	"net/netip"
 	"testing"
 	"time"
 
 	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/pion/ice/v4"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,9 +22,13 @@ func TestIntegrationDialogWebrtcBidirectionalRTP(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
+	loopbackOnly := func(addr netip.Addr) bool { return addr.IsLoopback() }
 	webRTCConfig := media.MediaSessionWebrtcConfig{
-		NetworkTypes:    []ice.NetworkType{ice.NetworkTypeUDP4},
+		IPFamilies:      []media.ICEIPFamily{media.ICEIPFamilyIPv4},
+		CandidateTypes:  []media.ICECandidateType{media.ICECandidateHost},
 		IncludeLoopback: true,
+		IPFilter:        loopbackOnly,
+		RemoteIPFilter:  loopbackOnly,
 	}
 
 	serverUA, err := sipgo.NewUA(sipgo.WithUserAgent("voip-webrtc-server"))
@@ -123,9 +129,13 @@ func TestIntegrationDialogWebrtcEarlyMedia(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
+	loopbackOnly := func(addr netip.Addr) bool { return addr.IsLoopback() }
 	webRTCConfig := media.MediaSessionWebrtcConfig{
-		NetworkTypes:    []ice.NetworkType{ice.NetworkTypeUDP4},
+		IPFamilies:      []media.ICEIPFamily{media.ICEIPFamilyIPv4},
+		CandidateTypes:  []media.ICECandidateType{media.ICECandidateHost},
 		IncludeLoopback: true,
+		IPFilter:        loopbackOnly,
+		RemoteIPFilter:  loopbackOnly,
 	}
 
 	serverUA, err := sipgo.NewUA(sipgo.WithUserAgent("voip-webrtc-early-media-server"))
@@ -138,6 +148,7 @@ func TestIntegrationDialogWebrtcEarlyMedia(t *testing.T) {
 	}))
 
 	allowAnswer := make(chan struct{})
+	serverAnswered := make(chan struct{})
 	serverErr := make(chan error, 1)
 	reportServerErr := func(err error) {
 		select {
@@ -206,6 +217,7 @@ func TestIntegrationDialogWebrtcEarlyMedia(t *testing.T) {
 			reportServerErr(responseErr)
 			return
 		}
+		close(serverAnswered)
 		<-dialog.Context().Done()
 	}))
 
@@ -244,6 +256,13 @@ func TestIntegrationDialogWebrtcEarlyMedia(t *testing.T) {
 
 	close(allowAnswer)
 	require.NoError(t, dialog.WaitAnswerWebrtc(inviteCtx, clientMed, sipgo.AnswerOptions{}))
+	select {
+	case <-serverAnswered:
+	case err = <-serverErr:
+		t.Fatalf("server failed to complete direct WebRTC answer: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for direct WebRTC server to receive ACK")
+	}
 	require.NoError(t, dialog.Hangup(ctx))
 
 	select {
