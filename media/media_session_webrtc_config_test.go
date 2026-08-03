@@ -173,11 +173,14 @@ func TestIntegrationMediaSessionWebrtcICEConnectTimeout(t *testing.T) {
 		"a=candidate:1 1 udp 2130706431 127.0.0.1 9 typ host\r\n" +
 		"a=end-of-candidates\r\n")
 	require.NoError(t, session.RemoteSDP(ctx, remoteOffer, false))
+	answer, err := session.LocalSDP(ctx, true)
+	require.NoError(t, err)
+	require.NotContains(t, string(answer), "a=rtcp-rsize\r\n")
 
 	finalizeCtx, finalizeCancel := context.WithTimeout(ctx, 100*time.Millisecond)
 	defer finalizeCancel()
 	started := time.Now()
-	err := session.Finalize(finalizeCtx)
+	err = session.Finalize(finalizeCtx)
 	require.ErrorIs(t, err, ErrICEConnection)
 	require.Less(t, time.Since(started), time.Second)
 	var iceErr *ICEError
