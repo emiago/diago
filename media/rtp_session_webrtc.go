@@ -4,6 +4,7 @@
 package media
 
 import (
+	cryptorand "crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -28,25 +29,31 @@ type RTPSessionWebrtc struct {
 	// Keep pointers at the top to reduce GC scanning work.
 	Sess *MediaSessionWebrtc
 
-	rtcpMU     sync.Mutex
-	rtcpTicker *time.Ticker
-	rtcpClosed chan struct{}
-	monitorWG  sync.WaitGroup
-	monitorRun bool
-	closed     bool
+	rtcpMU       sync.Mutex
+	rtcpTimer    *time.Timer
+	rtcpClosed   chan struct{}
+	monitorWG    sync.WaitGroup
+	rtcpInterval time.Duration
+	monitorRun   bool
+	closed       bool
 
 	readStats  RTPReadStats
 	writeStats RTPWriteStats
 
 	intervalFirstExtended uint64
+	lastReportPackets     uint64
+	previousReportPackets uint64
 	intervalStarted       bool
 	reportSSRC            uint32
+	sourceDescription     *rtcp.SourceDescription
 
 	onReadRTCP  func(pkt rtcp.Packet, rtpStats RTPReadStats)
 	onWriteRTCP func(pkt rtcp.Packet, rtpStats RTPWriteStats)
 
 	// RTCPReportInterval controls sender/receiver report frequency. Set it
-	// before Monitor or MonitorBackground. Zero uses five seconds.
+	// before Monitor or MonitorBackground. Zero uses five seconds. Each report
+	// is scheduled between half and one-and-a-half times this mean, which is a
+	// deliberately simple interval model for one audio source and one peer.
 	RTCPReportInterval time.Duration
 }
 
@@ -55,11 +62,14 @@ func NewRTPSessionWebrtc(sess *MediaSessionWebrtc) *RTPSessionWebrtc {
 	if reportSSRC == 0 {
 		reportSSRC = 1
 	}
+	rtcpTimer := time.NewTimer(5 * time.Second)
+	rtcpTimer.Stop()
 	return &RTPSessionWebrtc{
 		Sess:               sess,
-		rtcpTicker:         time.NewTicker(5 * time.Second),
+		rtcpTimer:          rtcpTimer,
 		rtcpClosed:         make(chan struct{}),
 		reportSSRC:         reportSSRC,
+		sourceDescription:  rtcp.NewCNAMESourceDescription(0, cryptorand.Text()),
 		onReadRTCP:         DefaultOnReadRTCP,
 		onWriteRTCP:        DefaultOnWriteRTCP,
 		RTCPReportInterval: 5 * time.Second,
@@ -111,8 +121,12 @@ func (s *RTPSessionWebrtc) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 				s.rtcpMU.Unlock()
 				return 0, codecErr
 			}
-			lastSenderReportNTP := stats.lastSenderReportNTP
-			lastSenderReportRecvTime := stats.lastSenderReportRecvTime
+			lastSenderReportNTP := uint64(0)
+			lastSenderReportRecvTime := time.Time{}
+			if stats.SSRC == pkt.SSRC {
+				lastSenderReportNTP = stats.lastSenderReportNTP
+				lastSenderReportRecvTime = stats.lastSenderReportRecvTime
+			}
 			*stats = RTPReadStats{
 				SSRC:                     pkt.SSRC,
 				FirstPktSequenceNumber:   pkt.SequenceNumber,
@@ -158,10 +172,8 @@ func (s *RTPSessionWebrtc) ReadRTPRaw(buf []byte) (int, error) {
 // WriteRTP encrypts through MediaSessionWebrtc and updates sender-report
 // counters only after the packet has been written successfully.
 func (s *RTPSessionWebrtc) WriteRTP(pkt *rtp.Packet) error {
-	s.Sess.mu.Lock()
 	mode := s.Sess.Mode
 	codecs := s.Sess.Codecs
-	s.Sess.mu.Unlock()
 	if mode == "recvonly" || mode == "inactive" {
 		return s.Sess.WriteRTP(pkt)
 	}
@@ -179,6 +191,8 @@ func (s *RTPSessionWebrtc) WriteRTP(pkt *rtp.Packet) error {
 	stats := &s.writeStats
 	if stats.SSRC != pkt.SSRC {
 		*stats = RTPWriteStats{SSRC: pkt.SSRC, sampleRate: codec.SampleRate}
+		s.lastReportPackets = 0
+		s.previousReportPackets = 0
 	}
 	stats.PacketsCount++
 	stats.OctetCount += uint64(len(pkt.Payload))
@@ -218,7 +232,12 @@ func (s *RTPSessionWebrtc) startMonitor() error {
 	if interval <= 0 {
 		interval = 5 * time.Second
 	}
-	s.rtcpTicker.Reset(interval)
+	s.rtcpInterval = interval
+	next := time.Duration(float64(interval) * (0.5 + rand.Float64()))
+	if next <= 0 {
+		next = time.Nanosecond
+	}
+	s.rtcpTimer.Reset(next)
 	s.monitorRun = true
 	s.monitorWG.Add(2)
 	return nil
@@ -277,7 +296,7 @@ func (s *RTPSessionWebrtc) close(wait bool) error {
 	if !wasClosed {
 		close(s.rtcpClosed)
 	}
-	s.rtcpTicker.Stop()
+	s.rtcpTimer.Stop()
 	s.rtcpMU.Unlock()
 
 	var deadlineErr error
@@ -328,14 +347,15 @@ func (s *RTPSessionWebrtc) readRTCP() error {
 func (s *RTPSessionWebrtc) readRTCPPacket(pkt rtcp.Packet, now time.Time) {
 	s.rtcpMU.Lock()
 	callback := s.onReadRTCP
-	callbackStats := s.readStats
 	switch p := pkt.(type) {
 	case *rtcp.SenderReport:
 		if s.readStats.SSRC == 0 {
 			s.readStats.SSRC = p.SSRC
 		}
-		s.readStats.lastSenderReportNTP = p.NTPTime
-		s.readStats.lastSenderReportRecvTime = now
+		if s.readStats.SSRC == p.SSRC {
+			s.readStats.lastSenderReportNTP = p.NTPTime
+			s.readStats.lastSenderReportRecvTime = now
+		}
 		for _, report := range p.Reports {
 			s.readReceptionReport(report, now)
 		}
@@ -344,6 +364,7 @@ func (s *RTPSessionWebrtc) readRTCPPacket(pkt rtcp.Packet, now time.Time) {
 			s.readReceptionReport(report, now)
 		}
 	}
+	callbackStats := s.readStats
 	s.rtcpMU.Unlock()
 	if callback != nil {
 		callback(pkt, callbackStats)
@@ -363,10 +384,21 @@ func (s *RTPSessionWebrtc) readReceptionReport(report rtcp.ReceptionReport, now 
 func (s *RTPSessionWebrtc) runRTCPWriter() error {
 	for {
 		select {
-		case now := <-s.rtcpTicker.C:
+		case now := <-s.rtcpTimer.C:
 			if err := s.writeReport(now); err != nil {
 				return err
 			}
+			s.rtcpMU.Lock()
+			if s.closed {
+				s.rtcpMU.Unlock()
+				return nil
+			}
+			next := time.Duration(float64(s.rtcpInterval) * (0.5 + rand.Float64()))
+			if next <= 0 {
+				next = time.Nanosecond
+			}
+			s.rtcpTimer.Reset(next)
+			s.rtcpMU.Unlock()
 		case <-s.rtcpClosed:
 			return nil
 		}
@@ -375,19 +407,32 @@ func (s *RTPSessionWebrtc) runRTCPWriter() error {
 
 func (s *RTPSessionWebrtc) writeReport(now time.Time) error {
 	s.rtcpMU.Lock()
-	var pkt rtcp.Packet
-	switch {
-	case s.writeStats.SSRC != 0:
-		pkt = s.senderReport(now)
-	case s.readStats.PacketsCount != 0:
-		pkt = &rtcp.ReceiverReport{
-			SSRC:    s.reportSSRC,
-			Reports: []rtcp.ReceptionReport{s.receptionReport(now)},
-		}
-	default:
+	hasSent := s.writeStats.SSRC != 0
+	hasReceived := s.readStats.PacketsCount != 0
+	if !hasSent && !hasReceived {
 		s.rtcpMU.Unlock()
 		return nil
 	}
+
+	var pkt rtcp.Packet
+	sentRecently := hasSent && (s.writeStats.PacketsCount != s.lastReportPackets ||
+		s.lastReportPackets != s.previousReportPackets)
+	if sentRecently {
+		pkt = s.senderReport(now)
+		s.reportSSRC = s.writeStats.SSRC
+	} else {
+		if hasSent {
+			s.reportSSRC = s.writeStats.SSRC
+		}
+		report := &rtcp.ReceiverReport{SSRC: s.reportSSRC}
+		if hasReceived {
+			report.Reports = []rtcp.ReceptionReport{s.receptionReport(now)}
+		}
+		pkt = report
+	}
+	s.previousReportPackets = s.lastReportPackets
+	s.lastReportPackets = s.writeStats.PacketsCount
+	s.sourceDescription.Chunks[0].Source = s.reportSSRC
 	callback := s.onWriteRTCP
 	callbackStats := s.writeStats
 	s.readStats.IntervalFirstPktSeqNum = 0
@@ -398,7 +443,8 @@ func (s *RTPSessionWebrtc) writeReport(now time.Time) error {
 	if callback != nil {
 		callback(pkt, callbackStats)
 	}
-	return s.Sess.WriteRTCP(pkt)
+	compound := rtcp.CompoundPacket{pkt, s.sourceDescription}
+	return s.Sess.WriteRTCP(&compound)
 }
 
 func (s *RTPSessionWebrtc) senderReport(now time.Time) *rtcp.SenderReport {

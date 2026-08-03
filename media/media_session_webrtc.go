@@ -90,10 +90,13 @@ type MediaSessionWebrtc struct {
 	dtlsConn         *dtls.Conn
 	localCtxSRTP     *srtp.Context
 	remoteCtxSRTP    *srtp.Context
+	localCtxSRTCP    *srtp.Context
+	remoteCtxSRTCP   *srtp.Context
+	rtcpReducedSize  bool
 	ready            bool
 	closed           bool
 	writeRTPBuf      []byte
-	readRTPFromAddr  net.Addr
+	writeRTCPBuf     []byte
 	onICEStateChange func(ice.ConnectionState)
 }
 
@@ -282,10 +285,10 @@ func (m *MediaSessionWebrtc) LocalSDP(_ context.Context, answered bool) ([]byte,
 	if len(m.filterCodecs) > 0 {
 		codecs = m.filterCodecs
 	}
-	return m.localSDPLocked(codecs, setup)
+	return m.localSDPLocked(codecs, setup, !answered || m.rtcpReducedSize)
 }
 
-func (m *MediaSessionWebrtc) localSDPLocked(codecs []Codec, setup string) ([]byte, error) {
+func (m *MediaSessionWebrtc) localSDPLocked(codecs []Codec, setup string, includeRTCPReducedSize bool) ([]byte, error) {
 	fingerprint, err := dtlsSHA256Fingerprint(m.Config.DTLS.Certificates[0])
 	if err != nil {
 		return nil, fmt.Errorf("DTLS certificate fingerprint: %w", err)
@@ -327,7 +330,11 @@ func (m *MediaSessionWebrtc) localSDPLocked(codecs []Codec, setup string) ([]byt
 		fmt.Sprintf("c=IN %s %s", addressType, connectionIP),
 		"a=mid:0",
 		"a=rtcp-mux",
-		"a=rtcp-rsize",
+	)
+	if includeRTCPReducedSize {
+		lines = append(lines, "a=rtcp-rsize")
+	}
+	lines = append(lines,
 		"a="+mode,
 		"a=ice-ufrag:"+m.localUfrag,
 		"a=ice-pwd:"+m.localPwd,
@@ -372,6 +379,8 @@ func (m *MediaSessionWebrtc) RemoteSDP(_ context.Context, body []byte, offered b
 	if _, ok := webRTCAttribute(desc.Attributes, md.Attributes, "rtcp-mux"); !ok {
 		return fmt.Errorf("remote WebRTC SDP requires rtcp-mux")
 	}
+	_, remoteRTCPReducedSize := webRTCAttribute(desc.Attributes, md.Attributes, "rtcp-rsize")
+	remoteRTCPReducedSize = remoteRTCPReducedSize && strings.EqualFold(proto, "UDP/TLS/RTP/SAVPF")
 	remoteUfrag, ok := webRTCAttribute(desc.Attributes, md.Attributes, "ice-ufrag")
 	if !ok || remoteUfrag == "" {
 		return fmt.Errorf("remote WebRTC SDP has no ICE username fragment")
@@ -448,6 +457,7 @@ func (m *MediaSessionWebrtc) RemoteSDP(_ context.Context, body []byte, offered b
 	}
 	m.remoteUfrag = remoteUfrag
 	m.remotePwd = remotePwd
+	m.rtcpReducedSize = remoteRTCPReducedSize
 	m.filterCodecs = common
 	m.Codecs = slices.Clone(common)
 	m.codec, _ = CodecAudioFromList(common)
@@ -558,10 +568,20 @@ func (m *MediaSessionWebrtc) Finalize(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("create remote SRTP context: %w", err)
 	}
+	localRTCPContext, err := srtp.CreateContext(clientKey, clientSalt, p)
+	if err != nil {
+		return fmt.Errorf("create local SRTCP context: %w", err)
+	}
+	remoteRTCPContext, err := srtp.CreateContext(serverKey, serverSalt, p)
+	if err != nil {
+		return fmt.Errorf("create remote SRTCP context: %w", err)
+	}
 	pair, _ := agent.GetSelectedCandidatePair()
 	m.mu.Lock()
 	m.localCtxSRTP = localContext
 	m.remoteCtxSRTP = remoteContext
+	m.localCtxSRTCP = localRTCPContext
+	m.remoteCtxSRTCP = remoteRTCPContext
 	m.ready = true
 	if pair != nil {
 		m.Laddr = pair.Local.Address()
@@ -614,17 +634,14 @@ func (m *MediaSessionWebrtc) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	if len(buf) < RTPBufSize {
 		return 0, io.ErrShortBuffer
 	}
-	m.mu.Lock()
-	mux, remoteContext, ready, mode := m.mux, m.remoteCtxSRTP, m.ready, m.Mode
-	m.mu.Unlock()
-	if !ready || mux == nil || remoteContext == nil {
+	if !m.ready || m.mux == nil || m.remoteCtxSRTP == nil {
 		return 0, fmt.Errorf("WebRTC media is not finalized")
 	}
-	n, from, err := mux.rtp.ReadFrom(buf)
+	n, _, err := m.mux.rtp.ReadFrom(buf)
 	if err != nil {
 		return 0, err
 	}
-	decrypted, err := remoteContext.DecryptRTP(buf, buf[:n], &pkt.Header)
+	decrypted, err := m.remoteCtxSRTP.DecryptRTP(buf, buf[:n], &pkt.Header)
 	if err != nil {
 		return n, fmt.Errorf("decrypt WebRTC SRTP: %w", err)
 	}
@@ -632,54 +649,43 @@ func (m *MediaSessionWebrtc) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	if err = rtpUnmarshalPayload(decrypted, pkt); err != nil {
 		return n, fmt.Errorf("unmarshal WebRTC RTP: %w", err)
 	}
-	m.mu.Lock()
-	m.readRTPFromAddr = from
-	m.mu.Unlock()
-	if mode == sdp.ModeSendonly || mode == "inactive" {
+	if m.Mode == sdp.ModeSendonly || m.Mode == "inactive" {
 		return 0, nil
 	}
 	return n, nil
 }
 
 func (m *MediaSessionWebrtc) ReadRTPRaw(buf []byte) (int, error) {
-	m.mu.Lock()
-	mux := m.mux
-	m.mu.Unlock()
-	if mux == nil {
+	if m.mux == nil {
 		return 0, fmt.Errorf("WebRTC RTP transport is not initialized")
 	}
-	n, _, err := mux.rtp.ReadFrom(buf)
+	n, _, err := m.mux.rtp.ReadFrom(buf)
 	return n, err
 }
 
 func (m *MediaSessionWebrtc) WriteRTP(pkt *rtp.Packet) error {
-	m.mu.Lock()
 	if !m.ready || m.mux == nil || m.localCtxSRTP == nil {
-		m.mu.Unlock()
 		return fmt.Errorf("WebRTC media is not finalized")
 	}
 	if m.Mode == sdp.ModeRecvonly || m.Mode == "inactive" {
-		m.mu.Unlock()
 		return nil
 	}
+
 	if m.writeRTPBuf == nil {
 		m.writeRTPBuf = make([]byte, RTPBufSize)
 	}
 	buf := m.writeRTPBuf
-	ctx := m.localCtxSRTP
-	mux := m.mux
 	n, err := pkt.MarshalTo(buf)
 	if err == nil {
 		var data []byte
-		data, err = ctx.EncryptRTP(buf, buf[:n], &pkt.Header)
+		data, err = m.localCtxSRTP.EncryptRTP(buf, buf[:n], &pkt.Header)
 		if err == nil {
-			n, err = mux.rtp.WriteTo(data, nil)
+			n, err = m.mux.rtp.WriteTo(data, nil)
 			if err == nil && n != len(data) {
 				err = io.ErrShortWrite
 			}
 		}
 	}
-	m.mu.Unlock()
 	if err != nil {
 		return fmt.Errorf("write WebRTC SRTP: %w", err)
 	}
@@ -687,17 +693,14 @@ func (m *MediaSessionWebrtc) WriteRTP(pkt *rtp.Packet) error {
 }
 
 func (m *MediaSessionWebrtc) ReadRTCP(buf []byte, pkts []rtcp.Packet) (int, error) {
-	m.mu.Lock()
-	mux, ctx, ready := m.mux, m.remoteCtxSRTP, m.ready
-	m.mu.Unlock()
-	if !ready || mux == nil || ctx == nil {
+	if !m.ready || m.mux == nil || m.remoteCtxSRTCP == nil {
 		return 0, fmt.Errorf("WebRTC media is not finalized")
 	}
-	n, _, err := mux.rtcp.ReadFrom(buf)
+	n, _, err := m.mux.rtcp.ReadFrom(buf)
 	if err != nil {
 		return 0, err
 	}
-	data, err := ctx.DecryptRTCP(buf, buf[:n], nil)
+	data, err := m.remoteCtxSRTCP.DecryptRTCP(buf, buf[:n], nil)
 	if err != nil {
 		return 0, fmt.Errorf("decrypt WebRTC SRTCP: %w", err)
 	}
@@ -705,22 +708,26 @@ func (m *MediaSessionWebrtc) ReadRTCP(buf []byte, pkts []rtcp.Packet) (int, erro
 }
 
 func (m *MediaSessionWebrtc) WriteRTCP(pkt rtcp.Packet) error {
-	m.mu.Lock()
-	mux, ctx, ready := m.mux, m.localCtxSRTP, m.ready
-	m.mu.Unlock()
-	if !ready || mux == nil || ctx == nil {
-		return fmt.Errorf("WebRTC media is not finalized")
-	}
 	data, err := pkt.Marshal()
 	if err != nil {
 		return err
 	}
-	buf := make([]byte, len(data)+64)
-	data, err = ctx.EncryptRTCP(buf, data, nil)
+
+	if !m.ready || m.mux == nil || m.localCtxSRTCP == nil {
+		return fmt.Errorf("WebRTC media is not finalized")
+	}
+
+	needed := len(data) + 64
+	if cap(m.writeRTCPBuf) < needed {
+		m.writeRTCPBuf = make([]byte, needed)
+	}
+	buf := m.writeRTCPBuf[:needed]
+	data, err = m.localCtxSRTCP.EncryptRTCP(buf, data, nil)
 	if err != nil {
 		return fmt.Errorf("encrypt WebRTC SRTCP: %w", err)
 	}
-	n, err := mux.rtcp.WriteTo(data, nil)
+	m.writeRTCPBuf = data[:cap(data)]
+	n, err := m.mux.rtcp.WriteTo(data, nil)
 	if err == nil && n != len(data) {
 		err = io.ErrShortWrite
 	}
