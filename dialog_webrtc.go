@@ -4,6 +4,7 @@
 package diago
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -23,8 +24,9 @@ const webrtcFailureCleanupTimeout = 5 * time.Second
 type DialogWebrtc struct {
 	mu sync.Mutex
 
-	mediaSession *media.MediaSessionWebrtc
-	rtpSession   *media.RTPSessionWebrtc
+	mediaSession        *media.MediaSessionWebrtc
+	rtpSession          *media.RTPSessionWebrtc
+	pendingMediaSession *media.MediaSessionWebrtc
 
 	// RTPPacketReader is the default RTP payload reader. Prefer AudioReader when
 	// an application may install media interceptors.
@@ -108,9 +110,11 @@ func (d *DialogWebrtc) Close() error {
 	d.onClose = nil
 	rtpSess := d.rtpSession
 	sess := d.mediaSession
+	pendingSess := d.pendingMediaSession
+	d.pendingMediaSession = nil
 	d.mu.Unlock()
 
-	var hookErr, rtpErr, mediaErr error
+	var hookErr, rtpErr, mediaErr, pendingErr error
 	if onClose != nil {
 		hookErr = onClose()
 	}
@@ -120,7 +124,192 @@ func (d *DialogWebrtc) Close() error {
 	if sess != nil {
 		mediaErr = sess.Close()
 	}
-	return errors.Join(hookErr, rtpErr, mediaErr)
+	if pendingSess != nil && pendingSess != sess {
+		pendingErr = pendingSess.Close()
+	}
+	return errors.Join(hookErr, rtpErr, mediaErr, pendingErr)
+}
+
+func (d *DialogWebrtc) registerDialogCallbacks(c *dialogCallbacks) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.onLocalSDP = func(ctx context.Context, answered bool, mode string, _ ...*media.MediaSession) ([]byte, error) {
+		d.mu.Lock()
+		current := d.mediaSession
+		pending := d.pendingMediaSession
+		d.mu.Unlock()
+		if current == nil {
+			return nil, fmt.Errorf("dialog WebRTC media is not initialized")
+		}
+		if answered {
+			if pending == nil {
+				return nil, fmt.Errorf("dialog WebRTC re-INVITE has no pending offer")
+			}
+			return pending.LocalSDP(ctx, true)
+		}
+
+		fork, err := current.Fork(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if mode != "" {
+			fork.Mode = mode
+		}
+		d.setPendingMediaSession(fork)
+		localSDP, err := fork.LocalSDP(ctx, false)
+		if err != nil {
+			d.abortPendingMediaSession()
+			return nil, err
+		}
+		return localSDP, nil
+	}
+
+	c.onRemoteSDP = func(ctx context.Context, remoteSDP []byte, offered bool) error {
+		if remoteSDP == nil {
+			return nil
+		}
+
+		d.mu.Lock()
+		current := d.mediaSession
+		pending := d.pendingMediaSession
+		d.mu.Unlock()
+		if current == nil {
+			return fmt.Errorf("dialog WebRTC media is not initialized")
+		}
+
+		if offered {
+			if pending == nil {
+				return fmt.Errorf("dialog WebRTC re-INVITE has no pending local offer")
+			}
+			if err := pending.RemoteSDP(ctx, remoteSDP, true); err != nil {
+				d.abortPendingMediaSession()
+				return err
+			}
+			if err := pending.Finalize(ctx); err != nil {
+				d.abortPendingMediaSession()
+				return err
+			}
+			if pending == current {
+				d.commitCurrentMediaSession()
+				return nil
+			}
+			return d.replaceMediaSession(pending)
+		}
+
+		// A browser may re-offer codec or direction changes without restarting
+		// ICE. MediaSessionWebrtc stages those changes on the current transport.
+		// Changed credentials require a fresh ICE/DTLS/SRTP transport instead.
+		if err := current.RemoteSDP(ctx, remoteSDP, false); err == nil {
+			d.setPendingMediaSession(current)
+			return nil
+		} else if !errors.Is(err, media.ErrWebRTCICERestart) {
+			return err
+		}
+
+		fork, err := current.Fork(ctx)
+		if err != nil {
+			return err
+		}
+		if err = fork.RemoteSDP(ctx, remoteSDP, false); err != nil {
+			_ = fork.Close()
+			return err
+		}
+		d.setPendingMediaSession(fork)
+		return nil
+	}
+
+	c.onFinalize = func(ctx context.Context) error {
+		d.mu.Lock()
+		pending := d.pendingMediaSession
+		current := d.mediaSession
+		d.mu.Unlock()
+		if pending == nil {
+			return nil
+		}
+		if err := pending.Finalize(ctx); err != nil {
+			d.abortPendingMediaSession()
+			return err
+		}
+		if pending == current {
+			d.commitCurrentMediaSession()
+			return nil
+		}
+		return d.replaceMediaSession(pending)
+	}
+	c.onMediaFailure = d.abortPendingMediaSession
+}
+
+func (d *DialogWebrtc) setPendingMediaSession(sess *media.MediaSessionWebrtc) {
+	d.mu.Lock()
+	previous := d.pendingMediaSession
+	d.pendingMediaSession = sess
+	current := d.mediaSession
+	d.mu.Unlock()
+	if previous != nil && previous != current && previous != sess {
+		_ = previous.Close()
+	}
+}
+
+func (d *DialogWebrtc) abortPendingMediaSession() {
+	d.mu.Lock()
+	pending := d.pendingMediaSession
+	current := d.mediaSession
+	d.pendingMediaSession = nil
+	d.mu.Unlock()
+	if pending == current {
+		current.Rollback()
+	} else if pending != nil {
+		_ = pending.Close()
+	}
+}
+
+func (d *DialogWebrtc) commitCurrentMediaSession() {
+	d.mu.Lock()
+	d.pendingMediaSession = nil
+	if d.RTPPacketWriter != nil && d.rtpSession != nil && d.mediaSession != nil {
+		d.RTPPacketWriter.UpdateWriter(d.rtpSession, d.mediaSession.Codec())
+	}
+	d.mu.Unlock()
+}
+
+func (d *DialogWebrtc) replaceMediaSession(sess *media.MediaSessionWebrtc) error {
+	d.mu.Lock()
+	oldMediaSession := d.mediaSession
+	oldRTPSession := d.rtpSession
+	reader := d.RTPPacketReader
+	writer := d.RTPPacketWriter
+	closed := d.closed
+	d.mu.Unlock()
+	if closed || oldMediaSession == nil || oldRTPSession == nil || reader == nil || writer == nil {
+		_ = sess.Close()
+		return fmt.Errorf("dialog WebRTC media is not available for replacement")
+	}
+
+	rtpSession := oldRTPSession.Fork(sess)
+	if err := rtpSession.MonitorBackground(); err != nil {
+		_ = sess.Close()
+		return err
+	}
+
+	d.mu.Lock()
+	if d.closed || d.pendingMediaSession != sess {
+		d.mu.Unlock()
+		_ = rtpSession.MonitorClose()
+		_ = sess.Close()
+		return fmt.Errorf("dialog WebRTC media replacement was canceled")
+	}
+	reader.UpdateReader(rtpSession)
+	writer.UpdateWriter(rtpSession, sess.Codec())
+	d.mediaSession = sess
+	d.rtpSession = rtpSession
+	d.pendingMediaSession = nil
+	if dtmfReader, ok := d.audioReader.(*DTMFReader); ok {
+		dtmfReader.rtpDeadline = sess
+	}
+	d.mu.Unlock()
+
+	return errors.Join(oldRTPSession.MonitorClose(), oldMediaSession.Close())
 }
 
 type AudioReaderWebrtcOption func(*DialogWebrtc) error

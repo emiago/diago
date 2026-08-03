@@ -26,6 +26,10 @@ import (
 	"github.com/pion/stun/v3"
 )
 
+// ErrWebRTCICERestart reports that a subsequent SDP changed both remote ICE
+// credentials and therefore needs a replacement MediaSessionWebrtc transport.
+var ErrWebRTCICERestart = errors.New("remote WebRTC SDP starts a new ICE generation")
+
 // MediaSessionWebrtcConfig contains transport settings which do not belong to
 // the codec-level media API. ICEURLs accepts STUN and TURN URLs understood by
 // Pion (for example stun:stun.example.org:3478).
@@ -75,29 +79,61 @@ type MediaSessionWebrtc struct {
 
 	Config MediaSessionWebrtcConfig
 
-	mu               sync.Mutex
-	agent            *ice.Agent
-	localCandidates  []ice.Candidate
-	localUfrag       string
-	localPwd         string
-	remoteUfrag      string
-	remotePwd        string
-	localSetup       string
-	codec            Codec
-	filterCodecs     []Codec
-	iceConn          *ice.Conn
-	mux              *webRTCPacketMux
-	dtlsConn         *dtls.Conn
-	localCtxSRTP     *srtp.Context
-	remoteCtxSRTP    *srtp.Context
-	localCtxSRTCP    *srtp.Context
-	remoteCtxSRTCP   *srtp.Context
-	rtcpReducedSize  bool
-	ready            bool
-	closed           bool
-	writeRTPBuf      []byte
-	writeRTCPBuf     []byte
-	onICEStateChange func(ice.ConnectionState)
+	mu                         sync.Mutex
+	agent                      *ice.Agent
+	localCandidates            []ice.Candidate
+	localUfrag                 string
+	localPwd                   string
+	remoteUfrag                string
+	remotePwd                  string
+	remoteFingerprintAlgorithm string
+	remoteFingerprint          string
+	localSetup                 string
+	modePreference             string
+	codec                      Codec
+	filterCodecs               []Codec
+	iceConn                    *ice.Conn
+	mux                        *webRTCPacketMux
+	dtlsConn                   *dtls.Conn
+	localCtxSRTP               *srtp.Context
+	remoteCtxSRTP              *srtp.Context
+	localCtxSRTCP              *srtp.Context
+	remoteCtxSRTCP             *srtp.Context
+	rtcpReducedSize            bool
+	pendingCodecs              []Codec
+	pendingMode                string
+	pendingRTCPReducedSize     bool
+	ready                      bool
+	closed                     bool
+	writeRTPBuf                []byte
+	writeRTCPBuf               []byte
+	onICEStateChange           func(ice.ConnectionState)
+}
+
+// Fork creates a fresh WebRTC transport for a locally initiated ICE restart.
+// Codec and configuration slices are copied because SDP negotiation mutates the
+// session's codec list, while certificates and filters remain immutable config.
+func (m *MediaSessionWebrtc) Fork(ctx context.Context) (*MediaSessionWebrtc, error) {
+	m.mu.Lock()
+	conf := m.Config
+	conf.ICEURLs = slices.Clone(conf.ICEURLs)
+	conf.IPFamilies = slices.Clone(conf.IPFamilies)
+	conf.CandidateTypes = slices.Clone(conf.CandidateTypes)
+	conf.NetworkTypes = slices.Clone(conf.NetworkTypes)
+	conf.DTLS.Certificates = slices.Clone(conf.DTLS.Certificates)
+	conf.DTLS.SRTPProfiles = slices.Clone(conf.DTLS.SRTPProfiles)
+	conf.DTLS.EllipticCurves = slices.Clone(conf.DTLS.EllipticCurves)
+	codecs := slices.Clone(m.Codecs)
+	mode := m.Mode
+	modePreference := m.modePreference
+	onICEStateChange := m.onICEStateChange
+	m.mu.Unlock()
+
+	fork := &MediaSessionWebrtc{Codecs: codecs, Mode: mode, modePreference: modePreference}
+	if err := fork.Init(ctx, conf, onICEStateChange); err != nil {
+		return nil, err
+	}
+	return fork, nil
 }
 
 // Init creates the ICE agent and waits for candidate gathering to finish. SIP
@@ -280,15 +316,24 @@ func (m *MediaSessionWebrtc) LocalSDP(_ context.Context, answered bool) ([]byte,
 			return nil, fmt.Errorf("remote WebRTC offer must be parsed before creating an answer")
 		}
 		setup = m.localSetup
+	} else {
+		m.modePreference = m.Mode
 	}
 	codecs := m.Codecs
 	if len(m.filterCodecs) > 0 {
 		codecs = m.filterCodecs
 	}
-	return m.localSDPLocked(codecs, setup, !answered || m.rtcpReducedSize)
+	mode := m.Mode
+	rtcpReducedSize := m.rtcpReducedSize
+	if answered && len(m.pendingCodecs) > 0 {
+		codecs = m.pendingCodecs
+		mode = m.pendingMode
+		rtcpReducedSize = m.pendingRTCPReducedSize
+	}
+	return m.localSDPLocked(codecs, setup, !answered || rtcpReducedSize, mode)
 }
 
-func (m *MediaSessionWebrtc) localSDPLocked(codecs []Codec, setup string, includeRTCPReducedSize bool) ([]byte, error) {
+func (m *MediaSessionWebrtc) localSDPLocked(codecs []Codec, setup string, includeRTCPReducedSize bool, mode string) ([]byte, error) {
 	fingerprint, err := dtlsSHA256Fingerprint(m.Config.DTLS.Certificates[0])
 	if err != nil {
 		return nil, fmt.Errorf("DTLS certificate fingerprint: %w", err)
@@ -308,7 +353,6 @@ func (m *MediaSessionWebrtc) localSDPLocked(codecs []Codec, setup string, includ
 			addressType = "IP6"
 		}
 	}
-	mode := m.Mode
 	if mode == "" {
 		mode = sdp.ModeSendrecv
 	}
@@ -441,6 +485,26 @@ func (m *MediaSessionWebrtc) RemoteSDP(_ context.Context, body []byte, offered b
 			break
 		}
 	}
+	remoteSetup := strings.ToLower(setup)
+	localDTLSClient := false
+	localSetup := ""
+	if offered {
+		switch remoteSetup {
+		case "passive":
+			localDTLSClient = true
+			localSetup = "active"
+		case "active":
+			localSetup = "passive"
+		default:
+			return fmt.Errorf("invalid DTLS setup role %q in answer", setup)
+		}
+	} else {
+		if remoteSetup != "actpass" && remoteSetup != "passive" {
+			return fmt.Errorf("invalid DTLS setup role %q in offer", setup)
+		}
+		localDTLSClient = true
+		localSetup = "active"
+	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -448,7 +512,35 @@ func (m *MediaSessionWebrtc) RemoteSDP(_ context.Context, body []byte, offered b
 		return fmt.Errorf("webrtc media session is not initialized")
 	}
 	if m.iceConn != nil {
-		return fmt.Errorf("remote WebRTC SDP is already configured; ICE restart is not supported")
+		ufragChanged := remoteUfrag != m.remoteUfrag
+		pwdChanged := remotePwd != m.remotePwd
+		if ufragChanged != pwdChanged {
+			return fmt.Errorf("remote ICE restart must change both username fragment and password")
+		}
+		if ufragChanged {
+			return ErrWebRTCICERestart
+		}
+		if !strings.EqualFold(fingerprintFields[0], m.remoteFingerprintAlgorithm) ||
+			!strings.EqualFold(fingerprintFields[1], m.remoteFingerprint) {
+			return fmt.Errorf("remote DTLS fingerprint changed without an ICE restart")
+		}
+		if !offered && remoteSetup == "actpass" {
+			localSetup = m.localSetup
+		}
+		if localSetup != m.localSetup {
+			return fmt.Errorf("remote DTLS role changed without an ICE restart")
+		}
+		// A subsequent offer/answer with unchanged ICE credentials continues the
+		// current ICE and DTLS transports. Stage only media-level state so a SIP
+		// failure can leave the active stream untouched.
+		m.pendingCodecs = slices.Clone(common)
+		localPreference := m.modePreference
+		if localPreference == "" {
+			localPreference = m.Mode
+		}
+		m.pendingMode = negotiateMediaDirection(remoteMode, localPreference)
+		m.pendingRTCPReducedSize = remoteRTCPReducedSize
+		return nil
 	}
 	for _, candidate := range remoteCandidates {
 		if err = m.agent.AddRemoteCandidate(candidate); err != nil {
@@ -457,11 +549,16 @@ func (m *MediaSessionWebrtc) RemoteSDP(_ context.Context, body []byte, offered b
 	}
 	m.remoteUfrag = remoteUfrag
 	m.remotePwd = remotePwd
+	m.remoteFingerprintAlgorithm = fingerprintFields[0]
+	m.remoteFingerprint = fingerprintFields[1]
 	m.rtcpReducedSize = remoteRTCPReducedSize
 	m.filterCodecs = common
 	m.Codecs = slices.Clone(common)
 	m.codec, _ = CodecAudioFromList(common)
-	m.Mode = negotiateMediaDirection(remoteMode, m.Mode)
+	if m.modePreference == "" {
+		m.modePreference = m.Mode
+	}
+	m.Mode = negotiateMediaDirection(remoteMode, m.modePreference)
 
 	var conn *ice.Conn
 	if offered {
@@ -478,25 +575,7 @@ func (m *MediaSessionWebrtc) RemoteSDP(_ context.Context, body []byte, offered b
 	m.iceConn = conn
 	m.mux = newWebRTCPacketMux(conn)
 
-	remoteSetup := strings.ToLower(setup)
-	localDTLSClient := false
-	if offered {
-		switch remoteSetup {
-		case "passive":
-			localDTLSClient = true
-			m.localSetup = "active"
-		case "active":
-			m.localSetup = "passive"
-		default:
-			return fmt.Errorf("invalid DTLS setup role %q in answer", setup)
-		}
-	} else {
-		if remoteSetup != "actpass" && remoteSetup != "passive" {
-			return fmt.Errorf("invalid DTLS setup role %q in offer", setup)
-		}
-		localDTLSClient = true
-		m.localSetup = "active"
-	}
+	m.localSetup = localSetup
 	dtlsConf := m.Config.DTLS.ToLibConf([]DTLSFingerprint{{
 		Algorithm: fingerprintFields[0],
 		Value:     fingerprintFields[1],
@@ -518,6 +597,20 @@ func (m *MediaSessionWebrtc) RemoteSDP(_ context.Context, body []byte, offered b
 // all encrypted media then travel only over that path.
 func (m *MediaSessionWebrtc) Finalize(ctx context.Context) error {
 	m.mu.Lock()
+	if m.ready {
+		if len(m.pendingCodecs) > 0 {
+			m.filterCodecs = m.pendingCodecs
+			m.Codecs = slices.Clone(m.pendingCodecs)
+			m.codec, _ = CodecAudioFromList(m.pendingCodecs)
+			m.Mode = m.pendingMode
+			m.rtcpReducedSize = m.pendingRTCPReducedSize
+			m.pendingCodecs = nil
+			m.pendingMode = ""
+			m.pendingRTCPReducedSize = false
+		}
+		m.mu.Unlock()
+		return nil
+	}
 	agent := m.agent
 	dtlsConn := m.dtlsConn
 	m.mu.Unlock()
@@ -589,6 +682,16 @@ func (m *MediaSessionWebrtc) Finalize(ctx context.Context) error {
 	}
 	m.mu.Unlock()
 	return nil
+}
+
+// Rollback drops a staged same-ICE-generation media update. It does not touch
+// the active ICE, DTLS, SRTP or SRTCP transports.
+func (m *MediaSessionWebrtc) Rollback() {
+	m.mu.Lock()
+	m.pendingCodecs = nil
+	m.pendingMode = ""
+	m.pendingRTCPReducedSize = false
+	m.mu.Unlock()
 }
 
 func (m *MediaSessionWebrtc) Close() error {
