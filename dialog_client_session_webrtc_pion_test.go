@@ -34,7 +34,7 @@ func TestDialogClientSessionWebrtcPion(t *testing.T) {
 			Transport{
 				Transport: "tcp",
 				BindHost:  "127.0.0.1",
-				BindPort:  15060,
+				BindPort:  0,
 			},
 		),
 	)
@@ -80,6 +80,8 @@ func TestDialogClientSessionWebrtcPion(t *testing.T) {
 		<-d.Context().Done()
 	})
 	require.NoError(t, err)
+	serverPort := dg.transports[0].BindPort
+	require.NotZero(t, serverPort)
 
 	t.Run("HanguperClientNoServe", func(t *testing.T) {
 		// We want to confirm that diago can receive BYE without Binding to IP, which will reflect Contact Header
@@ -89,7 +91,7 @@ func TestDialogClientSessionWebrtcPion(t *testing.T) {
 		// Has no listener just UAC. Contact will hold empheral port
 		phone := newWebrtcDialer(ua)
 
-		dialog, err := phone.NewDialog(sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: 15060}, NewDialogOptions{
+		dialog, err := phone.NewDialog(sip.Uri{User: "hanguper", Host: "127.0.0.1", Port: serverPort}, NewDialogOptions{
 			Transport: "tcp",
 		})
 		require.NoError(t, err)
@@ -137,7 +139,7 @@ func TestDialogClientSessionWebrtcPion(t *testing.T) {
 		<-dialog.Context().Done() */
 
 		// Answered call
-		dialog, err := phone.NewDialog(sip.Uri{User: "echo", Host: "127.0.0.1", Port: 15060}, NewDialogOptions{
+		dialog, err := phone.NewDialog(sip.Uri{User: "echo", Host: "127.0.0.1", Port: serverPort}, NewDialogOptions{
 			Transport: "tcp",
 		})
 		require.NoError(t, err)
@@ -171,6 +173,7 @@ func TestIntegrationDialogWebrtcPionClientReinviteMedia(t *testing.T) {
 	defer cancel()
 	beep, _ := audio.BeepLoadPCM(media.CodecAudioUlaw)
 	numPkts := len(beep) / media.CodecAudioUlaw.Samples16()
+	var serverPort int
 
 	t.Log("Size beep", len(beep), numPkts)
 	audioReceived := make(chan []byte)
@@ -182,7 +185,7 @@ func TestIntegrationDialogWebrtcPionClientReinviteMedia(t *testing.T) {
 			Transport{
 				Transport: "tcp",
 				BindHost:  "127.0.0.1",
-				BindPort:  15079,
+				BindPort:  0,
 			},
 		))
 		digServer := NewDigestServer()
@@ -226,6 +229,8 @@ func TestIntegrationDialogWebrtcPionClientReinviteMedia(t *testing.T) {
 			<-ctx.Done()
 		})
 		require.NoError(t, err)
+		serverPort = dg.transports[0].BindPort
+		require.NotZero(t, serverPort)
 	}
 
 	ua, _ := sipgo.NewUA()
@@ -234,7 +239,7 @@ func TestIntegrationDialogWebrtcPionClientReinviteMedia(t *testing.T) {
 	dg := newWebrtcDialer(ua)
 	// err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
 	// require.NoError(t, err)
-	dialog, err := dg.NewDialog(sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15079}, NewDialogOptions{Transport: "tcp"})
+	dialog, err := dg.NewDialog(sip.Uri{User: "dialer", Host: "127.0.0.1", Port: serverPort}, NewDialogOptions{Transport: "tcp"})
 	require.NoError(t, err)
 	defer dialog.Close()
 
