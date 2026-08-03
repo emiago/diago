@@ -158,6 +158,29 @@ func TestMediaSessionWebrtcICEAndSRTP(t *testing.T) {
 	case packet := <-offerReports:
 		require.IsType(t, &rtcp.ReceiverReport{}, packet)
 	}
+
+	// A browser re-offer without changed ICE credentials must retain the active
+	// ICE/DTLS/SRTP path. Direction changes are staged until Finalize (SIP ACK)
+	// and can be discarded without disturbing current media.
+	reoffer, err := offerer.LocalSDP(ctx, false)
+	require.NoError(t, err)
+	reoffer = []byte(strings.Replace(string(reoffer), "a=sendrecv\r\n", "a=sendonly\r\n", 1))
+	require.NoError(t, answerer.RemoteSDP(ctx, reoffer, false))
+	require.Equal(t, "sendrecv", answerer.Mode)
+	stagedAnswer, err := answerer.LocalSDP(ctx, true)
+	require.NoError(t, err)
+	require.Contains(t, string(stagedAnswer), "a=recvonly\r\n")
+	answerer.Rollback()
+	require.Equal(t, "sendrecv", answerer.Mode)
+
+	require.NoError(t, answerer.RemoteSDP(ctx, reoffer, false))
+	answer, err = answerer.LocalSDP(ctx, true)
+	require.NoError(t, err)
+	require.NoError(t, offerer.RemoteSDP(ctx, answer, true))
+	require.NoError(t, offerer.Finalize(ctx))
+	require.NoError(t, answerer.Finalize(ctx))
+	require.Equal(t, "sendonly", offerer.Mode)
+	require.Equal(t, "recvonly", answerer.Mode)
 }
 
 func TestMediaSessionWebrtcPionBrowserPeer(t *testing.T) {

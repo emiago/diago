@@ -85,6 +85,7 @@ func (d *DialogServerSession) AnswerWebrtc(opts AnswerWebrtcOptions) (*DialogWeb
 		return nil, errors.Join(err, cleanupErr)
 	}
 
+	med.registerDialogCallbacks(&d.dialogCallbacks)
 	d.dialogCallbacks.mu.Lock()
 	d.onReferDialog = opts.OnRefer
 	d.onClose = append(d.onClose, med.Close)

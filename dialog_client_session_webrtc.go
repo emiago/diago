@@ -158,6 +158,7 @@ func finalizeWebrtcMedia(ctx context.Context, sess *media.MediaSessionWebrtc, me
 }
 
 func (d *DialogClientSession) registerWebrtcDialogCallbacks(med *DialogWebrtc, onRefer OnReferDialogFunc) {
+	med.registerDialogCallbacks(&d.dialogCallbacks)
 	d.dialogCallbacks.mu.Lock()
 	d.onReferDialog = onRefer
 	d.onClose = append(d.onClose, med.Close)
