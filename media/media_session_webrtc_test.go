@@ -12,6 +12,7 @@ import (
 
 	"github.com/emiago/diago/testdata"
 	"github.com/pion/ice/v4"
+	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"github.com/stretchr/testify/require"
@@ -47,6 +48,7 @@ func TestMediaSessionWebrtcICEAndSRTP(t *testing.T) {
 	offer, err := offerer.LocalSDP(ctx, false)
 	require.NoError(t, err)
 	require.Contains(t, string(offer), "a=rtcp-mux\r\n")
+	require.Contains(t, string(offer), "a=rtcp-rsize\r\n")
 	require.Contains(t, string(offer), "a=setup:actpass\r\n")
 	require.Contains(t, string(offer), "a=end-of-candidates\r\n")
 	require.NotContains(t, string(offer), "a=ice-options:trickle")
@@ -55,6 +57,7 @@ func TestMediaSessionWebrtcICEAndSRTP(t *testing.T) {
 	answer, err := answerer.LocalSDP(ctx, true)
 	require.NoError(t, err)
 	require.Contains(t, string(answer), "a=setup:active\r\n")
+	require.Contains(t, string(answer), "a=rtcp-rsize\r\n")
 	require.NoError(t, offerer.RemoteSDP(ctx, answer, true))
 	offerRTPSession := NewRTPSessionWebrtc(offerer)
 	answerRTPSession := NewRTPSessionWebrtc(answerer)
@@ -72,7 +75,8 @@ func TestMediaSessionWebrtcICEAndSRTP(t *testing.T) {
 	offerRTPSession.RTCPReportInterval = 25 * time.Millisecond
 	answerRTPSession.RTCPReportInterval = 25 * time.Millisecond
 	receiverReports := make(chan *rtcp.ReceiverReport, 1)
-	senderReports := make(chan *rtcp.SenderReport, 1)
+	offerReports := make(chan rtcp.Packet, 4)
+	sourceDescriptions := make(chan *rtcp.SourceDescription, 1)
 	offerRTPSession.OnReadRTCP(func(pkt rtcp.Packet, _ RTPReadStats) {
 		if report, ok := pkt.(*rtcp.ReceiverReport); ok {
 			select {
@@ -82,9 +86,15 @@ func TestMediaSessionWebrtcICEAndSRTP(t *testing.T) {
 		}
 	})
 	answerRTPSession.OnReadRTCP(func(pkt rtcp.Packet, _ RTPReadStats) {
-		if report, ok := pkt.(*rtcp.SenderReport); ok {
+		switch report := pkt.(type) {
+		case *rtcp.SenderReport, *rtcp.ReceiverReport:
 			select {
-			case senderReports <- report:
+			case offerReports <- report:
+			default:
+			}
+		case *rtcp.SourceDescription:
+			select {
+			case sourceDescriptions <- report:
 			default:
 			}
 		}
@@ -115,10 +125,38 @@ func TestMediaSessionWebrtcICEAndSRTP(t *testing.T) {
 	select {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
-	case report := <-senderReports:
+	case packet := <-offerReports:
+		report, ok := packet.(*rtcp.SenderReport)
+		require.True(t, ok, "first report after RTP must be an SR, got %T", packet)
 		require.Equal(t, offerWriter.SSRC, report.SSRC)
 		require.Equal(t, uint32(1), report.PacketCount)
 		require.Equal(t, uint32(len(payload)), report.OctetCount)
+	}
+	select {
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	case description := <-sourceDescriptions:
+		require.Len(t, description.Chunks, 1)
+		require.Equal(t, offerWriter.SSRC, description.Chunks[0].Source)
+		require.Len(t, description.Chunks[0].Items, 1)
+		require.Equal(t, rtcp.SDESCNAME, description.Chunks[0].Items[0].Type)
+		require.NotEmpty(t, description.Chunks[0].Items[0].Text)
+	}
+
+	// RFC 3550 keeps sender status for two reporting intervals after the last
+	// RTP packet. Reporting then continues as RR, preserving regular compound
+	// RTCP without pretending an idle stream is still active.
+	select {
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	case packet := <-offerReports:
+		require.IsType(t, &rtcp.SenderReport{}, packet)
+	}
+	select {
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	case packet := <-offerReports:
+		require.IsType(t, &rtcp.ReceiverReport{}, packet)
 	}
 }
 
@@ -138,7 +176,13 @@ func TestMediaSessionWebrtcPionBrowserPeer(t *testing.T) {
 	settingEngine.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
 	settingEngine.SetIncludeLoopbackCandidate(true)
 	settingEngine.SetInterfaceFilter(testLoopbackInterface)
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithSettingEngine(settingEngine))
+	registry := &interceptor.Registry{}
+	require.NoError(t, webrtc.RegisterDefaultInterceptors(mediaEngine, registry))
+	api := webrtc.NewAPI(
+		webrtc.WithMediaEngine(mediaEngine),
+		webrtc.WithSettingEngine(settingEngine),
+		webrtc.WithInterceptorRegistry(registry),
+	)
 	peer, err := api.NewPeerConnection(webrtc.Configuration{})
 	require.NoError(t, err)
 	defer peer.Close()
@@ -158,9 +202,13 @@ func TestMediaSessionWebrtcPionBrowserPeer(t *testing.T) {
 			}
 		}
 	}()
-	remoteTrack := make(chan *webrtc.TrackRemote, 1)
-	peer.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
-		remoteTrack <- track
+	type remoteMedia struct {
+		track    *webrtc.TrackRemote
+		receiver *webrtc.RTPReceiver
+	}
+	remote := make(chan remoteMedia, 1)
+	peer.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		remote <- remoteMedia{track: track, receiver: receiver}
 	})
 
 	offer, err := peer.CreateOffer(nil)
@@ -187,8 +235,11 @@ func TestMediaSessionWebrtcPionBrowserPeer(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, peer.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: string(answer)}))
 	rtpSession := NewRTPSessionWebrtc(session)
+	rtpSession.RTCPReportInterval = 25 * time.Millisecond
 	packetWriter := NewRTPPacketWriter(rtpSession, session.Codec())
 	require.NoError(t, session.Finalize(ctx))
+	require.NoError(t, rtpSession.MonitorBackground())
+	defer rtpSession.MonitorClose()
 
 	payload := []byte("browser-compatible-audio")
 	_, err = packetWriter.WriteSamples(payload, CodecAudioUlaw.SampleTimestamp(), true, CodecAudioUlaw.PayloadType)
@@ -196,11 +247,48 @@ func TestMediaSessionWebrtcPionBrowserPeer(t *testing.T) {
 	select {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
-	case track := <-remoteTrack:
-		pkt, _, readErr := track.ReadRTP()
+	case remoteMedia := <-remote:
+		pkt, _, readErr := remoteMedia.track.ReadRTP()
 		require.NoError(t, readErr)
 		require.Equal(t, payload, pkt.Payload)
+
+		type rtcpRead struct {
+			packets []rtcp.Packet
+			err     error
+		}
+		readRTCP := make(chan rtcpRead, 1)
+		go func() {
+			packets, _, readErr := remoteMedia.receiver.ReadRTCP()
+			readRTCP <- rtcpRead{packets: packets, err: readErr}
+		}()
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case result := <-readRTCP:
+			require.NoError(t, result.err)
+			require.Len(t, result.packets, 2)
+			require.IsType(t, &rtcp.SenderReport{}, result.packets[0])
+			require.IsType(t, &rtcp.SourceDescription{}, result.packets[1])
+		}
 	}
+}
+
+func TestRTPSessionWebrtcIgnoresSenderReportFromReplacedSSRC(t *testing.T) {
+	session := NewRTPSessionWebrtc(nil)
+	defer session.Close()
+	session.onReadRTCP = nil
+	session.readStats = RTPReadStats{SSRC: 22, PacketsCount: 1}
+
+	now := time.Now()
+	session.readRTCPPacket(&rtcp.SenderReport{SSRC: 11, NTPTime: 100}, now)
+	stats := session.ReadStats()
+	require.Zero(t, stats.lastSenderReportNTP)
+	require.True(t, stats.lastSenderReportRecvTime.IsZero())
+
+	session.readRTCPPacket(&rtcp.SenderReport{SSRC: 22, NTPTime: 200}, now)
+	stats = session.ReadStats()
+	require.Equal(t, uint64(200), stats.lastSenderReportNTP)
+	require.Equal(t, now, stats.lastSenderReportRecvTime)
 }
 
 func testLoopbackInterface(name string) bool {
