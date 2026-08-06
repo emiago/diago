@@ -404,6 +404,224 @@ func TestIntegrationDialogServerRefer(t *testing.T) {
 	})
 }
 
+func TestIntegrationDialogServerReferRejection(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Dialer WITHOUT OnRefer handler — will reject REFER with 406
+	var dialer *Diago
+	{
+		ua, _ := sipgo.NewUA(sipgo.WithUserAgent("dialer-norefer"))
+		defer ua.Close()
+
+		dg := NewDiago(ua, WithTransport(
+			Transport{
+				Transport: "udp",
+				BindHost:  "127.0.0.1",
+				BindPort:  15081,
+				ID:        "udp",
+			},
+		))
+
+		err := dg.ServeBackground(ctx, nil)
+		require.NoError(t, err)
+		dialer = dg
+	}
+
+	dialCall := func() {
+		dialog, err := dialer.NewDialog(sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15080}, NewDialogOptions{})
+		require.NoError(t, err)
+
+		go func() {
+			// No OnRefer set — REFER will be rejected by dialer
+			err := dialog.Invite(ctx, InviteClientOptions{})
+			require.NoError(t, err)
+
+			dialog.Ack(ctx)
+			<-dialog.Context().Done()
+			t.Log("Dialog done")
+		}()
+	}
+
+	ua, _ := sipgo.NewUA()
+	defer ua.Close()
+
+	dg := NewDiago(ua, WithTransport(
+		Transport{
+			Transport: "udp",
+			BindHost:  "127.0.0.1",
+			BindPort:  15080,
+		},
+	))
+
+	waitDialog := make(chan *DialogServerSession)
+	err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+		t.Log("Call received")
+		waitDialog <- d
+		<-d.Context().Done()
+	})
+	require.NoError(t, err)
+
+	t.Run("ReferRejected405_AutoBYE", func(t *testing.T) {
+		dialCall()
+		d := <-waitDialog
+
+		err = d.Answer()
+		require.NoError(t, err)
+
+		// Send REFER without OnNotify — auto-BYE mode
+		// Dialer has no OnRefer handler, so it responds 406 Not Acceptable
+		err = d.ReferOptions(d.Context(), sip.Uri{Host: "127.0.0.1", Port: 15082}, ReferServerOptions{})
+		// REFER should return error (non-202 response)
+		assert.Error(t, err)
+
+		// Dialog should be terminated (BYE sent automatically)
+		select {
+		case <-d.Context().Done():
+			// Good — dialog ended due to auto-BYE
+		case <-time.After(5 * time.Second):
+			t.Fatal("Dialog did not terminate after REFER rejection — BYE was not sent")
+		}
+	})
+
+	t.Run("ReferRejected_WithOnNotify_NoBYE", func(t *testing.T) {
+		dialCall()
+		d := <-waitDialog
+
+		err = d.Answer()
+		require.NoError(t, err)
+
+		// Send REFER WITH OnNotify — caller manages lifecycle
+		err = d.ReferOptions(d.Context(), sip.Uri{Host: "127.0.0.1", Port: 15082}, ReferServerOptions{
+			OnNotify: func(statusCode int) {
+				// Caller handles it
+			},
+		})
+		// REFER should return error (non-202 response)
+		assert.Error(t, err)
+
+		// Dialog should NOT be auto-terminated — caller owns lifecycle
+		select {
+		case <-d.Context().Done():
+			t.Fatal("Dialog was terminated but OnNotify was set — should not auto-BYE")
+		case <-time.After(1 * time.Second):
+			// Good — dialog still alive, caller has control
+		}
+
+		// Clean up
+		d.Hangup(ctx)
+	})
+}
+
+func TestIntegrationDialogServerReferTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Dialer with OnRefer that accepts but never sends final NOTIFY (simulates lost NOTIFY)
+	var dialer *Diago
+	{
+		ua, _ := sipgo.NewUA(sipgo.WithUserAgent("dialer-timeout"))
+		defer ua.Close()
+
+		dg := NewDiago(ua, WithTransport(
+			Transport{
+				Transport: "udp",
+				BindHost:  "127.0.0.1",
+				BindPort:  15091,
+				ID:        "udp",
+			},
+		))
+
+		err := dg.ServeBackground(ctx, nil)
+		require.NoError(t, err)
+		dialer = dg
+	}
+
+	// UAS that accepts the REFER'd INVITE but never finishes (simulates hang)
+	{
+		ua, _ := sipgo.NewUA()
+		defer ua.Close()
+
+		dg := NewDiago(ua, WithTransport(
+			Transport{
+				Transport: "udp",
+				BindHost:  "127.0.0.1",
+				BindPort:  15092,
+			},
+		))
+
+		err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+			// Accept call but just hang — never complete to trigger final NOTIFY
+			d.Ringing()
+			<-d.Context().Done()
+		})
+		require.NoError(t, err)
+	}
+
+	ua, _ := sipgo.NewUA()
+	defer ua.Close()
+
+	dg := NewDiago(ua, WithTransport(
+		Transport{
+			Transport: "udp",
+			BindHost:  "127.0.0.1",
+			BindPort:  15090,
+		},
+	))
+
+	waitDialog := make(chan *DialogServerSession)
+	err := dg.ServeBackground(ctx, func(d *DialogServerSession) {
+		t.Log("Call received")
+		waitDialog <- d
+		<-d.Context().Done()
+	})
+	require.NoError(t, err)
+
+	t.Run("NotifyTimeout_AutoBYE", func(t *testing.T) {
+		dialCall := func() {
+			dialog, err := dialer.NewDialog(sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15090}, NewDialogOptions{})
+			require.NoError(t, err)
+
+			go func() {
+				err := dialog.Invite(ctx, InviteClientOptions{
+					OnRefer: func(referDialog *DialogClientSession) error {
+						// Accept REFER but send INVITE to a target that never answers
+						if err := referDialog.Invite(ctx, InviteClientOptions{}); err != nil {
+							return err
+						}
+						// Never send final NOTIFY >= 200 (simulates lost/stuck scenario)
+						<-referDialog.Context().Done()
+						return nil
+					},
+				})
+				require.NoError(t, err)
+				dialog.Ack(ctx)
+				<-dialog.Context().Done()
+			}()
+		}
+
+		dialCall()
+		d := <-waitDialog
+
+		err = d.Answer()
+		require.NoError(t, err)
+
+		// Send REFER with short timeout — no OnNotify (auto-BYE mode)
+		err = d.ReferOptions(d.Context(), sip.Uri{Host: "127.0.0.1", Port: 15092}, ReferServerOptions{
+			ReferTimeout: 3 * time.Second, // Short timeout for test
+		})
+		require.NoError(t, err)
+
+		// Dialog should terminate within timeout + margin
+		select {
+		case <-d.Context().Done():
+			// Good — dialog ended due to timeout BYE
+		case <-time.After(10 * time.Second):
+			t.Fatal("Dialog did not terminate after NOTIFY timeout — BYE was not sent")
+		}
+	})
+}
+
 func TestIntegrationDialogServerPlayback(t *testing.T) {
 	rtpBuf := newRTPWriterBuffer()
 	dialog := &DialogServerSession{
