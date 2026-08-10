@@ -297,6 +297,7 @@ func (s *MediaSession) StartRTP(rw int8) error {
 func (s *MediaSession) Fork() *MediaSession {
 	cp := MediaSession{
 		Laddr:          s.Laddr, // TODO clone it although it is read only
+		ExternalIP:     slices.Clone(s.ExternalIP),
 		rtpConn:        s.rtpConn,
 		rtcpConn:       s.rtcpConn,
 		Codecs:         slices.Clone(s.Codecs),

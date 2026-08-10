@@ -115,6 +115,22 @@ func TestMediaSessionExternalIP(t *testing.T) {
 	assert.Equal(t, m.ExternalIP.To4(), connInfo.IP.To4())
 }
 
+func TestMediaSessionForkPreservesExternalIP(t *testing.T) {
+	m := &MediaSession{
+		Laddr:      net.UDPAddr{IP: net.IPv4(10, 0, 0, 1)},
+		Mode:       sdp.ModeSendrecv,
+		ExternalIP: net.IPv4(203, 0, 113, 10),
+	}
+
+	fork := m.Fork()
+	sd := sdp.SessionDescription{}
+	require.NoError(t, sdp.Unmarshal(fork.LocalSDP(), &sd))
+
+	connInfo, err := sd.ConnectionInformation()
+	require.NoError(t, err)
+	assert.Equal(t, m.ExternalIP.To4(), connInfo.IP.To4())
+}
+
 func TestMediaSessionUpdateCodec(t *testing.T) {
 	newM := func() *MediaSession {
 		return &MediaSession{

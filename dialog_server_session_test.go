@@ -5,6 +5,7 @@ package diago
 
 import (
 	"context"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -177,9 +178,10 @@ func TestIntegrationDialogServerPeerCodecPruneReinvite(t *testing.T) {
 	defer ua.Close()
 
 	uas := NewDiago(ua, WithTransport(Transport{
-		Transport: "udp",
-		BindHost:  "127.0.0.1",
-		BindPort:  15080,
+		Transport:       "udp",
+		BindHost:        "127.0.0.1",
+		BindPort:        15080,
+		MediaExternalIP: net.IPv4(203, 0, 113, 10),
 	}))
 	err := uas.ServeBackground(ctx, func(d *DialogServerSession) {
 		// This is the reported role: the peer sends the initial INVITE and
@@ -234,6 +236,8 @@ func TestIntegrationDialogServerPeerCodecPruneReinvite(t *testing.T) {
 	require.NotNil(t, contentType)
 	require.Equal(t, "application/sdp", contentType.Value())
 	require.NotEmpty(t, res.Body())
+	require.Contains(t, string(res.Body()), "c=IN IP4 203.0.113.10")
+	require.NotContains(t, string(res.Body()), "c=IN IP4 127.0.0.1")
 
 	// Complete the re-INVITE transaction from the peer/UAC side.
 	ack := sip.NewRequest(sip.ACK, res.Contact().Address)
