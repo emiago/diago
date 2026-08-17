@@ -57,7 +57,7 @@ func TestBridgeProxy(t *testing.T) {
 	err = b.AddDialogMedia(outgoingMed)
 	require.NoError(t, err)
 
-	err = b.proxyMediaChannels(b.dialogs[0], b.dialogs[1])
+	err = b.proxyMediaChannels(context.Background(), b.dialogs[0], b.dialogs[1])
 	require.ErrorIs(t, err, io.EOF)
 
 	// Confirm all data is proxied
