@@ -4,10 +4,12 @@
 package diago
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/emiago/diago/media"
@@ -18,6 +20,8 @@ type BridgeAudioMedia struct {
 	ReaderProps MediaProps
 	Writer      io.Writer
 	WriterProps MediaProps
+	StopRTP     func() error
+	StartRTP    func() error
 }
 
 type Bridge struct {
@@ -35,6 +39,8 @@ type Bridge struct {
 	dialogs []*BridgeAudioMedia
 	// minDialogs is just helper flag when to start proxy
 	WaitDialogsNum int
+
+	wg sync.WaitGroup
 }
 
 // NewBridge creates bridge with default settings.
@@ -88,6 +94,13 @@ func (b *Bridge) AddDialogMedia(m *DialogMedia) error {
 			return dtmfWriter.WriteDTMF(dtmf)
 		})
 	}
+	med.StopRTP = func() error {
+		return m.StopRTP(0, 0)
+	}
+
+	med.StartRTP = func() error {
+		return m.StartRTP(0, 0)
+	}
 
 	return b.AddAudioMedia(&med)
 }
@@ -131,6 +144,15 @@ func (b *Bridge) AddDialogWebrtc(m *DialogWebrtc) error {
 			return dtmfWriter.WriteDTMF(dtmf)
 		})
 	}
+
+	med.StopRTP = func() error {
+		return m.mediaSession.StopRTP(0, 0)
+	}
+
+	med.StartRTP = func() error {
+		return m.mediaSession.StartRTP(0)
+	}
+
 	return b.AddAudioMedia(&med)
 }
 
@@ -178,7 +200,7 @@ func (b *Bridge) AddAudioMedia(m *BridgeAudioMedia) error {
 		}(time.Now())
 		m1 := b.dialogs[0]
 		m2 := b.dialogs[1]
-		if err := b.proxyMediaChannels(m1, m2); err != nil {
+		if err := b.proxyMediaChannels(context.Background(), m1, m2); err != nil {
 			if errors.Is(err, io.EOF) {
 				return
 			}
@@ -189,7 +211,35 @@ func (b *Bridge) AddAudioMedia(m *BridgeAudioMedia) error {
 	return nil
 }
 
-func (b *Bridge) proxyMediaChannels(m1, m2 *BridgeAudioMedia) error {
+// ProxyMedia is explicit call to start proxing media.
+func (b *Bridge) ProxyMedia(ctx context.Context) error {
+	if len(b.dialogs) > 2 {
+		return fmt.Errorf("proxy media requieres minimum 2 parties")
+	}
+	// Check are both answered
+	for _, m := range b.dialogs {
+		// TODO remove this double locking. Read once
+		if m.Reader == nil || m.Writer == nil {
+			return fmt.Errorf("dialog session not answered?")
+		}
+	}
+
+	defer func(start time.Time) {
+		b.log.Debug("Proxy media setup", "dur", time.Since(start).String())
+	}(time.Now())
+	m1 := b.dialogs[0]
+	m2 := b.dialogs[1]
+	if err := b.proxyMediaChannels(ctx, m1, m2); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+
+		return err
+	}
+	return nil
+}
+
+func (b *Bridge) proxyMediaChannels(ctx context.Context, m1, m2 *BridgeAudioMedia) error {
 	var err error
 	log := b.log
 
@@ -216,9 +266,29 @@ func (b *Bridge) proxyMediaChannels(m1, m2 *BridgeAudioMedia) error {
 		go proxyMediaBackground(log, r, w, errCh)
 	}()
 
-	// Wait for all to finish
+	// Wait for all to finish or stop on cancelation
+	stopped := false
 	for i := 0; i < 2; i++ {
-		err = errors.Join(err, <-errCh)
+		select {
+		case <-ctx.Done():
+			// If we failed to stop, we will have useless block here
+			if !stopped {
+				if err := m1.StopRTP(); err != nil {
+					return err
+				}
+				stopped = true
+			}
+
+			err = errors.Join(err, <-errCh)
+
+		case e := <-errCh:
+			err = errors.Join(err, e)
+		}
 	}
+
+	if stopped {
+		m1.StartRTP() // Make sure we have RTP continued
+	}
+
 	return err
 }
