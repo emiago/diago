@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"sync"
 	"time"
 
 	"github.com/emiago/diago/media"
@@ -26,6 +27,8 @@ type MonitorPCMReader struct {
 	silence      []byte
 	lastTime     time.Time
 	FlushOnError bool
+	mu           sync.Mutex
+	stopped      bool
 }
 
 func (m *MonitorPCMReader) Init(w io.Writer, codec media.Codec, audioReader io.Reader) error {
@@ -69,7 +72,7 @@ func (m *MonitorPCMReader) Read(b []byte) (int, error) {
 		diff := uint32(now.Sub(m.lastTime).Seconds() * float64(m.codec.SampleRate))
 		srt := m.codec.SampleTimestamp()
 		for i := 2 * srt; i < diff; i += srt {
-			if _, err := m.writer.Write(m.silence); err != nil {
+			if err := m.writePCM(m.silence); err != nil {
 				return n, err
 			}
 		}
@@ -83,8 +86,32 @@ func (m *MonitorPCMReader) Read(b []byte) (int, error) {
 	lpcm := m.decoder.ReadFull()
 
 	// Write to outer stream. Expecting some buffer with flushing will happen
-	_, err = m.writer.Write(lpcm)
+	err = m.writePCM(lpcm)
 	return n, err
+}
+
+func (m *MonitorPCMReader) writePCM(lpcm []byte) error {
+	// We do not want to write on stopped monitoring
+	// We need this, because user can stop monitoring, but still keep underhood stream active
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.stopped {
+		return nil
+	}
+	_, err := m.writer.Write(lpcm)
+	return err
+}
+
+func (m *MonitorPCMReader) Stop() {
+	m.mu.Lock()
+	m.stopped = true
+	m.mu.Unlock()
+}
+
+func (m *MonitorPCMReader) Start() {
+	m.mu.Lock()
+	m.stopped = false
+	m.mu.Unlock()
 }
 
 type MonitorPCMWriter struct {
@@ -96,6 +123,8 @@ type MonitorPCMWriter struct {
 	silence      []byte
 	lastTime     time.Time
 	FlushOnError bool
+	mu           sync.Mutex
+	stopped      bool
 }
 
 func (m *MonitorPCMWriter) Init(w io.Writer, codec media.Codec, audioWriter io.Writer) error {
@@ -127,7 +156,7 @@ func (m *MonitorPCMWriter) Write(b []byte) (int, error) {
 		diff := uint32(now.Sub(m.lastTime).Seconds() * float64(m.codec.SampleRate))
 		srt := m.codec.SampleTimestamp()
 		for i := 2 * srt; i < diff; i += srt {
-			if _, err := m.writer.Write(m.silence); err != nil {
+			if err := m.writePCM(m.silence); err != nil {
 				return 0, err
 			}
 		}
@@ -149,8 +178,32 @@ func (m *MonitorPCMWriter) Write(b []byte) (int, error) {
 	lpcm := m.decoder.ReadFull()
 
 	// Write to outer stream. Expecting some buffer with flushing will happen
-	_, err = m.writer.Write(lpcm)
+	err = m.writePCM(lpcm)
 	return n, err
+}
+
+func (m *MonitorPCMWriter) writePCM(lpcm []byte) error {
+	// We do not want to write on stopped monitoring
+	// We need this, because user can stop monitoring, but still keep underhood stream active
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.stopped {
+		return nil
+	}
+	_, err := m.writer.Write(lpcm)
+	return err
+}
+
+func (m *MonitorPCMWriter) Stop() {
+	m.mu.Lock()
+	m.stopped = true
+	m.mu.Unlock()
+}
+
+func (m *MonitorPCMWriter) Start() {
+	m.mu.Lock()
+	m.stopped = false
+	m.mu.Unlock()
 }
 
 type MonitorPCMStereo struct {
@@ -218,6 +271,10 @@ func (m *MonitorPCMStereo) removeTmpFiles() (err error) {
 }
 
 func (m *MonitorPCMStereo) Close() error {
+	// Stop any current PCM writing
+	m.MonitorPCMReader.Stop()
+	m.MonitorPCMWriter.Stop()
+
 	if err := m.Flush(); err != nil {
 		return err
 	}

@@ -60,13 +60,62 @@ func TestMonitorPCMReaderWriter(t *testing.T) {
 		_, err = media.WriteAll(mon, audioAlawBuf[2*160:], 160)
 		require.NoError(t, err)
 
-		// mon.Flush()
+		mon.Flush()
 
 		// 2 Frames, 2 Silence, 2 Frames
 		frameSize := codecR.Samples16()
 		assert.Equal(t, 2*frameSize+2*frameSize+2*frameSize, recording.Len())
 	})
 
+}
+
+func TestMonitorPCMReaderWriterStopped(t *testing.T) {
+	codecR := media.CodecAudioAlaw
+
+	audioAlawBuf := make([]byte, 4*160)
+	_, err := EncodeAlawTo(audioAlawBuf, bytes.Repeat([]byte("0123456789"), media.CodecAudioAlaw.Samples16()*4/10))
+	require.NoError(t, err)
+
+	t.Run("Reader", func(t *testing.T) {
+		rtpBufferReader := bytes.NewBuffer(audioAlawBuf)
+
+		recording := bytes.NewBuffer([]byte{})
+		mon := &MonitorPCMReader{}
+		mon.Init(recording, codecR, rtpBufferReader)
+
+		n, err := mon.Read(make([]byte, 160))
+		require.NoError(t, err)
+		assert.Equal(t, 160, n)
+
+		mon.Stop()
+
+		_, err = media.ReadAll(mon, 160)
+		require.NoError(t, err)
+		require.NoError(t, mon.Flush())
+
+		frameSize := codecR.Samples16()
+		assert.Equal(t, frameSize, recording.Len())
+	})
+
+	t.Run("Writer", func(t *testing.T) {
+		// Lets
+		recording := bytes.NewBuffer([]byte{})
+		mon := &MonitorPCMWriter{}
+		mon.Init(recording, codecR, bytes.NewBuffer([]byte{}))
+
+		n, err := mon.Write(audioAlawBuf[:160])
+		require.NoError(t, err)
+		assert.Equal(t, 160, n)
+
+		mon.Stop()
+
+		_, err = media.WriteAll(mon, audioAlawBuf[160:], 160)
+		require.NoError(t, err)
+		require.NoError(t, mon.Flush())
+
+		frameSize := codecR.Samples16()
+		assert.Equal(t, frameSize, recording.Len())
+	})
 }
 
 func TestMonitorPCMStereo(t *testing.T) {
