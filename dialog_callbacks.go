@@ -12,20 +12,32 @@ import (
 	"github.com/emiago/sipgo/sip"
 )
 
-type dialogRemoteSDP func(ctx context.Context, remoteSDP []byte, offered bool) error
-type dialogLocalSDP func(ctx context.Context, answered bool, mode string, mediaSession ...*media.MediaSession) ([]byte, error)
-
 type dialogCallbacks struct {
 	mu sync.Mutex
 
 	remoteContactTarget *sip.ContactHeader
-	onRemoteSDP         dialogRemoteSDP
-	onLocalSDP          dialogLocalSDP
-	onFinalize          func(ctx context.Context) error
-	onMediaFailure      func()
-	onReferDialog       OnReferDialogFunc
-	onReferNotify       func(statusCode int)
-	onClose             []func() error
+
+	mediaHanshaker mediaHanshaker
+	onMediaFailure func()
+	onReferDialog  OnReferDialogFunc
+	onReferNotify  func(statusCode int)
+	onClose        []func() error
+}
+
+type mediaHanshaker interface {
+	onRemoteSDP(ctx context.Context, remoteSDP []byte, offered bool) error
+	onLocalSDP(ctx context.Context, answered bool, mode string, mediaSession ...*media.MediaSession) ([]byte, error)
+	onFinalize(ctx context.Context) error
+}
+
+func (d *dialogCallbacks) onFinalize(ctx context.Context) error {
+	d.mu.Lock()
+	mediaHanshaker := d.mediaHanshaker
+	d.mu.Unlock()
+	if mediaHanshaker == nil {
+		return nil
+	}
+	return mediaHanshaker.onFinalize(ctx)
 }
 
 func (d *dialogCallbacks) abortMedia() {
@@ -35,6 +47,12 @@ func (d *dialogCallbacks) abortMedia() {
 	if onMediaFailure != nil {
 		onMediaFailure()
 	}
+}
+
+func (d *dialogCallbacks) mediaHanshakerLocked() mediaHanshaker {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.mediaHanshaker
 }
 
 func (d *dialogCallbacks) setRemoteContact(contact *sip.ContactHeader) {

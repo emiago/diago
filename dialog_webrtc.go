@@ -134,98 +134,61 @@ func (d *DialogWebrtc) registerDialogCallbacks(c *dialogCallbacks) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.onLocalSDP = func(ctx context.Context, answered bool, mode string, _ ...*media.MediaSession) ([]byte, error) {
-		d.mu.Lock()
-		current := d.mediaSession
-		pending := d.pendingMediaSession
-		d.mu.Unlock()
-		if current == nil {
-			return nil, fmt.Errorf("dialog WebRTC media is not initialized")
-		}
-		if answered {
-			if pending == nil {
-				return nil, fmt.Errorf("dialog WebRTC re-INVITE has no pending offer")
-			}
-			return pending.LocalSDP(ctx, true)
-		}
+	c.mediaHanshaker = d
+	c.onMediaFailure = d.abortPendingMediaSession
+}
 
-		fork, err := current.Fork(ctx)
-		if err != nil {
-			return nil, err
+func (d *DialogWebrtc) onLocalSDP(ctx context.Context, answered bool, mode string, _ ...*media.MediaSession) ([]byte, error) {
+	d.mu.Lock()
+	current := d.mediaSession
+	pending := d.pendingMediaSession
+	d.mu.Unlock()
+	if current == nil {
+		return nil, fmt.Errorf("dialog WebRTC media is not initialized")
+	}
+	if answered {
+		if pending == nil {
+			return nil, fmt.Errorf("dialog WebRTC re-INVITE has no pending offer")
 		}
-		if mode != "" {
-			fork.Mode = mode
-		}
-		d.setPendingMediaSession(fork)
-		localSDP, err := fork.LocalSDP(ctx, false)
-		if err != nil {
-			d.abortPendingMediaSession()
-			return nil, err
-		}
-		return localSDP, nil
+		return pending.LocalSDP(ctx, true)
 	}
 
-	c.onRemoteSDP = func(ctx context.Context, remoteSDP []byte, offered bool) error {
-		if remoteSDP == nil {
-			return nil
-		}
+	fork, err := current.Fork(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if mode != "" {
+		fork.Mode = mode
+	}
+	d.setPendingMediaSession(fork)
+	localSDP, err := fork.LocalSDP(ctx, false)
+	if err != nil {
+		d.abortPendingMediaSession()
+		return nil, err
+	}
+	return localSDP, nil
+}
 
-		d.mu.Lock()
-		current := d.mediaSession
-		pending := d.pendingMediaSession
-		d.mu.Unlock()
-		if current == nil {
-			return fmt.Errorf("dialog WebRTC media is not initialized")
-		}
-
-		if offered {
-			if pending == nil {
-				return fmt.Errorf("dialog WebRTC re-INVITE has no pending local offer")
-			}
-			if err := pending.RemoteSDP(ctx, remoteSDP, true); err != nil {
-				d.abortPendingMediaSession()
-				return err
-			}
-			if err := pending.Finalize(ctx); err != nil {
-				d.abortPendingMediaSession()
-				return err
-			}
-			if pending == current {
-				d.commitCurrentMediaSession()
-				return nil
-			}
-			return d.replaceMediaSession(pending)
-		}
-
-		// A browser may re-offer codec or direction changes without restarting
-		// ICE. MediaSessionWebrtc stages those changes on the current transport.
-		// Changed credentials require a fresh ICE/DTLS/SRTP transport instead.
-		if err := current.RemoteSDP(ctx, remoteSDP, false); err == nil {
-			d.setPendingMediaSession(current)
-			return nil
-		} else if !errors.Is(err, media.ErrWebRTCICERestart) {
-			return err
-		}
-
-		fork, err := current.Fork(ctx)
-		if err != nil {
-			return err
-		}
-		if err = fork.RemoteSDP(ctx, remoteSDP, false); err != nil {
-			_ = fork.Close()
-			return err
-		}
-		d.setPendingMediaSession(fork)
+func (d *DialogWebrtc) onRemoteSDP(ctx context.Context, remoteSDP []byte, offered bool) error {
+	if remoteSDP == nil {
 		return nil
 	}
 
-	c.onFinalize = func(ctx context.Context) error {
-		d.mu.Lock()
-		pending := d.pendingMediaSession
-		current := d.mediaSession
-		d.mu.Unlock()
+	d.mu.Lock()
+	current := d.mediaSession
+	pending := d.pendingMediaSession
+	d.mu.Unlock()
+	if current == nil {
+		return fmt.Errorf("dialog WebRTC media is not initialized")
+	}
+
+	if offered {
 		if pending == nil {
-			return nil
+			return fmt.Errorf("dialog WebRTC re-INVITE has no pending local offer")
+		}
+		if err := pending.RemoteSDP(ctx, remoteSDP, true); err != nil {
+			d.abortPendingMediaSession()
+			return err
 		}
 		if err := pending.Finalize(ctx); err != nil {
 			d.abortPendingMediaSession()
@@ -237,7 +200,46 @@ func (d *DialogWebrtc) registerDialogCallbacks(c *dialogCallbacks) {
 		}
 		return d.replaceMediaSession(pending)
 	}
-	c.onMediaFailure = d.abortPendingMediaSession
+
+	// A browser may re-offer codec or direction changes without restarting
+	// ICE. MediaSessionWebrtc stages those changes on the current transport.
+	// Changed credentials require a fresh ICE/DTLS/SRTP transport instead.
+	if err := current.RemoteSDP(ctx, remoteSDP, false); err == nil {
+		d.setPendingMediaSession(current)
+		return nil
+	} else if !errors.Is(err, media.ErrWebRTCICERestart) {
+		return err
+	}
+
+	fork, err := current.Fork(ctx)
+	if err != nil {
+		return err
+	}
+	if err = fork.RemoteSDP(ctx, remoteSDP, false); err != nil {
+		_ = fork.Close()
+		return err
+	}
+	d.setPendingMediaSession(fork)
+	return nil
+}
+
+func (d *DialogWebrtc) onFinalize(ctx context.Context) error {
+	d.mu.Lock()
+	pending := d.pendingMediaSession
+	current := d.mediaSession
+	d.mu.Unlock()
+	if pending == nil {
+		return nil
+	}
+	if err := pending.Finalize(ctx); err != nil {
+		d.abortPendingMediaSession()
+		return err
+	}
+	if pending == current {
+		d.commitCurrentMediaSession()
+		return nil
+	}
+	return d.replaceMediaSession(pending)
 }
 
 func (d *DialogWebrtc) setPendingMediaSession(sess *media.MediaSessionWebrtc) {

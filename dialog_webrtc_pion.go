@@ -56,7 +56,9 @@ type DialogWebrtcPion struct {
 	onClose func() error
 	log     *slog.Logger
 	// peerConnection *webrtc.PeerConnection
-	mediaSession *mediawebrtc.MediaSession
+	mediaSession        *mediawebrtc.MediaSession
+	pendingMediaSession *mediawebrtc.MediaSession
+	onMediaUpdate       func(*DialogWebrtcPion)
 
 	RTPPacketWriter *media.RTPPacketWriter
 	RTPPacketReader *media.RTPPacketReader
@@ -65,58 +67,64 @@ type DialogWebrtcPion struct {
 	audioWriter io.Writer
 }
 
+var _ mediaHanshaker = (*DialogWebrtcPion)(nil)
+
 func (d *DialogWebrtcPion) registerDialogCallbacks(c *dialogCallbacks, onMediaUpdate func(*DialogWebrtcPion)) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	var pendingSession *mediawebrtc.MediaSession
-	c.onRemoteSDP = func(ctx context.Context, remoteSDP []byte, offered bool) error {
-		d.mu.Lock()
-		defer d.mu.Unlock()
-
-		if d.mediaSession == nil {
-			return fmt.Errorf("reinvite called on non initialized media")
-		}
-
-		sess := d.mediaSession
-		if !offered {
-			sess = d.mediaSession.Fork()
-			pendingSession = sess
-		}
-
-		if err := sess.RemoteSDP(ctx, remoteSDP, offered); err != nil {
-			return err
-		}
-		if onMediaUpdate != nil {
-			onMediaUpdate(d)
-		}
-		return nil
-	}
-	c.onLocalSDP = func(ctx context.Context, answered bool, mode string, mediaSession ...*media.MediaSession) ([]byte, error) {
-		d.mu.Lock()
-		defer d.mu.Unlock()
-		if d.mediaSession == nil {
-			return nil, fmt.Errorf("reinvite called on non initialized media")
-		}
-
-		sess := d.mediaSession
-		if pendingSession != nil {
-			sess = pendingSession
-		}
-		localSDP, err := sess.LocalSDP(ctx, answered)
-		if err != nil {
-			return nil, err
-		}
-		if pendingSession != nil && answered {
-			d.mediaSession = pendingSession
-			pendingSession = nil
-		}
-		return localSDP, nil
-	}
-	c.onFinalize = func(ctx context.Context) error {
-		return nil
-	}
+	d.onMediaUpdate = onMediaUpdate
+	c.mediaHanshaker = d
 	c.onClose = append(c.onClose, d.Close)
+}
+
+func (d *DialogWebrtcPion) onRemoteSDP(ctx context.Context, remoteSDP []byte, offered bool) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.mediaSession == nil {
+		return fmt.Errorf("reinvite called on non initialized media")
+	}
+
+	sess := d.mediaSession
+	if !offered {
+		sess = d.mediaSession.Fork()
+		d.pendingMediaSession = sess
+	}
+
+	if err := sess.RemoteSDP(ctx, remoteSDP, offered); err != nil {
+		return err
+	}
+	if d.onMediaUpdate != nil {
+		d.onMediaUpdate(d)
+	}
+	return nil
+}
+
+func (d *DialogWebrtcPion) onLocalSDP(ctx context.Context, answered bool, mode string, mediaSession ...*media.MediaSession) ([]byte, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.mediaSession == nil {
+		return nil, fmt.Errorf("reinvite called on non initialized media")
+	}
+
+	sess := d.mediaSession
+	if d.pendingMediaSession != nil {
+		sess = d.pendingMediaSession
+	}
+	localSDP, err := sess.LocalSDP(ctx, answered)
+	if err != nil {
+		return nil, err
+	}
+	if d.pendingMediaSession != nil && answered {
+		d.mediaSession = d.pendingMediaSession
+		d.pendingMediaSession = nil
+	}
+	return localSDP, nil
+}
+
+func (d *DialogWebrtcPion) onFinalize(ctx context.Context) error {
+	return nil
 }
 
 func (d *DialogWebrtcPion) MediaSession() *mediawebrtc.MediaSession {
