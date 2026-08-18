@@ -30,7 +30,6 @@ func (r *AudioStereoRecordingWav) Close() error {
 }
 
 func newDialogRecordingWav(wawFile *os.File, ar io.Reader, arProps MediaProps, aw io.Writer, awProps MediaProps) (AudioStereoRecordingWav, error) {
-
 	if arProps.Codec != awProps.Codec {
 		return AudioStereoRecordingWav{}, fmt.Errorf("codecs of reader and writer need to match for stereo")
 	}
