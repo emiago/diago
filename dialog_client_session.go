@@ -417,13 +417,11 @@ func (d *DialogClientSession) Ack(ctx context.Context) error {
 		return err
 	}
 
-	d.dialogCallbacks.mu.Lock()
-	onFinalize := d.onFinalize
-	d.dialogCallbacks.mu.Unlock()
-	if onFinalize == nil {
+	mediaHanshaker := d.mediaHanshakerLocked()
+	if mediaHanshaker == nil {
 		return nil
 	}
-	return onFinalize(ctx)
+	return mediaHanshaker.onFinalize(ctx)
 }
 
 // AckLate sends ACK with media. Use this in combination with late(delay) offer
@@ -464,14 +462,11 @@ func (d *DialogClientSession) ack(ctx context.Context, remoteTarget sip.Uri, bod
 
 // ReInvite sends new invite based on current media session
 func (d *DialogClientSession) ReInvite(ctx context.Context) error {
-	d.dialogCallbacks.mu.Lock()
-	onLocalSDP := d.onLocalSDP
-	onRemoteSDP := d.onRemoteSDP
-	d.dialogCallbacks.mu.Unlock()
-	if onLocalSDP == nil || onRemoteSDP == nil {
+	mediaHanshaker := d.mediaHanshakerLocked()
+	if mediaHanshaker == nil {
 		return fmt.Errorf("dialog media is not initialized")
 	}
-	sdp, err := onLocalSDP(ctx, false, "")
+	sdp, err := mediaHanshaker.onLocalSDP(ctx, false, "")
 	if err != nil {
 		return err
 	}
@@ -492,7 +487,7 @@ func (d *DialogClientSession) ReInvite(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := onRemoteSDP(ctx, res.Body(), true); err != nil {
+	if err := mediaHanshaker.onRemoteSDP(ctx, res.Body(), true); err != nil {
 		return err
 	}
 	d.setRemoteContact(res.Contact())
@@ -546,10 +541,7 @@ func (d *DialogClientSession) reInviteDo(ctx context.Context, req *sip.Request) 
 // reInvites withs empty SDP are way to keep alive or do some post media update after receiving offer on 2xx
 func (d *DialogClientSession) reInviteKeepAlive(ctx context.Context) error {
 	// NOTE: we do not change original invite request
-	d.dialogCallbacks.mu.Lock()
-	hasReInvite := d.onRemoteSDP != nil && d.onLocalSDP != nil
-	d.dialogCallbacks.mu.Unlock()
-	if !hasReInvite {
+	if d.mediaHanshakerLocked() == nil {
 		return fmt.Errorf("dialog media is not initialized")
 	}
 	contact := d.RemoteContact()
@@ -620,19 +612,16 @@ func (d *DialogClientSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request - "+err.Error(), nil))
 	}
 
-	d.dialogCallbacks.mu.Lock()
-	onRemoteSDP := d.onRemoteSDP
-	onLocalSDP := d.onLocalSDP
-	d.dialogCallbacks.mu.Unlock()
-	if onRemoteSDP != nil && onLocalSDP != nil {
+	mediaHanshaker := d.mediaHanshakerLocked()
+	if mediaHanshaker != nil {
 		d.setRemoteContact(req.Contact())
-		if err := onRemoteSDP(d.Context(), req.Body(), false); err != nil {
+		if err := mediaHanshaker.onRemoteSDP(d.Context(), req.Body(), false); err != nil {
 			return errors.Join(
 				err,
 				tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil)),
 			)
 		}
-		localSDP, err := onLocalSDP(d.Context(), true, "")
+		localSDP, err := mediaHanshaker.onLocalSDP(d.Context(), true, "")
 		if err != nil {
 			d.dialogCallbacks.abortMedia()
 			return errors.Join(
@@ -654,19 +643,16 @@ func (d *DialogClientSession) handleReInvite(req *sip.Request, tx sip.ServerTran
 }
 
 func (d *DialogClientSession) handleReInviteACK(req *sip.Request, tx sip.ServerTransaction) error {
-	d.dialogCallbacks.mu.Lock()
-	onRemoteSDP := d.onRemoteSDP
-	onFinalize := d.onFinalize
-	d.dialogCallbacks.mu.Unlock()
-	if onRemoteSDP == nil || onFinalize == nil {
+	mediaHanshaker := d.mediaHanshakerLocked()
+	if mediaHanshaker == nil {
 		return nil
 	}
 	if body := req.Body(); body != nil {
-		if err := onRemoteSDP(d.Context(), body, true); err != nil {
+		if err := mediaHanshaker.onRemoteSDP(d.Context(), body, true); err != nil {
 			return err
 		}
 	}
-	return onFinalize(d.Context())
+	return mediaHanshaker.onFinalize(d.Context())
 }
 
 func (d *DialogClientSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTransaction) error {
@@ -674,28 +660,22 @@ func (d *DialogClientSession) readSIPInfoDTMF(req *sip.Request, tx sip.ServerTra
 }
 
 func (d *DialogClientSession) Hold(ctx context.Context) error {
-	d.dialogCallbacks.mu.Lock()
-	onLocalSDP := d.onLocalSDP
-	onRemoteSDP := d.onRemoteSDP
-	d.dialogCallbacks.mu.Unlock()
-	if onLocalSDP == nil || onRemoteSDP == nil {
+	mediaHanshaker := d.mediaHanshakerLocked()
+	if mediaHanshaker == nil {
 		return fmt.Errorf("dialog media is not initialized")
 	}
-	if err := d.reInviteMode(ctx, onLocalSDP, onRemoteSDP, sdp.ModeSendonly); err != nil {
+	if err := d.reInviteMode(ctx, mediaHanshaker, sdp.ModeSendonly); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (d *DialogClientSession) Unhold(ctx context.Context) error {
-	d.dialogCallbacks.mu.Lock()
-	onLocalSDP := d.onLocalSDP
-	onRemoteSDP := d.onRemoteSDP
-	d.dialogCallbacks.mu.Unlock()
-	if onLocalSDP == nil || onRemoteSDP == nil {
+	mediaHanshaker := d.mediaHanshakerLocked()
+	if mediaHanshaker == nil {
 		return fmt.Errorf("dialog media is not initialized")
 	}
-	if err := d.reInviteMode(ctx, onLocalSDP, onRemoteSDP, sdp.ModeSendrecv); err != nil {
+	if err := d.reInviteMode(ctx, mediaHanshaker, sdp.ModeSendrecv); err != nil {
 		return err
 	}
 	return nil
@@ -703,11 +683,10 @@ func (d *DialogClientSession) Unhold(ctx context.Context) error {
 
 func (d *DialogClientSession) reInviteMode(
 	ctx context.Context,
-	onLocalSDP dialogLocalSDP,
-	onRemoteSDP dialogRemoteSDP,
+	mediaHanshaker mediaHanshaker,
 	mode string,
 ) error {
-	sdp, err := onLocalSDP(ctx, false, mode)
+	sdp, err := mediaHanshaker.onLocalSDP(ctx, false, mode)
 	if err != nil {
 		return err
 	}
@@ -728,7 +707,7 @@ func (d *DialogClientSession) reInviteMode(
 	if err != nil {
 		return err
 	}
-	if err := onRemoteSDP(ctx, res.Body(), true); err != nil {
+	if err := mediaHanshaker.onRemoteSDP(ctx, res.Body(), true); err != nil {
 		return err
 	}
 	d.setRemoteContact(res.Contact())
