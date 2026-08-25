@@ -5,6 +5,7 @@ package diago
 
 import (
 	"context"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -177,9 +178,10 @@ func TestIntegrationDialogServerPeerCodecPruneReinvite(t *testing.T) {
 	defer ua.Close()
 
 	uas := NewDiago(ua, WithTransport(Transport{
-		Transport: "udp",
-		BindHost:  "127.0.0.1",
-		BindPort:  0,
+		Transport:       "udp",
+		BindHost:        "127.0.0.1",
+		BindPort:        0,
+		MediaExternalIP: net.IPv4(203, 0, 113, 10),
 	}))
 	type answerResult struct {
 		dialog *DialogServerSession
