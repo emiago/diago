@@ -5,7 +5,6 @@ package diago
 
 import (
 	"context"
-	"net"
 	"sync"
 	"testing"
 	"time"
