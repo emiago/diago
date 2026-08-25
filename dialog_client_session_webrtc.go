@@ -150,7 +150,7 @@ func finalizeWebrtcMedia(ctx context.Context, sess *media.MediaSessionWebrtc, me
 		return err
 	}
 	rtpSess := media.NewRTPSessionWebrtc(sess)
-	med.init(sess, rtpSess)
+	med.Init(sess, rtpSess)
 	if err := rtpSess.MonitorBackground(); err != nil {
 		return errors.Join(err, rtpSess.Close())
 	}
