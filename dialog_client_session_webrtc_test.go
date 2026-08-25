@@ -337,7 +337,7 @@ func TestIntegrationDialogWebrtcEarlyMedia(t *testing.T) {
 			return
 		}
 		rtpSess := media.NewRTPSessionWebrtc(sess)
-		med.init(sess, rtpSess)
+		med.Init(sess, rtpSess)
 		if monitorErr := rtpSess.MonitorBackground(); monitorErr != nil {
 			reportServerErr(monitorErr)
 			return

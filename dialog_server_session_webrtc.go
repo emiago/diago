@@ -69,7 +69,7 @@ func (d *DialogServerSession) AnswerWebrtc(opts AnswerWebrtcOptions) (*DialogWeb
 			return err
 		}
 		rtpSess := media.NewRTPSessionWebrtc(sess)
-		med.init(sess, rtpSess)
+		med.Init(sess, rtpSess)
 		if err = rtpSess.MonitorBackground(); err != nil {
 			return err
 		}

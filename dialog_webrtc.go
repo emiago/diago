@@ -41,7 +41,7 @@ type DialogWebrtc struct {
 	closed      bool
 }
 
-func (d *DialogWebrtc) init(sess *media.MediaSessionWebrtc, rtpSess *media.RTPSessionWebrtc) {
+func (d *DialogWebrtc) Init(sess *media.MediaSessionWebrtc, rtpSess *media.RTPSessionWebrtc) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.mediaSession = sess
