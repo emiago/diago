@@ -1,8 +1,8 @@
 module github.com/emiago/diago
 
-go 1.24.0
+go 1.25.0
 
-toolchain go1.24.2
+toolchain go1.25.0
 
 require (
 	github.com/emiago/dtls/v3 v3.0.0-20260122183559-8b8d23e359c0
