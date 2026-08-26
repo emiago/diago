@@ -28,7 +28,7 @@ Quick links:
 object for media operations instead of accessing media through the dialog
 session.
 
-**Everyone is encouraged to try the [`webrtc-pion` branch](https://github.com/emiago/diago/tree/webrtc-pion)
+**Everyone is encouraged to try the [`media-webrtc-pion` branch](https://github.com/emiago/diago/tree/media-webrtc-pion)
 and test the new returned-media API.**
 
 See [WEBRTC_PION_CHANGES.md](https://github.com/emiago/diago/blob/webrtc-pion/WEBRTC_PION_CHANGES.md)
