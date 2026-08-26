@@ -565,7 +565,9 @@ func TestIntegrationDialogClientBadMediaNegotiation(t *testing.T) {
 	ua.TransportLayer().OnMessage(func(msg sip.Message) {
 		lock.Lock()
 		defer lock.Unlock()
-		responses = append(responses, msg)
+		if _, ok := msg.(*sip.Response); ok {
+			responses = append(responses, msg)
+		}
 	})
 
 	dg := newDialer(ua)
