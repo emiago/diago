@@ -138,7 +138,7 @@ func (d *DialogWebrtc) registerDialogCallbacks(c *dialogCallbacks) {
 	c.onMediaFailure = d.abortPendingMediaSession
 }
 
-func (d *DialogWebrtc) onLocalSDP(ctx context.Context, answered bool, mode string, _ ...*media.MediaSession) ([]byte, error) {
+func (d *DialogWebrtc) onLocalSDP(ctx context.Context, answered bool, mode string) ([]byte, error) {
 	d.mu.Lock()
 	current := d.mediaSession
 	pending := d.pendingMediaSession
