@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/emiago/diago/media"
-	"github.com/pion/rtcp"
 )
 
 const webrtcFailureCleanupTimeout = 5 * time.Second
@@ -65,24 +64,6 @@ func (d *DialogWebrtc) RTPSession() *media.RTPSessionWebrtc {
 	return d.rtpSession
 }
 
-// OnReadRTCP sets a callback for received RTCP packets. Passing nil disables it.
-func (d *DialogWebrtc) OnReadRTCP(f func(rtcp.Packet, media.RTPReadStats)) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.rtpSession != nil {
-		d.rtpSession.OnReadRTCP(f)
-	}
-}
-
-// OnWriteRTCP sets a callback for sent RTCP packets. Passing nil disables it.
-func (d *DialogWebrtc) OnWriteRTCP(f func(rtcp.Packet, media.RTPWriteStats)) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.rtpSession != nil {
-		d.rtpSession.OnWriteRTCP(f)
-	}
-}
-
 // OnClose adds a cleanup hook. Hooks run once when Close is first called.
 func (d *DialogWebrtc) OnClose(f func() error) {
 	d.mu.Lock()
@@ -105,12 +86,14 @@ func (d *DialogWebrtc) Close() error {
 		d.mu.Unlock()
 		return nil
 	}
-	d.closed = true
-	onClose := d.onClose
-	d.onClose = nil
 	rtpSess := d.rtpSession
 	sess := d.mediaSession
 	pendingSess := d.pendingMediaSession
+
+	d.closed = true
+	onClose := d.onClose
+	d.onClose = nil
+
 	d.pendingMediaSession = nil
 	d.mu.Unlock()
 
