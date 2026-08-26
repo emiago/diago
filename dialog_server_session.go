@@ -185,16 +185,22 @@ func (d *DialogServerSession) Answer(opt AnswerOptions) (*DialogMedia, error) {
 	d.onReferDialog = opt.OnRefer
 	d.dialogCallbacks.mu.Unlock()
 
-	m := &DialogMedia{}
-	m.onMediaUpdate = opt.OnMediaUpdate
+	med := &DialogMedia{}
+	med.onMediaUpdate = opt.OnMediaUpdate
 	conf := d.mediaConf
 	conf.update(opt.Codecs, opt.RTPNAT)
-	if err := m.initMediaSessionFromConf(conf); err != nil {
+	if err := med.initMediaSessionFromConf(conf); err != nil {
 		return nil, err
 	}
 
-	rtpSess := media.NewRTPSession(m.mediaSession)
-	return m, d.answerSession(m, rtpSess)
+	d.Dialog.OnState(func(s sip.DialogState) {
+		if s == sip.DialogStateEnded {
+			med.Close()
+		}
+	})
+
+	rtpSess := media.NewRTPSession(med.mediaSession)
+	return med, d.answerSession(med, rtpSess)
 }
 
 // TODO Change answerOptions because codecs or RTPNAT makes no sense here
