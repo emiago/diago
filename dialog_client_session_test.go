@@ -6,7 +6,6 @@ package diago
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"math/rand/v2"
 	"net"
 	"sync"
@@ -445,6 +444,7 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 			time.Sleep(60 * time.Millisecond)
 			ms := med.MediaSession().Fork()
 			ms.Laddr = net.UDPAddr{IP: net.IPv4(127, 0, 0, 2), Port: 39999}
+			ms.ExternalIP = ms.Laddr.IP
 			err = ms.Init() // This will start new listener
 			require.NoError(t, err)
 
@@ -462,13 +462,12 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 	defer ua.Close()
 
 	dg := newDialer(ua)
-	// err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
-	// require.NoError(t, err)
+	err := dg.ServeBackground(context.TODO(), func(d *DialogServerSession) {})
+	require.NoError(t, err)
 	dialog, err := dg.NewDialog(sip.Uri{User: "dialer", Host: "127.0.0.1", Port: 15079}, NewDialogOptions{})
 	require.NoError(t, err)
 	med, err := dialog.Invite(ctx, InviteClientOptions{
 		OnMediaUpdate: func(d *DialogMedia) {
-			fmt.Println("Media update", d)
 		},
 		Username: "test",
 		Password: "test",
