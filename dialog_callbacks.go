@@ -8,7 +8,6 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo/sip"
 )
 
@@ -26,7 +25,7 @@ type dialogCallbacks struct {
 
 type mediaHanshaker interface {
 	onRemoteSDP(ctx context.Context, remoteSDP []byte, offered bool) error
-	onLocalSDP(ctx context.Context, answered bool, mode string, mediaSession ...*media.MediaSession) ([]byte, error)
+	onLocalSDP(ctx context.Context, answered bool, mode string) ([]byte, error)
 	onFinalize(ctx context.Context) error
 }
 
