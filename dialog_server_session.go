@@ -379,8 +379,12 @@ func (d *DialogServerSession) reInviteMediaSession(ctx context.Context, ms *medi
 	if mediaHanshaker == nil {
 		return fmt.Errorf("dialog media is not initialized")
 	}
+	dialogMedia, ok := mediaHanshaker.(*DialogMedia)
+	if !ok {
+		return fmt.Errorf("dialog RTP media is not initialized")
+	}
 
-	sdp, err := mediaHanshaker.onLocalSDP(ctx, false, "", ms)
+	sdp, err := dialogMedia.onLocalMediaSessionSDP(ms)
 	if err != nil {
 		return err
 	}
