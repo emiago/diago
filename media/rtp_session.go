@@ -176,10 +176,12 @@ func (s *RTPSession) Fork(sess *MediaSession) *RTPSession {
 	fork.onReadRTCP = s.onReadRTCP
 	fork.onWriteRTCP = s.onWriteRTCP
 	fork.sourceLock = s.sourceLock
-	fork.sourceLockPackets = s.sourceLockPackets
-	if s.sourceLockAddr != nil {
-		addr := *s.sourceLockAddr
-		fork.sourceLockAddr = &addr
+	if udpAddrEqual(s.Sess.Laddr, sess.Laddr) && udpAddrEqual(s.Sess.Raddr, sess.Raddr) {
+		fork.sourceLockPackets = s.sourceLockPackets
+		if s.sourceLockAddr != nil {
+			addr := *s.sourceLockAddr
+			fork.sourceLockAddr = &addr
+		}
 	}
 
 	oldCodec := CodecAudioFromSession(s.Sess)
@@ -195,6 +197,10 @@ func (s *RTPSession) Fork(sess *MediaSession) *RTPSession {
 	}
 
 	return fork
+}
+
+func udpAddrEqual(a, b net.UDPAddr) bool {
+	return a.IP.Equal(b.IP) && a.Port == b.Port && a.Zone == b.Zone
 }
 
 func (s *RTPSession) close(wait bool) error {
