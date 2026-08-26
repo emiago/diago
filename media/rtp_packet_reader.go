@@ -133,6 +133,9 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 			if ms, ok := newReader.(*MediaSession); ok {
 				ms.rtpConn.SetReadDeadline(time.Time{})
 			}
+			if s, ok := newReader.(*RTPSession); ok {
+				s.Sess.rtpConn.SetReadDeadline(time.Time{})
+			}
 			rtpN, err = newReader.ReadRTP(buf, pkt)
 		}
 	}
