@@ -100,7 +100,7 @@ func NewDiagoWebsip(ua *websip.UA, options ...DiagoWebsipOption) (*DiagoWebsip, 
 func (d *DiagoWebsip) WebsipClient() *websip.Client { return d.client }
 func (d *DiagoWebsip) WebsipServer() *websip.Server { return d.server }
 
-func (d *DiagoWebsip) HandleFunc(handler ServeDialogWebsipFunc) {
+func (d *DiagoWebsip) OnDialog(handler ServeDialogWebsipFunc) {
 	if handler == nil {
 		handler = func(*DialogWebsipServerSession) {}
 	}

@@ -63,7 +63,7 @@ func TestDiagoWebsipMediaConfigCodecs(t *testing.T) {
 		err   error
 	}
 	serverMedia := make(chan answerResult, 1)
-	server.HandleFunc(func(dialog *DialogWebsipServerSession) {
+	server.OnDialog(func(dialog *DialogWebsipServerSession) {
 		med, err := dialog.Answer(AnswerWebsipOptions{WebrtcConfig: webRTCConfig})
 		serverMedia <- answerResult{media: med, err: err}
 		if err == nil {
@@ -114,7 +114,7 @@ func TestDiagoWebsipInviteBidirectionalRTPAndRemoteBye(t *testing.T) {
 		err    error
 	}
 	serverResultCh := make(chan serverResult, 1)
-	server.HandleFunc(func(dialog *DialogWebsipServerSession) {
+	server.OnDialog(func(dialog *DialogWebsipServerSession) {
 		med, err := dialog.Answer(AnswerWebsipOptions{WebrtcConfig: webRTCConfig})
 		serverResultCh <- serverResult{dialog: dialog, media: med, err: err}
 		if err == nil {
@@ -173,7 +173,7 @@ func TestDiagoWebsipInviteBidirectionalRTPAndRemoteBye(t *testing.T) {
 func TestDiagoWebsipCancelPendingInvite(t *testing.T) {
 	client, server := testDiagoWebsipPair(t)
 	serverDialog := make(chan *DialogWebsipServerSession, 1)
-	server.HandleFunc(func(dialog *DialogWebsipServerSession) {
+	server.OnDialog(func(dialog *DialogWebsipServerSession) {
 		serverDialog <- dialog
 		<-dialog.Context().Done()
 	})
