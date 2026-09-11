@@ -246,6 +246,12 @@ func (s *RTPSession) startMonitor(goroutines int) error {
 	if s.closed {
 		return errRTPSessionClosed
 	}
+	// A fork reuses the media session's RTCP connection. MonitorClose expires
+	// both deadlines to stop the previous monitor, so clear both before any
+	// replacement reader or writer starts.
+	if err := s.Sess.rtcpConn.SetDeadline(time.Time{}); err != nil {
+		return err
+	}
 	s.monitorRun = true
 	s.monitorWG.Add(goroutines)
 	return nil

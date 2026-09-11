@@ -332,14 +332,16 @@ func (c *pipePacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
 }
 
 func (c *pipePacketConn) WriteTo(p []byte, _ net.Addr) (int, error) {
-	return len(p), nil
+	return c.Conn.Write(p)
 }
 
 func TestRTPSessionFork(t *testing.T) {
 	rtpConn, rtpPeer := net.Pipe()
 	rtcpConn, rtcpPeer := net.Pipe()
 	t.Cleanup(func() {
+		_ = rtpConn.Close()
 		_ = rtpPeer.Close()
+		_ = rtcpConn.Close()
 		_ = rtcpPeer.Close()
 	})
 
@@ -352,21 +354,35 @@ func TestRTPSessionFork(t *testing.T) {
 		rtpConn:   &pipePacketConn{Conn: rtpConn},
 		rtcpConn:  &pipePacketConn{Conn: rtcpConn},
 	}
+
 	rtpSess := NewRTPSession(sess)
 	rtpSess.readStats.PacketsCount = 7
+	rtpSess.writeStats = RTPWriteStats{
+		SSRC:                1,
+		lastPacketTime:      time.Now(),
+		lastPacketTimestamp: 1,
+		sampleRate:          CodecAudioUlaw.SampleRate,
+	}
 
 	require.NoError(t, rtpSess.MonitorBackground())
 	require.NoError(t, rtpSess.MonitorClose())
 
 	candidate := sess.Fork()
-
 	candidate.SetRemoteAddr(&sess.Raddr)
 	fork := rtpSess.Fork(candidate)
 	// Confirm Forking works
 	assert.Equal(t, uint64(7), fork.ReadStats().PacketsCount)
 
-	// Start monitor
+	// Start the replacement monitor with a short report interval and confirm
+	// its first RTCP write succeeds on the shared deadline-aware connection.
+	fork.rtcpTicker.Stop()
+	fork.rtcpTicker = time.NewTicker(10 * time.Millisecond)
 	require.NoError(t, fork.MonitorBackground())
+	require.NoError(t, rtcpPeer.SetReadDeadline(time.Now().Add(time.Second)))
+	buf := make([]byte, 1500)
+	n, err := rtcpPeer.Read(buf)
+	require.NoError(t, err)
+	require.NotZero(t, n)
 	require.NoError(t, fork.MonitorClose())
 }
 
