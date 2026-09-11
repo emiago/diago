@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -186,6 +187,85 @@ func TestRTPSessionWriting(t *testing.T) {
 	// firstpkt + expected pkts = last seq numb
 	// assert.Equal(t, int(rtpSess.readStats.firstPktSequenceNumber)+expectedPkts, int(recReport.LastSequenceNumber))
 	// assert.Equal(t, int(float32(lostPackets)/float32(expectedPkts)*256), int(recReport.FractionLost))
+}
+
+func TestRTPSessionRTCPCallbacksConcurrentUpdate(t *testing.T) {
+	const iterations = 10_000
+
+	t.Run("read", func(t *testing.T) {
+		rtpSess := fakeSession(9876, 1234, nil, nil, nil, nil)
+		t.Cleanup(rtpSess.rtcpTicker.Stop)
+
+		callback := func(rtcp.Packet, RTPReadStats) {}
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			<-start
+			for i := 0; i < iterations; i++ {
+				if i%2 == 0 {
+					rtpSess.OnReadRTCP(callback)
+				} else {
+					rtpSess.OnReadRTCP(nil)
+				}
+			}
+		}()
+
+		go func() {
+			defer wg.Done()
+			<-start
+			for i := 0; i < iterations; i++ {
+				rtpSess.readRTCPPacket(&rtcp.ReceiverReport{})
+			}
+		}()
+
+		close(start)
+		wg.Wait()
+	})
+
+	t.Run("write", func(t *testing.T) {
+		rtpSess := fakeSession(9876, 1234, nil, nil, nil, io.Discard)
+		t.Cleanup(rtpSess.rtcpTicker.Stop)
+		rtpSess.writeStats.SSRC = 1
+
+		callback := func(rtcp.Packet, RTPWriteStats) {}
+		start := make(chan struct{})
+		errCh := make(chan error, 1)
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			<-start
+			for i := 0; i < iterations; i++ {
+				if i%2 == 0 {
+					rtpSess.OnWriteRTCP(callback)
+				} else {
+					rtpSess.OnWriteRTCP(nil)
+				}
+			}
+		}()
+
+		go func() {
+			defer wg.Done()
+			<-start
+			for i := 0; i < iterations; i++ {
+				if err := rtpSess.writeRTCP(time.Now()); err != nil {
+					errCh <- err
+					return
+				}
+			}
+		}()
+
+		close(start)
+		wg.Wait()
+		close(errCh)
+		for err := range errCh {
+			require.NoError(t, err)
+		}
+	})
 }
 
 // func TestRTPSessionMonitoring(t *testing.T) {

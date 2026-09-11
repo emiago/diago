@@ -570,10 +570,11 @@ func (s *RTPSession) readRTCPPacket(pkt rtcp.Packet) {
 	now := time.Now()
 
 	// Add interceptor
-	if s.onReadRTCP != nil {
+	onReadRTCP := s.onReadRTCP
+	if onReadRTCP != nil {
 		stats := s.readStats
 		s.rtcpMU.Unlock()
-		s.onReadRTCP(pkt, stats)
+		onReadRTCP(pkt, stats)
 		s.rtcpMU.Lock()
 	}
 
@@ -656,10 +657,11 @@ func (s *RTPSession) writeRTCP(now time.Time) error {
 	s.readStats.IntervalPacketsCount = 0
 
 	// Add interceptor
-	if s.onWriteRTCP != nil {
+	onWriteRTCP := s.onWriteRTCP
+	if onWriteRTCP != nil {
 		stats := s.writeStats
 		s.rtcpMU.Unlock()
-		s.onWriteRTCP(pkt, stats)
+		onWriteRTCP(pkt, stats)
 	} else {
 		s.rtcpMU.Unlock()
 	}
