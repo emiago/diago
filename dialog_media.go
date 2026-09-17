@@ -358,21 +358,6 @@ func (d *DialogMedia) onLocalSDP(ctx context.Context, answered bool, mode string
 	return ms.LocalSDP(), nil
 }
 
-func (d *DialogMedia) onLocalMediaSessionSDP(ms *media.MediaSession) ([]byte, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	if d.mediaSession == nil {
-		return nil, fmt.Errorf("dialog media is not initialized")
-	}
-	if ms == nil {
-		return nil, fmt.Errorf("media session is nil")
-	}
-
-	d.pendingMediaSession = ms
-	return ms.LocalSDP(), nil
-}
-
 func (d *DialogMedia) onFinalize(ctx context.Context) error {
 	d.mu.Lock()
 	ms := d.mediaSession

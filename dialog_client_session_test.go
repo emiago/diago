@@ -448,7 +448,16 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 			err = ms.Init() // This will start new listener
 			require.NoError(t, err)
 
-			err = d.reInviteMediaSession(ctx, ms)
+			defer ms.Close()
+
+			// Stage the custom RTP transport on the media side and exchange only
+			// SDP through the signaling dialog.
+			med.mu.Lock()
+			med.pendingMediaSession = ms
+			med.mu.Unlock()
+			remoteSDP, err := d.reInviteSDP(ctx, ms.LocalSDP())
+			require.NoError(t, err)
+			err = med.onRemoteSDP(ctx, remoteSDP, true)
 			require.NoError(t, err)
 
 			// beepEncoded, _ := media.ReadAll(ar, 160)

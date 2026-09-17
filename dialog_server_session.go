@@ -376,48 +376,6 @@ func (d *DialogServerSession) reInviteSDP(ctx context.Context, sdp []byte) ([]by
 	return res.Body(), nil
 }
 
-// reInviteMediaSession updates with full new media session.
-// media MUST BE forked.
-func (d *DialogServerSession) reInviteMediaSession(ctx context.Context, ms *media.MediaSession) error {
-	d.dialogCallbacks.mu.Lock()
-	mediaHanshaker := d.mediaHanshaker
-	d.dialogCallbacks.mu.Unlock()
-	if mediaHanshaker == nil {
-		return fmt.Errorf("dialog media is not initialized")
-	}
-	dialogMedia, ok := mediaHanshaker.(*DialogMedia)
-	if !ok {
-		return fmt.Errorf("dialog RTP media is not initialized")
-	}
-
-	sdp, err := dialogMedia.onLocalMediaSessionSDP(ms)
-	if err != nil {
-		return err
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			d.dialogCallbacks.abortMedia()
-		}
-	}()
-	contact := d.RemoteContact()
-
-	req := sip.NewRequest(sip.INVITE, contact.Address)
-	req.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
-	req.SetBody(sdp)
-
-	res, err := d.reInviteDo(ctx, req)
-	if err != nil {
-		return err
-	}
-	d.setRemoteContact(res.Contact())
-	if err := mediaHanshaker.onRemoteSDP(ctx, res.Body(), true); err != nil {
-		return err
-	}
-	committed = true
-	return nil
-}
-
 func (d *DialogServerSession) reInviteDo(ctx context.Context, req *sip.Request) (*sip.Response, error) {
 
 	for {
