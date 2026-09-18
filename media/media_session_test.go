@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"io"
 	"net"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/fakes"
@@ -438,6 +440,87 @@ func TestMediaSRTP(t *testing.T) {
 
 		assert.Equal(t, pkt.Payload, rPkt.Payload)
 	}
+}
+
+func TestMediaSRTPRemoteKeyLifetime(t *testing.T) {
+	oldPortStart, oldPortEnd := RTPPortStart, RTPPortEnd
+	RTPPortStart, RTPPortEnd = 0, 0
+	t.Cleanup(func() {
+		RTPPortStart, RTPPortEnd = oldPortStart, oldPortEnd
+	})
+
+	m1 := MediaSession{
+		Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
+		Codecs:    []Codec{CodecAudioAlaw},
+		SecureRTP: 1,
+		SRTPAlg:   SRTPProfileAes128CmHmacSha1_80,
+		Mode:      sdp.ModeSendrecv,
+	}
+	require.NoError(t, m1.Init())
+	t.Cleanup(func() { require.NoError(t, m1.Close()) })
+
+	m2 := MediaSession{
+		Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
+		Codecs:    []Codec{CodecAudioAlaw},
+		SecureRTP: 1,
+		SRTPAlg:   SRTPProfileAes128CmHmacSha1_80,
+		Mode:      sdp.ModeSendrecv,
+	}
+	require.NoError(t, m2.Init())
+	t.Cleanup(func() { require.NoError(t, m2.Close()) })
+
+	offer := strings.Split(string(m1.LocalSDP()), "\r\n")
+	foundCrypto := false
+	for i := range offer {
+		if strings.HasPrefix(offer[i], "a=crypto:") {
+			offer[i] += "|1"
+			foundCrypto = true
+			break
+		}
+	}
+	require.True(t, foundCrypto)
+	require.NoError(t, m2.RemoteSDP([]byte(strings.Join(offer, "\r\n"))))
+	require.NoError(t, m1.RemoteSDP(m2.LocalSDP()))
+
+	require.Equal(t, uint64(1), m2.remoteSRTPPolicy.rtpLimit)
+	require.Equal(t, uint64(1), m2.remoteSRTPPolicy.rtcpLimit)
+	require.NoError(t, m2.rtpConn.SetReadDeadline(time.Now().Add(time.Second)))
+	require.NoError(t, m2.rtcpConn.SetReadDeadline(time.Now().Add(time.Second)))
+
+	pkt := &rtp.Packet{
+		Header: rtp.Header{
+			Version:        2,
+			PayloadType:    8,
+			SequenceNumber: 1,
+			Timestamp:      160,
+			SSRC:           0xdeadbeef,
+		},
+		Payload: []byte("SRTP lifetime"),
+	}
+	require.NoError(t, m1.WriteRTP(pkt))
+	receivedRTP := rtp.Packet{}
+	_, err := m2.ReadRTP(make([]byte, RTPBufSize), &receivedRTP)
+	require.NoError(t, err)
+	assert.Equal(t, pkt.Payload, receivedRTP.Payload)
+
+	pkt.SequenceNumber++
+	pkt.Timestamp += 160
+	require.NoError(t, m1.WriteRTP(pkt))
+	_, err = m2.ReadRTP(make([]byte, RTPBufSize), &receivedRTP)
+	require.ErrorIs(t, err, ErrSRTPKeyLifetimeExceeded)
+	require.ErrorContains(t, err, "RTP after 1 packets")
+
+	report := &rtcp.SenderReport{SSRC: 0xdeadbeef}
+	require.NoError(t, m1.WriteRTCP(report))
+	receivedRTCP := make([]rtcp.Packet, 1)
+	n, err := m2.ReadRTCP(make([]byte, RTPBufSize), receivedRTCP)
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
+
+	require.NoError(t, m1.WriteRTCP(report))
+	_, err = m2.ReadRTCP(make([]byte, RTPBufSize), receivedRTCP)
+	require.ErrorIs(t, err, ErrSRTPKeyLifetimeExceeded)
+	require.ErrorContains(t, err, "RTCP after 1 packets")
 }
 
 func TestMediaSessionRTPSymetric(t *testing.T) {

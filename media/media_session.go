@@ -163,9 +163,10 @@ type MediaSession struct {
 	writeRTPBuf  []byte
 
 	// SRTP
-	localCtxSRTP  *srtp.Context
-	remoteCtxSRTP *srtp.Context
-	srtpRemoteTag int
+	localCtxSRTP     *srtp.Context
+	remoteCtxSRTP    *srtp.Context
+	remoteSRTPPolicy srtpInboundPolicy
+	srtpRemoteTag    int
 
 	// RTP NAT enables handling RTP behind NAT. Checkout also RTPSourceLock
 	RTPNAT          int // 0 - disabled, 1 - Learn source change (RTP Symetric)
@@ -549,7 +550,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	// Check for SDES
 	for _, v := range attrs {
 		if strings.HasPrefix(v, "crypto:") {
-			vals := strings.Split(v, " ")
+			vals := strings.Fields(v)
 			if len(vals) < 3 {
 				return fmt.Errorf("sdp: bad crypto attribute attr=%q", v)
 			}
@@ -571,24 +572,17 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 				continue
 			}
 
-			inline := strings.TrimPrefix(vals[2], "inline:")
-
-			keyBytes, err := base64.StdEncoding.DecodeString(inline)
+			keyParam, err := parseSDESKeyParam(vals[2], profile)
 			if err != nil {
-				return fmt.Errorf("failed to decode SDES key: %v", err)
+				return err
 			}
-			if len(keyBytes) != 30 {
-				return fmt.Errorf("expected 30-byte key, got %d", len(keyBytes))
-			}
-			// Split into master key (16 bytes) and master salt (14 bytes)
-			masterKey := keyBytes[:16]
-			masterSalt := keyBytes[16:]
 
-			ctx, err := srtp.CreateContext(masterKey, masterSalt, profile)
+			ctx, err := srtp.CreateContext(keyParam.masterKey, keyParam.masterSalt, profile)
 			if err != nil {
 				return fmt.Errorf("CreateContext failed: %v", err)
 			}
 			s.remoteCtxSRTP = ctx
+			s.remoteSRTPPolicy = newSRTPInboundPolicy(keyParam.lifetime)
 
 			break
 		}
@@ -858,10 +852,14 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	}
 
 	if m.remoteCtxSRTP != nil {
+		if err := m.remoteSRTPPolicy.checkRTP(); err != nil {
+			return n, err
+		}
 		decrypted, err := m.remoteCtxSRTP.DecryptRTP(buf, buf[:n], &pkt.Header)
 		if err != nil {
 			return n, fmt.Errorf("Read SRTP Decrypt error: %w", err)
 		}
+		m.remoteSRTPPolicy.rtpPackets++
 		if len(decrypted) > len(buf) {
 			DefaultLogger().Warn("Growing Decrypted RTP buffer", "diff", len(decrypted)-len(buf))
 		}
@@ -962,11 +960,14 @@ func (m *MediaSession) ReadRTCP(buf []byte, pkts []rtcp.Packet) (n int, err erro
 	data := buf[:nn]
 
 	if m.remoteCtxSRTP != nil {
-		data, err = m.remoteCtxSRTP.DecryptRTCP(data, data, nil)
-		if err != nil && false {
-			// For some unknown cases Decryption could fail
-			return 0, errors.Join(errRTCPFailedToUnmarshal, err)
+		if err := m.remoteSRTPPolicy.checkRTCP(); err != nil {
+			return 0, err
 		}
+		data, err = m.remoteCtxSRTP.DecryptRTCP(data, data, nil)
+		if err != nil {
+			return 0, fmt.Errorf("Read SRTCP Decrypt error: %w", err)
+		}
+		m.remoteSRTPPolicy.rtcpPackets++
 	}
 
 	n, err = RTCPUnmarshal(data, pkts)
