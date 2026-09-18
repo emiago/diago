@@ -563,10 +563,11 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 
 	// Commit receive-key changes only after validating the offer.
 	remoteTag, remoteKey := 0, ""
+	var remoteLifetime uint64
 	var remoteContext *srtp.Context
 	for _, v := range attrs {
 		if strings.HasPrefix(v, "crypto:") {
-			vals := strings.Split(v, " ")
+			vals := strings.Fields(v)
 			if len(vals) < 3 {
 				return fmt.Errorf("sdp: bad crypto attribute attr=%q", v)
 			}
@@ -589,27 +590,22 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 				continue
 			}
 
-			inline := strings.TrimPrefix(vals[2], "inline:")
-			remoteTag, remoteKey = tag, inline
-			if s.remoteCtxSRTP != nil && s.remoteCtxSRTP.hasKey(inline) {
+			keyParam, err := parseSDESKeyParam(vals[2], profile)
+			if err != nil {
+				return err
+			}
+			// Lifetime syntax is metadata, not a new encryption key.
+			keySalt := append(keyParam.masterKey, keyParam.masterSalt...)
+			remoteTag, remoteKey = tag, base64.StdEncoding.EncodeToString(keySalt)
+			remoteLifetime = keyParam.lifetime
+			if s.remoteCtxSRTP != nil && s.remoteCtxSRTP.hasKey(remoteKey) {
 				if !s.Raddr.IP.Equal(remoteAddr.IP) || s.Raddr.Port != remoteAddr.Port {
 					return fmt.Errorf("SDES address change requires a new key")
 				}
 				break
 			}
 
-			keyBytes, err := base64.StdEncoding.DecodeString(inline)
-			if err != nil {
-				return fmt.Errorf("failed to decode SDES key: %v", err)
-			}
-			if len(keyBytes) != 30 {
-				return fmt.Errorf("expected 30-byte key, got %d", len(keyBytes))
-			}
-			// Split into master key (16 bytes) and master salt (14 bytes)
-			masterKey := keyBytes[:16]
-			masterSalt := keyBytes[16:]
-
-			ctx, err := srtp.CreateContext(masterKey, masterSalt, profile)
+			ctx, err := srtp.CreateContext(keyParam.masterKey, keyParam.masterSalt, profile)
 			if err != nil {
 				return fmt.Errorf("CreateContext failed: %v", err)
 			}
@@ -759,9 +755,12 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			if s.remoteCtxSRTP == nil {
 				s.remoteCtxSRTP = newSRTPReceiver(remoteContext)
 				s.remoteCtxSRTP.currentKey = remoteKey
+				s.remoteCtxSRTP.currentPolicy = newSRTPInboundPolicy(remoteLifetime)
 			} else {
-				s.remoteCtxSRTP.rekey(remoteContext, remoteKey)
+				s.remoteCtxSRTP.rekey(remoteContext, remoteKey, remoteLifetime)
 			}
+		} else {
+			s.remoteCtxSRTP.limitLifetime(remoteKey, remoteLifetime)
 		}
 		s.srtpRemoteTag = remoteTag
 	}
