@@ -54,6 +54,8 @@ var (
 	// RTPNAT options
 	RTPNATDisabled = 0
 	RTPNATSymetric = 1
+	// RTPNATFollow latches like RTPNATSymetric and keeps following the source when it moves mid-call.
+	RTPNATFollow = 2
 
 	// SDP codec exchanges
 	// 0 (Default) - answerer prefers offerer order recomended by rfc
@@ -168,9 +170,14 @@ type MediaSession struct {
 	srtpRemoteTag int
 
 	// RTP NAT enables handling RTP behind NAT. Checkout also RTPSourceLock
-	RTPNAT          int // 0 - disabled, 1 - Learn source change (RTP Symetric)
+	RTPNAT          int // 0 - disabled, 1 - Learn source change (RTP Symetric), 2 - Follow source changes (RTPNATFollow)
 	learnedRTPFrom  atomic.Pointer[net.UDPAddr]
 	learnedRTCPFrom atomic.Pointer[net.UDPAddr]
+
+	// RTPNATFollow state
+	probationRTPTo atomic.Pointer[net.UDPAddr] // candidate source that also gets our RTP
+	followedSSRC   atomic.Uint64               // stream SSRC, bit 32 set once known
+	follow         rtpFollow
 
 	// ReadRTPFromAddr is set after Read operation. NOT THREAD SAFE and should be only used together with Read
 	// It can be used to validate source of RTP packet
@@ -902,6 +909,9 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 			}
 		}()
 	}
+	if m.RTPNAT == RTPNATFollow {
+		m.followRTP(from, pkt.Header)
+	}
 
 	if m.mode == sdp.ModeSendonly {
 		// We allow parsing of pkt but we indicate that this pkt should not be consumed
@@ -943,6 +953,12 @@ func (m *MediaSession) ReadRTPRaw(buf []byte) (int, error) {
 	if m.RTPNAT == 1 {
 		addr, _ := from.(*net.UDPAddr)
 		m.learnedRTPFrom.Store(addr)
+	}
+	if m.RTPNAT == RTPNATFollow && err == nil {
+		header := rtp.Header{}
+		if _, err := header.Unmarshal(buf[:n]); err == nil {
+			m.followRTP(from, header)
+		}
 	}
 	return n, err
 }
@@ -993,6 +1009,9 @@ func (m *MediaSession) ReadRTCP(buf []byte, pkts []rtcp.Packet) (n int, err erro
 				m.learnedRTCPFrom.Store(fromAddr)
 			}
 		}()
+	}
+	if m.RTPNAT == RTPNATFollow {
+		m.followRTCP(from, pkts[:n])
 	}
 
 	logRTCPRead(m, pkts[:n])
@@ -1062,13 +1081,16 @@ func (m *MediaSession) getWriteBuf() []byte {
 
 func (m *MediaSession) WriteRTPRaw(data []byte) (n int, err error) {
 	addr := &m.Raddr
-	if m.RTPNAT == 1 {
-		if a := m.learnedRTPFrom.Load(); a != nil {
-			addr = a
-		}
+	if m.latches() {
+		addr = m.rtpDestination()
 	}
 
 	n, err = m.rtpConn.WriteTo(data, addr)
+
+	// Best effort copy to a source on probation (RTPNATFollow)
+	if probation := m.probationRTPTo.Load(); probation != nil && !udpAddrEqual(*probation, *addr) {
+		m.rtpConn.WriteTo(data, probation)
+	}
 	return
 }
 
@@ -1132,10 +1154,8 @@ func (m *MediaSession) WriteRTCPs(pkts []rtcp.Packet) error {
 
 func (m *MediaSession) WriteRTCPRaw(data []byte) (int, error) {
 	addr := &m.rtcpRaddr
-	if m.RTPNAT == 1 {
-		if a := m.learnedRTCPFrom.Load(); a != nil {
-			addr = a
-		}
+	if m.latches() {
+		addr = m.rtcpDestination()
 	}
 
 	n, err := m.rtcpConn.WriteTo(data, addr)
