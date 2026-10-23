@@ -92,6 +92,10 @@ type InviteClientOptions struct {
 	Headers []sip.Header
 	// Stop on early media. ErrClientEarlyMedia will be returned
 	EarlyMediaDetect bool
+
+	// RTPNAT is media.MediaSession.RTPNAT, set before media starts
+	// Check media.RTPNAT... options
+	RTPNAT int
 }
 
 // WithAnonymousCaller sets from user Anonymous per RFC
@@ -130,8 +134,11 @@ func (o *InviteClientOptions) WithCaller(displayName string, callerID string, ho
 // NOTE: It updates internal invite request so NOT THREAD SAFE.
 // If you pass originator it will use originator to set correct from header and avoid media transcoding
 func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptions) (*DialogMedia, error) {
+	conf := d.mediaConfig
+	conf.rtpNAT = opts.RTPNAT
+
 	med := &DialogMedia{}
-	if err := med.initMediaSessionFromConf(d.mediaConfig); err != nil {
+	if err := med.initMediaSessionFromConf(conf); err != nil {
 		return nil, err
 	}
 	med.registerDialogCallbacks(&d.dialogCallbacks)
