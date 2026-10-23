@@ -12,29 +12,48 @@ import (
 	"github.com/pion/srtp/v3"
 )
 
-const srtpRekeyGracePeriod = 5 * time.Second
+const (
+	srtpRekeyGracePeriod   = 5 * time.Second
+	srtpRekeyPendingPeriod = 32 * time.Second
+)
 
 // srtpReceiver shares receive-key updates with readers on forked sessions.
 type srtpReceiver struct {
 	mu            sync.Mutex
 	current       *srtp.Context
+	currentKey    string
+	pending       *srtp.Context
+	pendingKey    string
+	pendingUntil  time.Time
 	previous      *srtp.Context
 	previousUntil time.Time
-	used          bool
 }
 
 func newSRTPReceiver(ctx *srtp.Context) *srtpReceiver {
 	return &srtpReceiver{current: ctx}
 }
 
-func (r *srtpReceiver) rekey(ctx *srtp.Context) {
+func (r *srtpReceiver) rekey(ctx *srtp.Context, key string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.used || r.previous == nil {
-		r.previous = r.current
+	r.pending, r.pendingKey = ctx, key
+	r.pendingUntil = time.Now().Add(srtpRekeyPendingPeriod)
+}
+
+func (r *srtpReceiver) expire(now time.Time) {
+	if r.pending != nil && !now.Before(r.pendingUntil) {
+		r.pending, r.pendingKey = nil, ""
 	}
-	r.current = ctx
-	r.used = false
+	if r.previous != nil && !now.Before(r.previousUntil) {
+		r.previous = nil
+	}
+}
+
+func (r *srtpReceiver) hasKey(key string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.expire(time.Now())
+	return r.currentKey == key || (r.pending != nil && r.pendingKey == key)
 }
 
 func (r *srtpReceiver) DecryptRTP(dst, encrypted []byte, header *rtp.Header) ([]byte, error) {
@@ -52,24 +71,28 @@ func (r *srtpReceiver) DecryptRTCP(dst, encrypted []byte, header *rtcp.Header) (
 func (r *srtpReceiver) decrypt(encrypted []byte, decrypt func(*srtp.Context, []byte) ([]byte, error)) ([]byte, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.previous != nil && r.used && time.Now().After(r.previousUntil) {
-		r.previous = nil
-	}
+	r.expire(time.Now())
 	// Failed in-place decryption may modify the input before a retry.
 	var saved []byte
-	if r.previous != nil {
+	if r.pending != nil || r.previous != nil {
 		saved = bytes.Clone(encrypted)
 	}
 	data, err := decrypt(r.current, encrypted)
-	if err != nil {
-		if r.previous != nil {
-			return decrypt(r.previous, saved)
+	if err == nil {
+		return data, nil
+	}
+	if r.pending != nil {
+		candidateInput := bytes.Clone(saved)
+		candidate, candidateErr := decrypt(r.pending, candidateInput)
+		if candidateErr == nil {
+			r.previous, r.previousUntil = r.current, time.Now().Add(srtpRekeyGracePeriod)
+			r.current, r.currentKey = r.pending, r.pendingKey
+			r.pending, r.pendingKey = nil, ""
+			return candidate, nil
 		}
-		return nil, err
 	}
-	if !r.used {
-		r.used = true
-		r.previousUntil = time.Now().Add(srtpRekeyGracePeriod)
+	if r.previous != nil {
+		return decrypt(r.previous, saved)
 	}
-	return data, nil
+	return nil, err
 }

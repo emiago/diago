@@ -167,7 +167,6 @@ type MediaSession struct {
 	remoteCtxSRTP *srtpReceiver
 	srtpRemoteTag int
 	localSDES     sdesInline
-	remoteSDESKey string
 
 	// RTP NAT enables handling RTP behind NAT. Checkout also RTPSourceLock
 	RTPNAT          int // 0 - disabled, 1 - Learn source change (RTP Symetric)
@@ -314,7 +313,7 @@ func (s *MediaSession) Fork() *MediaSession {
 		cp.SecureRTP, cp.SRTPAlg = s.SecureRTP, s.SRTPAlg
 		cp.Raddr, cp.remoteProto = s.Raddr, s.remoteProto
 		cp.localCtxSRTP, cp.localSDES = s.localCtxSRTP, s.localSDES
-		cp.remoteCtxSRTP, cp.remoteSDESKey = s.remoteCtxSRTP, s.remoteSDESKey
+		cp.remoteCtxSRTP = s.remoteCtxSRTP
 		cp.srtpRemoteTag = s.srtpRemoteTag
 	}
 	return &cp
@@ -592,7 +591,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 
 			inline := strings.TrimPrefix(vals[2], "inline:")
 			remoteTag, remoteKey = tag, inline
-			if s.remoteCtxSRTP != nil && s.remoteSDESKey == inline {
+			if s.remoteCtxSRTP != nil && s.remoteCtxSRTP.hasKey(inline) {
 				if !s.Raddr.IP.Equal(remoteAddr.IP) || s.Raddr.Port != remoteAddr.Port {
 					return fmt.Errorf("SDES address change requires a new key")
 				}
@@ -759,11 +758,12 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 		if remoteContext != nil {
 			if s.remoteCtxSRTP == nil {
 				s.remoteCtxSRTP = newSRTPReceiver(remoteContext)
+				s.remoteCtxSRTP.currentKey = remoteKey
 			} else {
-				s.remoteCtxSRTP.rekey(remoteContext)
+				s.remoteCtxSRTP.rekey(remoteContext, remoteKey)
 			}
 		}
-		s.srtpRemoteTag, s.remoteSDESKey = remoteTag, remoteKey
+		s.srtpRemoteTag = remoteTag
 	}
 	return nil
 }
