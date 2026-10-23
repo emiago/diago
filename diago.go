@@ -556,6 +556,8 @@ type InviteOptions struct {
 	Password string
 	// Custom headers to pass. DO NOT SET THIS to nil
 	Headers []sip.Header
+	// RTPNAT is media.MediaSession.RTPNAT. Check media.RTPNAT... options
+	RTPNAT int
 }
 
 // Invite makes outgoing call leg and waits for answer.
@@ -577,6 +579,7 @@ func (dg *Diago) Invite(ctx context.Context, recipient sip.Uri, opts InviteOptio
 		Headers:    opts.Headers,
 		Username:   opts.Username,
 		Password:   opts.Password,
+		RTPNAT:     opts.RTPNAT,
 	})
 	if err != nil {
 		closeErr := d.Close()
@@ -606,6 +609,7 @@ func (dg *Diago) InviteBridge(ctx context.Context, recipient sip.Uri, bridge *Br
 		Headers:    opts.Headers,
 		Username:   opts.Username,
 		Password:   opts.Password,
+		RTPNAT:     opts.RTPNAT,
 	})
 	if err != nil {
 		return nil, nil, errors.Join(err, d.Hangup(d.Context()), d.Close())

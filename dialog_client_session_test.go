@@ -14,6 +14,7 @@ import (
 
 	"github.com/emiago/diago/audio"
 	"github.com/emiago/diago/media"
+	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/stretchr/testify/assert"
@@ -497,6 +498,25 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 
 	// 1 packet will not be consumed due to update of RTP packets
 	assert.GreaterOrEqual(t, len(remoteAudio)/160, numPkts-1)
+}
+
+func TestDialogClientInviteRTPNAT(t *testing.T) {
+	dg := testDiagoClient(t, func(req *sip.Request) *sip.Response {
+		body := sdp.GenerateForAudio(net.IPv4(127, 0, 0, 1), net.IPv4(127, 0, 0, 1), 34455, sdp.ModeSendrecv, []string{sdp.FORMAT_TYPE_ALAW})
+		return sip.NewResponseFromRequest(req, 200, "OK", body)
+	})
+
+	for _, rtpNAT := range []int{media.RTPNATDisabled, media.RTPNATSymetric} {
+		dialog, err := dg.NewDialog(sip.Uri{User: "alice", Host: "localhost"}, NewDialogOptions{})
+		require.NoError(t, err)
+
+		med, err := dialog.Invite(context.TODO(), InviteClientOptions{RTPNAT: rtpNAT})
+		require.NoError(t, err)
+		assert.Equal(t, rtpNAT, med.MediaSession().RTPNAT)
+
+		med.Close()
+		dialog.Close()
+	}
 }
 
 func TestDialogClientInviteFailed(t *testing.T) {
