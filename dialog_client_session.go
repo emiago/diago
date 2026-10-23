@@ -588,6 +588,10 @@ func (d *DialogClientSession) ReferOptions(ctx context.Context, referTo sip.Uri,
 	return dialogRefer(ctx, d, cont.Address, referTo, d.InviteResponse.Contact().Address, opts.Headers...)
 }
 
+func (d *DialogClientSession) handleUpdate(req *sip.Request, tx sip.ServerTransaction) error {
+	return dialogHandleUpdate(d, &d.dialogCallbacks, req, tx, d.InviteRequest.Contact())
+}
+
 func (d *DialogClientSession) handleReferNotify(req *sip.Request, tx sip.ServerTransaction) {
 	d.dialogCallbacks.mu.Lock()
 	onReferNotify := d.onReferNotify

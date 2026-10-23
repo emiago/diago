@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 
@@ -26,6 +27,81 @@ type DialogSession interface {
 //
 // Here are many common functions built for dialog
 //
+
+// updateDialog is the part of a server or client dialog an UPDATE needs
+type updateDialog interface {
+	LoadState() sip.DialogState
+	ReadRequest(req *sip.Request, tx sip.ServerTransaction) error
+	Context() context.Context
+}
+
+// dialogHandleUpdate answers an UPDATE (RFC 3311): without a body it refreshes the session, with one it is an offer
+// we answer in the 200. contact is our Contact for that 200.
+func dialogHandleUpdate(d updateDialog, cb *dialogCallbacks, req *sip.Request, tx sip.ServerTransaction, contact *sip.ContactHeader) error {
+	// Without 100rel the answer to the INVITE's offer is only final once ACKed
+	if d.LoadState() != sip.DialogStateConfirmed {
+		return tx.Respond(retryLater(req))
+	}
+
+	if err := d.ReadRequest(req, tx); err != nil {
+		if errors.Is(err, sipgo.ErrDialogInvalidCseq) {
+			return tx.Respond(retryLater(req))
+		}
+		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusBadRequest, "Bad Request", nil))
+	}
+
+	if c := req.Contact(); c != nil {
+		cb.setRemoteContact(c)
+	}
+
+	offer := req.Body()
+	if len(offer) == 0 {
+		return tx.Respond(updateOK(req, contact, nil))
+	}
+
+	mediaHanshaker := cb.mediaHanshakerLocked()
+	if mediaHanshaker == nil {
+		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptableHere, "Not Acceptable Here", nil))
+	}
+	if mediaHanshaker.offerPending() {
+		return tx.Respond(sip.NewResponseFromRequest(req, sip.StatusRequestPending, "Request Pending", nil))
+	}
+
+	ctx := d.Context()
+	if err := mediaHanshaker.onRemoteSDP(ctx, offer, false); err != nil {
+		return errors.Join(err, tx.Respond(sip.NewResponseFromRequest(req, sip.StatusNotAcceptableHere, "Not Acceptable Here", nil)))
+	}
+	answer, err := mediaHanshaker.onLocalSDP(ctx, true, "")
+	if err != nil {
+		cb.abortMedia()
+		return errors.Join(err, tx.Respond(sip.NewResponseFromRequest(req, sip.StatusInternalServerError, "Server Internal Error", nil)))
+	}
+	if err := tx.Respond(updateOK(req, contact, answer)); err != nil {
+		cb.abortMedia()
+		return err
+	}
+
+	// No ACK follows an UPDATE's 200
+	return mediaHanshaker.onFinalize(ctx)
+}
+
+// retryLater is a 500 asking to retry in 0-10 s (RFC 3311 5.2, RFC 3261 14.2)
+func retryLater(req *sip.Request) *sip.Response {
+	res := sip.NewResponseFromRequest(req, sip.StatusInternalServerError, "Server Internal Error", nil)
+	res.AppendHeader(sip.NewHeader("Retry-After", strconv.Itoa(rand.IntN(11))))
+	return res
+}
+
+func updateOK(req *sip.Request, contact *sip.ContactHeader, answer []byte) *sip.Response {
+	res := sip.NewResponseFromRequest(req, sip.StatusOK, "OK", answer)
+	if contact != nil {
+		res.AppendHeader(contact.Clone())
+	}
+	if answer != nil {
+		res.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
+	}
+	return res
+}
 
 func dialogRefer(ctx context.Context, d DialogSession, recipient sip.Uri, referTo sip.Uri, refferedBy sip.Uri, headers ...sip.Header) error {
 	if d.DialogSIP().LoadState() != sip.DialogStateConfirmed {
