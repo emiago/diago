@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"io"
 	"net"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/fakes"
@@ -438,6 +440,118 @@ func TestMediaSRTP(t *testing.T) {
 
 		assert.Equal(t, pkt.Payload, rPkt.Payload)
 	}
+}
+
+func TestMediaSessionForkPreservesSRTP(t *testing.T) {
+	// Any free ports: TestMediaPortRange leaves the package range narrow
+	portStart, portEnd := RTPPortStart, RTPPortEnd
+	RTPPortStart, RTPPortEnd = 0, 0
+	t.Cleanup(func() { RTPPortStart, RTPPortEnd = portStart, portEnd })
+
+	newSession := func() *MediaSession {
+		m := &MediaSession{
+			Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
+			Codecs:    []Codec{CodecAudioAlaw},
+			SecureRTP: 1,
+			SRTPAlg:   SRTPProfileAes128CmHmacSha1_80,
+			Mode:      sdp.ModeSendrecv,
+		}
+		require.NoError(t, m.Init())
+		t.Cleanup(func() { m.Close() })
+		return m
+	}
+	readPayload := func(m *MediaSession) string {
+		require.NoError(t, m.StopRTP(1, 2*time.Second))
+		pkt := rtp.Packet{}
+		_, err := m.ReadRTP(make([]byte, RTPBufSize), &pkt)
+		require.NoError(t, err)
+		return string(pkt.Payload)
+	}
+	pkt := func(seq uint16, payload string) *rtp.Packet {
+		return &rtp.Packet{Header: rtp.Header{Version: 2, PayloadType: 8, SequenceNumber: seq, SSRC: 0xdeadbeef}, Payload: []byte(payload)}
+	}
+
+	offerer, answerer := newSession(), newSession()
+	offer := offerer.LocalSDP()
+	require.NoError(t, answerer.RemoteSDP(offer))
+	answer := answerer.LocalSDP()
+	require.NoError(t, offerer.RemoteSDP(answer))
+
+	// A re-INVITE: both sides fork and keep their keys and contexts
+	reOfferer, reAnswerer := offerer.Fork(), answerer.Fork()
+	reOffer := reOfferer.LocalSDP()
+	require.NoError(t, reAnswerer.RemoteSDP(reOffer))
+	reAnswer := reAnswerer.LocalSDP()
+	require.NoError(t, reOfferer.RemoteSDP(reAnswer))
+
+	assert.Equal(t, sdpCrypto(t, offer), sdpCrypto(t, reOffer))
+	assert.Equal(t, sdpCrypto(t, answer), sdpCrypto(t, reAnswer))
+	assert.Contains(t, string(reAnswer), "RTP/SAVP")
+	assert.Same(t, offerer.localCtxSRTP, reOfferer.localCtxSRTP)
+	assert.Same(t, offerer.remoteCtxSRTP, reOfferer.remoteCtxSRTP)
+	assert.Same(t, answerer.localCtxSRTP, reAnswerer.localCtxSRTP)
+	assert.Same(t, answerer.remoteCtxSRTP, reAnswerer.remoteCtxSRTP)
+
+	// The rollover counter carries over: sequence 0 after 65535 still decrypts
+	require.NoError(t, offerer.WriteRTP(pkt(65535, "before wrap")))
+	assert.Equal(t, "before wrap", readPayload(answerer))
+	require.NoError(t, reOfferer.WriteRTP(pkt(0, "after wrap")))
+	assert.Equal(t, "after wrap", readPayload(reAnswerer))
+
+	t.Run("PeerRekeys", func(t *testing.T) {
+		rekeyed := reOfferer.Fork()
+		rekeyed.localCtxSRTP = nil
+		newOffer := rekeyed.LocalSDP()
+		require.NotEqual(t, sdpCrypto(t, reOffer), sdpCrypto(t, newOffer))
+
+		fork := reAnswerer.Fork()
+		require.NoError(t, fork.RemoteSDP(newOffer))
+		assert.NotSame(t, reAnswerer.remoteCtxSRTP, fork.remoteCtxSRTP)
+		assert.Same(t, reAnswerer.remoteCtxSRTP, fork.prevRemoteCtxSRTP)
+		assert.Same(t, reAnswerer.localCtxSRTP, fork.localCtxSRTP, "our address did not change, so our key stays")
+		require.NoError(t, rekeyed.RemoteSDP(fork.LocalSDP()))
+
+		require.NoError(t, reOfferer.WriteRTP(pkt(1, "in flight")))
+		assert.Equal(t, "in flight", readPayload(fork))
+		require.NoError(t, rekeyed.WriteRTP(pkt(2, "new key")))
+		assert.Equal(t, "new key", readPayload(fork))
+	})
+
+	t.Run("LocalAddressChangeRekeys", func(t *testing.T) {
+		fork := reAnswerer.Fork()
+		fork.Laddr.Port++
+		require.NoError(t, fork.RemoteSDP(reOffer))
+		assert.NotSame(t, reAnswerer.localCtxSRTP, fork.localCtxSRTP)
+		assert.NotEqual(t, sdpCrypto(t, reAnswer), sdpCrypto(t, fork.LocalSDP()))
+	})
+
+	t.Run("DowngradeClearsContexts", func(t *testing.T) {
+		plain := &MediaSession{
+			Laddr:  net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
+			Codecs: []Codec{CodecAudioAlaw},
+			Mode:   sdp.ModeSendrecv,
+		}
+		require.NoError(t, plain.Init())
+		defer plain.Close()
+
+		fork := reAnswerer.Fork()
+		require.NoError(t, fork.RemoteSDP(plain.LocalSDP()))
+		assert.Nil(t, fork.localCtxSRTP)
+		assert.Nil(t, fork.remoteCtxSRTP)
+		downgraded := string(fork.LocalSDP())
+		assert.Contains(t, downgraded, "RTP/AVP")
+		assert.NotContains(t, downgraded, "a=crypto")
+	})
+}
+
+func sdpCrypto(t *testing.T, sd []byte) string {
+	for _, line := range strings.Split(string(sd), "\r\n") {
+		if strings.HasPrefix(line, "a=crypto:") {
+			return line
+		}
+	}
+	t.Fatalf("no a=crypto in SDP:\n%s", sd)
+	return ""
 }
 
 func TestMediaSessionRTPSymetric(t *testing.T) {

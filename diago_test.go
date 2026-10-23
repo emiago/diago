@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -400,6 +401,148 @@ func TestIntegrationDiagoSRTPCall(t *testing.T) {
 	recv := make([]byte, 160)
 	r.Read(recv)
 	assert.Equal(t, ulaw, recv)
+}
+
+func TestIntegrationDiagoSRTPReinvite(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	newSRTPDiago := func(port int) *Diago {
+		ua, _ := sipgo.NewUA()
+		t.Cleanup(func() { ua.Close() })
+		return NewDiago(ua,
+			WithTransport(Transport{ID: "tcp", Transport: "tcp", BindHost: "127.0.0.1", BindPort: port, MediaSRTP: 1}),
+			WithMediaConfig(MediaConfig{Codecs: []media.Codec{media.CodecAudioUlaw, media.CodecAudioAlaw}}),
+		)
+	}
+
+	uas := newSRTPDiago(15463)
+	err := uas.ServeBackground(ctx, func(d *DialogServerSession) {
+		med, err := d.Answer(AnswerOptions{})
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer med.Close()
+
+		// Echo with reads and writes on their own goroutines, as a B2BUA does
+		reader, _ := med.AudioReader()
+		writer, _ := med.AudioWriter()
+		frames := make(chan []byte, 16)
+		go func() {
+			defer close(frames)
+			buf := make([]byte, 160)
+			for {
+				n, err := reader.Read(buf)
+				if err != nil {
+					return
+				}
+				if n > 0 {
+					frames <- bytes.Clone(buf[:n])
+				}
+			}
+		}()
+		for frame := range frames {
+			writer.Write(frame)
+		}
+	})
+	require.NoError(t, err)
+
+	uac := newSRTPDiago(15461)
+	dialog, med, err := uac.Invite(ctx, sip.Uri{User: "echo", Host: "127.0.0.1", Port: 15463}, InviteOptions{Transport: "tcp"})
+	require.NoError(t, err)
+	defer med.Close()
+	answerCrypto := sdpCryptoAttr(t, dialog.InviteResponse.Body())
+
+	reader, err := med.AudioReader()
+	require.NoError(t, err)
+	writer, err := med.AudioWriter()
+	require.NoError(t, err)
+
+	// Read all the time, as callers do: a media update interrupts a blocked read and retries on the new session
+	echoed := make(chan []byte, 16)
+	go func() {
+		recv := make([]byte, 160)
+		for {
+			n, err := reader.Read(recv)
+			if err != nil {
+				return
+			}
+			if n > 0 {
+				echoed <- bytes.Clone(recv[:n])
+			}
+		}
+	}()
+	// Audio flows as on a call, a frame every 20ms: one can be lost while a session swaps
+	value := byte(0)
+	echoes := func() {
+		t.Helper()
+		value++
+		frame := bytes.Repeat([]byte{value}, 160)
+		tick := time.NewTicker(20 * time.Millisecond)
+		defer tick.Stop()
+		timeout := time.After(3 * time.Second)
+		for {
+			_, err := writer.Write(frame)
+			require.NoError(t, err)
+			select {
+			case got := <-echoed:
+				if bytes.Equal(got, frame) {
+					return
+				}
+			case <-tick.C:
+			case <-timeout:
+				t.Fatal("no echo")
+			}
+		}
+	}
+	echoes()
+
+	// A session refresh from the caller keeps SRTP and the keys
+	require.NoError(t, dialog.ReInvite(ctx))
+	echoes()
+
+	// A peer's re-INVITEs, refresh, hold and unhold: each answer repeats our a=crypto over RTP/SAVP
+	reinvite := func(mode string, wantMode string) {
+		t.Helper()
+		offer := med.MediaSession().Fork()
+		offer.Mode = mode
+		req := sip.NewRequest(sip.INVITE, dialog.RemoteContact().Address)
+		req.AppendHeader(dialog.InviteRequest.Contact())
+		req.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
+		req.SetBody(offer.LocalSDP())
+
+		res, err := dialog.Do(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, sip.StatusOK, res.StatusCode)
+		assert.Contains(t, string(res.Body()), "RTP/SAVP")
+		assert.Contains(t, string(res.Body()), "a="+wantMode)
+		assert.Equal(t, answerCrypto, sdpCryptoAttr(t, res.Body()))
+		require.NoError(t, dialog.WriteRequest(sip.NewRequest(sip.ACK, res.Contact().Address)))
+	}
+	reinvite(sdp.ModeSendrecv, sdp.ModeSendrecv)
+	echoes()
+
+	reinvite(sdp.ModeSendonly, sdp.ModeRecvonly)
+	// Hold music: the held side reads it, and drops its echo
+	_, err = writer.Write(bytes.Repeat([]byte{0xff}, 160))
+	require.NoError(t, err)
+	time.Sleep(20 * time.Millisecond)
+	reinvite(sdp.ModeSendrecv, sdp.ModeSendrecv)
+	echoes()
+
+	require.NoError(t, dialog.Hangup(ctx))
+}
+
+// sdpCryptoAttr is the a=crypto line of sd
+func sdpCryptoAttr(t *testing.T, sd []byte) string {
+	for _, line := range strings.Split(string(sd), "\r\n") {
+		if strings.HasPrefix(line, "a=crypto:") {
+			return line
+		}
+	}
+	t.Fatalf("no a=crypto in SDP:\n%s", sd)
+	return ""
 }
 
 func TestIntegrationDiagoDTLSCall(t *testing.T) {

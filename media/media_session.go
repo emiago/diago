@@ -167,6 +167,12 @@ type MediaSession struct {
 	remoteCtxSRTP *srtp.Context
 	srtpRemoteTag int
 
+	// SDES keys and contexts survive Fork, so a re-INVITE keeps their rollover counters
+	localSDES         sdesInline    // the key we advertise
+	localSDESAddr     net.UDPAddr   // the Laddr localSDES belongs to
+	remoteSDES        string        // suite and key of the remote crypto line in use
+	prevRemoteCtxSRTP *srtp.Context // the remote context before the peer's last re-key
+
 	// RTP NAT enables handling RTP behind NAT. Checkout also RTPSourceLock
 	RTPNAT          int // 0 - disabled, 1 - Learn source change (RTP Symetric)
 	learnedRTPFrom  atomic.Pointer[net.UDPAddr]
@@ -308,6 +314,20 @@ func (s *MediaSession) Fork() *MediaSession {
 		sessionVersion: s.sessionVersion,
 		DTLSConf:       s.DTLSConf,
 	}
+
+	// DTLS negotiates again on every offer, SDES carries on
+	if s.SecureRTP == 1 {
+		cp.SecureRTP = s.SecureRTP
+		cp.SRTPAlg = s.SRTPAlg
+		cp.remoteProto = s.remoteProto
+		cp.srtpRemoteTag = s.srtpRemoteTag
+
+		cp.localSDES = s.localSDES
+		cp.localSDESAddr = s.localSDESAddr
+		cp.remoteSDES = s.remoteSDES
+		cp.localCtxSRTP = s.localCtxSRTP
+		cp.remoteCtxSRTP = s.remoteCtxSRTP
+	}
 	return &cp
 }
 
@@ -361,29 +381,10 @@ func (s *MediaSession) LocalSDP() []byte {
 		// RFC 4568/8643: only include crypto when offering (no remote SDP yet)
 		// or when the peer actually offered SRTP
 		if s.Raddr.IP == nil || s.remoteCtxSRTP != nil {
-			err := func() error {
-				// TODO detect algorithm
-				profile := srtp.ProtectionProfile(s.SRTPAlg)
-				keysalt, keyLen, err := generateMasterKeySalt(profile)
-				if err != nil {
-					return err
-				}
-				masterKey, masterSalt := keysalt[:keyLen], keysalt[keyLen:]
-
-				inline := base64.StdEncoding.EncodeToString(keysalt)
-				localSDES = sdesInline{
-					alg:    srtpProfileString(profile),
-					base64: inline,
-					tag:    1,
-				}
-
-				ctx, err := srtp.CreateContext(masterKey, masterSalt, profile)
-				if err != nil {
-					return fmt.Errorf("CreateContext failed: %v", err)
-				}
-
-				s.localCtxSRTP = ctx
-
+			if err := s.ensureLocalSDES(); err != nil {
+				DefaultLogger().Error("Failed to setup SRTP context", "error", err)
+			} else {
+				localSDES = s.localSDES
 				if s.srtpRemoteTag > 0 {
 					// Match remote tag if exists
 					localSDES.tag = s.srtpRemoteTag
@@ -394,10 +395,6 @@ func (s *MediaSession) LocalSDP() []byte {
 				if !RTPProfileSAVPDisable || s.remoteProto == "RTP/SAVP" {
 					rtpProfile = "RTP/SAVP"
 				}
-				return nil
-			}()
-			if err != nil {
-				DefaultLogger().Error("Failed to setup SRTP context", "error", err)
 			}
 		}
 	}
@@ -547,6 +544,8 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	s.mode = negotiateMediaDirection(mode, s.Mode)
 
 	// Check for SDES
+	var remoteCtx *srtp.Context
+	remoteSDES := ""
 	for _, v := range attrs {
 		if strings.HasPrefix(v, "crypto:") {
 			vals := strings.Split(v, " ")
@@ -572,6 +571,11 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			}
 
 			inline := strings.TrimPrefix(vals[2], "inline:")
+			remoteSDES = alg + " " + inline
+			if remoteSDES == s.remoteSDES && s.remoteCtxSRTP != nil {
+				remoteCtx = s.remoteCtxSRTP
+				break
+			}
 
 			keyBytes, err := base64.StdEncoding.DecodeString(inline)
 			if err != nil {
@@ -584,15 +588,18 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			masterKey := keyBytes[:16]
 			masterSalt := keyBytes[16:]
 
-			ctx, err := srtp.CreateContext(masterKey, masterSalt, profile)
+			remoteCtx, err = srtp.CreateContext(masterKey, masterSalt, profile)
 			if err != nil {
 				return fmt.Errorf("CreateContext failed: %v", err)
 			}
-			s.remoteCtxSRTP = ctx
-
 			break
 		}
 
+	}
+
+	// DTLS sets its contexts on Finalize; an unchanged line leaves a live session untouched
+	if s.SecureRTP != 2 && (remoteCtx != s.remoteCtxSRTP || remoteSDES != s.remoteSDES) {
+		s.useRemoteSDES(remoteCtx, remoteSDES)
 	}
 
 	// Check for DTLS
@@ -728,6 +735,45 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	if secureRequest && s.remoteCtxSRTP == nil {
 		return fmt.Errorf("remote requested secure RTP, but no context is created proto=%s", md.Proto)
 	}
+
+	// Our key must be final before the session is published and written to
+	if s.SecureRTP == 1 && s.remoteCtxSRTP != nil {
+		return s.ensureLocalSDES()
+	}
+	return nil
+}
+
+// useRemoteSDES switches to the remote context picked from the remote SDP, nil for none
+func (s *MediaSession) useRemoteSDES(ctx *srtp.Context, remoteSDES string) {
+	s.prevRemoteCtxSRTP = s.remoteCtxSRTP
+	s.remoteCtxSRTP = ctx
+	s.remoteSDES = remoteSDES
+}
+
+// ensureLocalSDES keeps our key while its suite and Laddr hold, else makes a new one (RFC 4568 7.1.4)
+func (s *MediaSession) ensureLocalSDES() error {
+	profile := srtp.ProtectionProfile(s.SRTPAlg)
+	alg := srtpProfileString(profile)
+	if s.localCtxSRTP != nil && s.localSDES.alg == alg && s.localSDESAddr.String() == s.Laddr.String() {
+		return nil
+	}
+
+	keysalt, keyLen, err := generateMasterKeySalt(profile)
+	if err != nil {
+		return err
+	}
+	ctx, err := srtp.CreateContext(keysalt[:keyLen], keysalt[keyLen:], profile)
+	if err != nil {
+		return fmt.Errorf("CreateContext failed: %v", err)
+	}
+
+	s.localSDES = sdesInline{
+		alg:    alg,
+		base64: base64.StdEncoding.EncodeToString(keysalt),
+		tag:    1,
+	}
+	s.localSDESAddr = s.Laddr
+	s.localCtxSRTP = ctx
 	return nil
 }
 
@@ -858,7 +904,7 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	}
 
 	if m.remoteCtxSRTP != nil {
-		decrypted, err := m.remoteCtxSRTP.DecryptRTP(buf, buf[:n], &pkt.Header)
+		decrypted, err := m.decryptRTP(buf, n, &pkt.Header)
 		if err != nil {
 			return n, fmt.Errorf("Read SRTP Decrypt error: %w", err)
 		}
@@ -909,6 +955,19 @@ func (m *MediaSession) ReadRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	}
 
 	return n, err
+}
+
+// decryptRTP decrypts in place. A packet that fails auth may still be under the peer's previous key (RFC 4568 7.1.4)
+func (m *MediaSession) decryptRTP(buf []byte, n int, header *rtp.Header) ([]byte, error) {
+	decrypted, err := m.remoteCtxSRTP.DecryptRTP(buf, buf[:n], header)
+	if err == nil || m.prevRemoteCtxSRTP == nil || !errors.Is(err, srtp.ErrFailedToVerifyAuthTag) {
+		return decrypted, err
+	}
+
+	if decrypted, prevErr := m.prevRemoteCtxSRTP.DecryptRTP(buf, buf[:n], header); prevErr == nil {
+		return decrypted, nil
+	}
+	return nil, err
 }
 
 // return parsed rtp
