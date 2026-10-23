@@ -4,6 +4,7 @@
 package diago
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"sync"
@@ -168,6 +169,87 @@ func TestIntegrationDialogServerReinvite(t *testing.T) {
 	require.NoError(t, err)
 
 	d.Hangup(context.TODO())
+}
+
+func TestIntegrationDialogServerHoldUnholdKeepsAudio(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	newDiago := func(port int) *Diago {
+		ua, _ := sipgo.NewUA()
+		t.Cleanup(func() { ua.Close() })
+		return NewDiago(ua, WithTransport(Transport{Transport: "udp", BindHost: "127.0.0.1", BindPort: port}))
+	}
+
+	answered := make(chan *DialogServerSession, 1)
+	uas := newDiago(15077)
+	err := uas.ServeBackground(ctx, func(d *DialogServerSession) {
+		med, err := d.Answer(AnswerOptions{})
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer med.Close()
+		answered <- d
+		med.Echo()
+	})
+	require.NoError(t, err)
+
+	uac := newDiago(15067)
+	require.NoError(t, uac.ServeBackground(ctx, func(*DialogServerSession) {}))
+	dialog, med, err := uac.Invite(ctx, sip.Uri{User: "echo", Host: "127.0.0.1", Port: 15077}, InviteOptions{})
+	require.NoError(t, err)
+	defer med.Close()
+	uasDialog := <-answered
+
+	reader, err := med.AudioReader()
+	require.NoError(t, err)
+	writer, err := med.AudioWriter()
+	require.NoError(t, err)
+	echoed := make(chan []byte, 16)
+	go func() {
+		buf := make([]byte, 160)
+		for {
+			n, err := reader.Read(buf)
+			if err != nil {
+				return
+			}
+			if n > 0 {
+				echoed <- bytes.Clone(buf[:n])
+			}
+		}
+	}()
+	// Audio flows as on a call, a frame every 20ms: one can be lost while a session swaps
+	value := byte(0)
+	echoes := func() {
+		t.Helper()
+		value++
+		frame := bytes.Repeat([]byte{value}, 160)
+		tick := time.NewTicker(20 * time.Millisecond)
+		defer tick.Stop()
+		timeout := time.After(3 * time.Second)
+		for {
+			_, err := writer.Write(frame)
+			require.NoError(t, err)
+			select {
+			case got := <-echoed:
+				if bytes.Equal(got, frame) {
+					return
+				}
+			case <-tick.C:
+			case <-timeout:
+				t.Fatal("no echo")
+			}
+		}
+	}
+	echoes()
+
+	// The held side sends nothing, so the holder's reader waits through both swaps
+	require.NoError(t, uasDialog.Hold(ctx))
+	require.NoError(t, uasDialog.Unhold(ctx))
+	echoes()
+
+	require.NoError(t, dialog.Hangup(ctx))
 }
 
 func TestIntegrationDialogServerPeerCodecPruneReinvite(t *testing.T) {

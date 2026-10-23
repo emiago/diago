@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/emiago/sipgo/fakes"
 	"github.com/pion/rtp"
@@ -63,6 +64,66 @@ func TestRTPReader(t *testing.T) {
 		require.Equal(t, len(payload), n)
 		require.Equal(t, rtpReader.seqReader.ReadExtendedSeq(), uint64(writePkt.SequenceNumber))
 	}
+}
+
+func TestRTPPacketReaderSessionSwap(t *testing.T) {
+	// Any free ports: TestMediaPortRange leaves the package range narrow
+	portStart, portEnd := RTPPortStart, RTPPortEnd
+	RTPPortStart, RTPPortEnd = 0, 0
+	t.Cleanup(func() { RTPPortStart, RTPPortEnd = portStart, portEnd })
+
+	newSession := func() *MediaSession {
+		m := &MediaSession{Laddr: net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)}, Codecs: []Codec{CodecAudioAlaw}, Mode: "sendrecv"}
+		require.NoError(t, m.Init())
+		t.Cleanup(func() { m.Close() })
+		return m
+	}
+	sender, receiver := newSession(), newSession()
+	sender.SetRemoteAddr(&receiver.Laddr)
+	reader := NewRTPPacketReaderSession(NewRTPSession(receiver))
+
+	seq := uint16(0)
+	send := func() {
+		seq++
+		pkt := &rtp.Packet{Header: rtp.Header{Version: 2, PayloadType: 8, SequenceNumber: seq, Timestamp: 160 * uint32(seq), SSRC: 1234}, Payload: []byte("audio")}
+		require.NoError(t, sender.WriteRTP(pkt))
+	}
+	swap := func() { reader.UpdateRTPSession(NewRTPSession(receiver.Fork())) }
+	read := func() <-chan error {
+		done := make(chan error, 1)
+		go func() {
+			_, err := reader.Read(make([]byte, RTPBufSize))
+			done <- err
+		}()
+		return done
+	}
+	wait := func(done <-chan error) {
+		t.Helper()
+		select {
+		case err := <-done:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("read never returned")
+		}
+	}
+
+	t.Run("SwapWhileIdle", func(t *testing.T) {
+		swap()
+		done := read()
+		send()
+		wait(done)
+	})
+
+	t.Run("SwapsWhileWaiting", func(t *testing.T) {
+		done := read()
+		time.Sleep(20 * time.Millisecond)
+		swap()
+		time.Sleep(20 * time.Millisecond)
+		swap()
+		time.Sleep(20 * time.Millisecond)
+		send()
+		wait(done)
+	})
 }
 
 func BenchmarkRTPPacketReader(b *testing.B) {

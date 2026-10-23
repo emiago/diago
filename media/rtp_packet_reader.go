@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/rtcp"
@@ -41,6 +42,8 @@ type RTPPacketReader struct {
 	log *slog.Logger
 
 	reader RTPReader
+	// swapped is set by UpdateReader, whose read deadline then stays until a read clears it
+	swapped atomic.Bool
 
 	// PacketHeader is stored after calling Read
 	// Safe to read only in same goroutine as Read
@@ -113,32 +116,9 @@ func (r *RTPPacketReader) Read(b []byte) (int, error) {
 
 	pkt := &r.packet
 
-	r.mu.RLock()
-	reader := r.reader
-	r.mu.RUnlock()
-
 	// NOTE: Packet Payload can or will reference this buffer as payload. To return only payload copy is required
 	// DO NOT EXPOSE Payload from this point
-	rtpN, err := reader.ReadRTP(buf, pkt)
-	if err != nil {
-		// In case we error while new reader update happen, then retry again
-		// This can be deadline, timeout, or connection closed
-		r.mu.RLock()
-		newReader := r.reader
-		r.mu.RUnlock()
-		if newReader != reader {
-			// Make sure read is enabled if this is rtp connection
-			// Reason is we SetDeadline on Update but media session may not change connection
-			// TODO we may need to expose this
-			if ms, ok := newReader.(*MediaSession); ok {
-				ms.rtpConn.SetReadDeadline(time.Time{})
-			}
-			if s, ok := newReader.(*RTPSession); ok {
-				s.Sess.rtpConn.SetReadDeadline(time.Time{})
-			}
-			rtpN, err = newReader.ReadRTP(buf, pkt)
-		}
-	}
+	rtpN, err := r.readRTP(buf, pkt)
 	if err != nil {
 		// For now underhood IO should only have net closed
 		// Here we are returning EOF to be io package compatilble
@@ -222,6 +202,37 @@ func (r *RTPPacketReader) Reader() RTPReader {
 	return r.reader
 }
 
+// readRTP reads from the current reader. A read that fails after a swap, during it or after it,
+// however many swaps came in between, clears the swap's deadline and reads the current reader again.
+func (r *RTPPacketReader) readRTP(buf []byte, pkt *rtp.Packet) (int, error) {
+	resume := false
+	for {
+		// Under the lock, so a newer swap's deadline is never the one cleared
+		r.mu.RLock()
+		reader := r.reader
+		if resume {
+			resumeRead(reader)
+		}
+		r.mu.RUnlock()
+
+		n, err := reader.ReadRTP(buf, pkt)
+		if err == nil || !r.swapped.Swap(false) {
+			return n, err
+		}
+		resume = true
+	}
+}
+
+// resumeRead clears the read deadline UpdateReader set, as a session may keep its connection across a swap
+func resumeRead(reader RTPReader) {
+	switch r := reader.(type) {
+	case *MediaSession:
+		r.rtpConn.SetReadDeadline(time.Time{})
+	case *RTPSession:
+		r.Sess.rtpConn.SetReadDeadline(time.Time{})
+	}
+}
+
 func (r *RTPPacketReader) UpdateRTPSession(rtpSess *RTPSession) {
 	r.UpdateReader(rtpSess)
 
@@ -236,6 +247,8 @@ func (r *RTPPacketReader) UpdateRTPSession(rtpSess *RTPSession) {
 func (r *RTPPacketReader) UpdateReader(reader RTPReader) {
 	// codec := CodecFromSession(rtpSess.Sess)
 	r.mu.Lock()
+	// Before the deadline, so the read it interrupts sees the swap
+	r.swapped.Store(true)
 	// Make sure that current reading is stopped
 	if m, ok := r.reader.(*MediaSession); ok {
 		m.rtpConn.SetReadDeadline(time.Now())
