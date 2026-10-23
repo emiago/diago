@@ -662,3 +662,70 @@ func TestSRTPReceiverConcurrentReads(t *testing.T) {
 	require.NoError(t, <-results)
 	require.NoError(t, <-results)
 }
+
+func TestMediaSessionSDESUnusedRekey(t *testing.T) {
+	newSession := func() *MediaSession {
+		return &MediaSession{
+			Laddr:  net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 4000},
+			Codecs: []Codec{CodecAudioAlaw}, Mode: sdp.ModeSendrecv,
+			SecureRTP: 1, SRTPAlg: SRTPProfileAes128CmHmacSha1_80,
+		}
+	}
+	peer, next, session := newSession(), newSession(), newSession()
+	require.NoError(t, session.RemoteSDP(peer.LocalSDP()))
+	receiver := session.remoteCtxSRTP
+	active := receiver.current
+	rtpRoundTrip := func(sender *MediaSession, sequence uint16) {
+		raw, err := (&rtp.Packet{Header: rtp.Header{Version: 2, PayloadType: 8, SSRC: 42, SequenceNumber: sequence}, Payload: []byte("audio")}).Marshal()
+		require.NoError(t, err)
+		encrypted, err := sender.localCtxSRTP.EncryptRTP(nil, raw, nil)
+		require.NoError(t, err)
+		plain, err := receiver.DecryptRTP(encrypted, encrypted, nil)
+		require.NoError(t, err)
+		require.Equal(t, raw, plain)
+	}
+	rtcpRoundTrip := func(sender *MediaSession) {
+		raw, err := (&rtcp.SenderReport{SSRC: 42}).Marshal()
+		require.NoError(t, err)
+		encrypted, err := sender.localCtxSRTP.EncryptRTCP(nil, raw, nil)
+		require.NoError(t, err)
+		plain, err := receiver.DecryptRTCP(encrypted, encrypted, nil)
+		require.NoError(t, err)
+		require.Equal(t, raw, plain)
+	}
+	rtpRoundTrip(peer, 65535)
+	candidateOffer := next.LocalSDP()
+	discarded := session.Fork()
+	require.NoError(t, discarded.RemoteSDP(candidateOffer))
+	require.Same(t, active, receiver.current, "an uncommitted offer must not replace the active key")
+	require.NotNil(t, receiver.pending)
+	rtpRoundTrip(peer, 0)
+	rtcpRoundTrip(peer)
+
+	// The abandoned candidate expires without discarding the working key.
+	receiver.mu.Lock()
+	receiver.pendingUntil = time.Now().Add(-time.Second)
+	receiver.mu.Unlock()
+	rtpRoundTrip(peer, 1)
+	rtcpRoundTrip(peer)
+	require.Nil(t, receiver.pending)
+	require.Nil(t, receiver.previous)
+	require.Same(t, active, receiver.current)
+	attempts := 0
+	_, err := receiver.decrypt(nil, func(ctx *srtp.Context, data []byte) ([]byte, error) {
+		attempts++
+		require.Same(t, active, ctx)
+		return data, nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, attempts)
+
+	// The same offer can be retried after its unused candidate expires.
+	require.NoError(t, discarded.RemoteSDP(candidateOffer))
+	require.NotNil(t, receiver.pending)
+	rtpRoundTrip(next, 10)
+	require.Nil(t, receiver.pending)
+	require.Same(t, active, receiver.previous)
+	rtcpRoundTrip(next)
+	rtpRoundTrip(peer, 2)
+}
