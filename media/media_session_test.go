@@ -8,11 +8,13 @@ import (
 	"io"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo/fakes"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
+	"github.com/pion/srtp/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -485,4 +487,178 @@ func TestMediaSessionRTPSymetric(t *testing.T) {
 	require.NoError(t, err)
 	rtpLen := session.rtpConn.(*fakes.UDPConn).Writers["127.2.2.2:4321"].(*bytes.Buffer).Len()
 	assert.Greater(t, rtpLen, 0)
+}
+
+func TestMediaSessionSDESRefresh(t *testing.T) {
+	newSession := func() *MediaSession {
+		return &MediaSession{
+			Laddr:  net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 4000},
+			Codecs: []Codec{CodecAudioAlaw}, Mode: sdp.ModeSendrecv,
+			SecureRTP: 1, SRTPAlg: SRTPProfileAes128CmHmacSha1_80,
+		}
+	}
+	t.Run("repeated local SDP", func(t *testing.T) {
+		m := newSession()
+		first := m.LocalSDP()
+		ctx := m.localCtxSRTP
+		second := m.LocalSDP()
+		require.Same(t, ctx, m.localCtxSRTP, "SDP generation must not reset the send context")
+		cryptoLine := func(body []byte) string {
+			for _, line := range bytes.Split(body, []byte("\r\n")) {
+				if bytes.HasPrefix(line, []byte("a=crypto:")) {
+					return string(line)
+				}
+			}
+			t.Fatal("missing crypto attribute")
+			return ""
+		}
+		require.Equal(t, cryptoLine(first), cryptoLine(second))
+	})
+	t.Run("fork preserves rollover state", func(t *testing.T) {
+		peer, m := newSession(), newSession()
+		offer := peer.LocalSDP()
+		require.NoError(t, m.RemoteSDP(offer))
+		m.LocalSDP()
+		packet := &rtp.Packet{Header: rtp.Header{Version: 2, PayloadType: 8, SSRC: 42, SequenceNumber: 65535}, Payload: []byte("audio")}
+		decrypt := func(receiver *MediaSession) {
+			raw, err := packet.Marshal()
+			require.NoError(t, err)
+			encrypted, err := peer.localCtxSRTP.EncryptRTP(nil, raw, nil)
+			require.NoError(t, err)
+			plain, err := receiver.remoteCtxSRTP.DecryptRTP(nil, encrypted, nil)
+			require.NoError(t, err)
+			require.Equal(t, raw, plain)
+		}
+		decrypt(m)
+		fork := m.Fork()
+		require.Equal(t, 1, fork.SecureRTP)
+		require.Equal(t, m.SRTPAlg, fork.SRTPAlg)
+		require.NoError(t, fork.RemoteSDP(offer))
+		fork.LocalSDP()
+		require.Same(t, m.localCtxSRTP, fork.localCtxSRTP)
+		require.Same(t, m.remoteCtxSRTP, fork.remoteCtxSRTP)
+		packet.SequenceNumber = 0
+		decrypt(fork)
+	})
+}
+
+func TestMediaSessionSDESRekey(t *testing.T) {
+	newSession := func() *MediaSession {
+		return &MediaSession{
+			Laddr:  net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 4000},
+			Codecs: []Codec{CodecAudioAlaw}, Mode: sdp.ModeSendrecv,
+			SecureRTP: 1, SRTPAlg: SRTPProfileAes128CmHmacSha1_80,
+		}
+	}
+	peer, receiver := newSession(), newSession()
+	offer := peer.LocalSDP()
+	require.NoError(t, receiver.RemoteSDP(offer))
+	packet := func(sender *MediaSession, sequence uint16) ([]byte, []byte) {
+		p := rtp.Packet{Header: rtp.Header{Version: 2, PayloadType: 8, SSRC: 42, SequenceNumber: sequence}, Payload: []byte("audio")}
+		raw, err := p.Marshal()
+		require.NoError(t, err)
+		encrypted, err := sender.localCtxSRTP.EncryptRTP(nil, raw, nil)
+		require.NoError(t, err)
+		return raw, encrypted
+	}
+	check := func(sender *MediaSession, sequence uint16) {
+		raw, encrypted := packet(sender, sequence)
+		decrypted, err := receiver.remoteCtxSRTP.DecryptRTP(encrypted, encrypted, nil)
+		require.NoError(t, err)
+		require.Equal(t, raw, decrypted)
+	}
+	check(peer, 65535)
+	next := newSession()
+	fork := receiver.Fork()
+	require.NoError(t, fork.RemoteSDP(next.LocalSDP()))
+	require.Same(t, receiver.remoteCtxSRTP, fork.remoteCtxSRTP)
+	check(next, 10)
+	check(peer, 0)
+
+	// Consecutive offers must not discard the last key that actually carried media.
+	pending, latest := newSession(), newSession()
+	refresh := fork.Fork()
+	require.NoError(t, refresh.RemoteSDP(pending.LocalSDP()))
+	refresh = refresh.Fork()
+	require.NoError(t, refresh.RemoteSDP(latest.LocalSDP()))
+	check(next, 11)
+	check(latest, 20)
+
+	receiver.remoteCtxSRTP.mu.Lock()
+	receiver.remoteCtxSRTP.previousUntil = time.Now().Add(-time.Second)
+	receiver.remoteCtxSRTP.mu.Unlock()
+	_, encrypted := packet(next, 12)
+	_, err := receiver.remoteCtxSRTP.DecryptRTP(nil, encrypted, nil)
+	require.Error(t, err, "the previous key must expire after the grace period")
+	check(latest, 21)
+
+	rejected := refresh.Fork()
+	require.Error(t, rejected.RemoteSDP(bytes.ReplaceAll(offer, []byte("inline:"), []byte("inline:!"))))
+	check(latest, 22)
+	noCrypto := receiver.Fork()
+	lines := bytes.Split(offer, []byte("\r\n"))
+	filtered := lines[:0]
+	for _, line := range lines {
+		if !bytes.HasPrefix(line, []byte("a=crypto:")) {
+			filtered = append(filtered, line)
+		}
+	}
+	require.Error(t, noCrypto.RemoteSDP(bytes.ReplaceAll(bytes.Join(filtered, []byte("\r\n")), []byte("RTP/SAVP"), []byte("RTP/AVP"))))
+	check(latest, 23)
+
+	addressChange := refresh.Fork()
+	previousAddr := addressChange.Raddr.String()
+	require.Error(t, addressChange.RemoteSDP(bytes.ReplaceAll(latest.LocalSDP(), []byte("m=audio 4000"), []byte("m=audio 4002"))))
+	require.Equal(t, previousAddr, addressChange.Raddr.String())
+	check(latest, 24)
+	require.NoError(t, addressChange.RemoteSDP(bytes.ReplaceAll(pending.LocalSDP(), []byte("m=audio 4000"), []byte("m=audio 4002"))))
+	require.Equal(t, 4002, addressChange.Raddr.Port)
+	check(pending, 30)
+
+	// The same shared receive state also decrypts SRTCP after rekeying.
+	rawRTCP, err := (&rtcp.SenderReport{SSRC: 42}).Marshal()
+	require.NoError(t, err)
+	encryptedRTCP, err := pending.localCtxSRTP.EncryptRTCP(nil, rawRTCP, nil)
+	require.NoError(t, err)
+	decryptedRTCP, err := receiver.remoteCtxSRTP.DecryptRTCP(nil, encryptedRTCP, nil)
+	require.NoError(t, err)
+	require.Equal(t, rawRTCP, decryptedRTCP)
+}
+
+func TestSRTPReceiverConcurrentReads(t *testing.T) {
+	key, salt := bytes.Repeat([]byte{1}, 16), bytes.Repeat([]byte{2}, 14)
+	sender, err := srtp.CreateContext(key, salt, srtp.ProtectionProfileAes128CmHmacSha1_80)
+	require.NoError(t, err)
+	ctx, err := srtp.CreateContext(key, salt, srtp.ProtectionProfileAes128CmHmacSha1_80)
+	require.NoError(t, err)
+	receiver := newSRTPReceiver(ctx)
+	raw, err := (&rtp.Packet{Header: rtp.Header{Version: 2, PayloadType: 8, SSRC: 42}, Payload: []byte("audio")}).Marshal()
+	require.NoError(t, err)
+	encryptedRTP, err := sender.EncryptRTP(nil, raw, nil)
+	require.NoError(t, err)
+	raw, err = (&rtcp.SenderReport{SSRC: 42}).Marshal()
+	require.NoError(t, err)
+	encryptedRTCP, err := sender.EncryptRTCP(nil, raw, nil)
+	require.NoError(t, err)
+	results := make(chan error, 2)
+	go func() {
+		for i := 0; i < 100; i++ {
+			if _, err := receiver.DecryptRTP(nil, encryptedRTP, nil); err != nil {
+				results <- err
+				return
+			}
+		}
+		results <- nil
+	}()
+	go func() {
+		for i := 0; i < 100; i++ {
+			if _, err := receiver.DecryptRTCP(nil, encryptedRTCP, nil); err != nil {
+				results <- err
+				return
+			}
+		}
+		results <- nil
+	}()
+	require.NoError(t, <-results)
+	require.NoError(t, <-results)
 }
