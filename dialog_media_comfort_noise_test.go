@@ -50,7 +50,7 @@ func TestWithAudioWriterComfortNoise(t *testing.T) {
 	require.Equal(t, media.CodecComfortNoise8000.PayloadType, rtpWriter.packets[0].PayloadType)
 	require.Equal(t, []byte{127}, rtpWriter.packets[0].Payload)
 
-	localSDP := string(session.LocalSDP())
+	localSDP := string(session.LocalSDP(false))
 	require.Contains(t, localSDP, "m=audio 1234 RTP/AVP 0")
 	require.NotContains(t, localSDP, "RTP/AVP 0 13")
 }

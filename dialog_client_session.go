@@ -195,7 +195,7 @@ func (d *DialogClientSession) invite(ctx context.Context, med *DialogMedia, opts
 		contType := origInvite.ContentType()
 		if body := origInvite.Body(); body != nil && (contType != nil && contType.Value() == "application/sdp") {
 			// apply remote SDP
-			if err := sess.RemoteSDP(body); err != nil {
+			if err := sess.RemoteSDP(body, false); err != nil {
 				return fmt.Errorf("failed to apply originator sdp: %w", err)
 			}
 			// We do not want originator to be remote side, but we want to apply codec filtering
@@ -250,7 +250,7 @@ func (d *DialogClientSession) invite(ctx context.Context, med *DialogMedia, opts
 	d.onReferDialog = opts.OnRefer
 	d.dialogCallbacks.mu.Unlock()
 
-	if err := d.doInvite(ctx, sess.LocalSDP()); err != nil {
+	if err := d.doInvite(ctx, sess.LocalSDP(false)); err != nil {
 		// sess.Close()
 		return err
 	}
@@ -339,7 +339,7 @@ func (d *DialogClientSession) waitAnswerEarly(ctx context.Context, med *DialogMe
 			return nil
 		}
 
-		if err := sess.RemoteSDP(remoteSDP); err != nil {
+		if err := sess.RemoteSDP(remoteSDP, true); err != nil {
 			return err
 		}
 
@@ -394,7 +394,7 @@ func (d *DialogClientSession) applyRemoteSDP(med *DialogMedia, remoteSDP []byte)
 		return err
 	}
 
-	if err := sess.RemoteSDP(remoteSDP); err != nil {
+	if err := sess.RemoteSDP(remoteSDP, true); err != nil {
 		return err
 	}
 

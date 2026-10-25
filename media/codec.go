@@ -31,6 +31,32 @@ type Codec struct {
 	SampleRate  uint32
 	SampleDur   time.Duration
 	NumChannels int // 1 or 2
+
+	payloadTypeRecv *uint8 // Only set for asymmetric negotiated payload mappings.
+}
+
+// PayloadTypeRecv returns the receive payload type of a negotiated codec.
+// It equals PayloadType unless the peer answered with a different mapping.
+func (c Codec) PayloadTypeRecv() uint8 {
+	if c.payloadTypeRecv != nil {
+		return *c.payloadTypeRecv
+	}
+	return c.PayloadType
+}
+
+func (c Codec) negotiatePayloadType(remote Codec, answerer bool) Codec {
+	localPayloadType := c.PayloadType
+	c.PayloadType = remote.PayloadType
+	c.payloadTypeRecv = nil
+	if !answerer && localPayloadType != remote.PayloadType {
+		c.payloadTypeRecv = &localPayloadType
+	}
+	return c
+}
+
+// Matches compares codec identity independently of payload type and packet duration.
+func (c Codec) Matches(other Codec) bool {
+	return strings.EqualFold(c.Name, other.Name) && c.SampleRate == other.SampleRate && c.NumChannels == other.NumChannels
 }
 
 func (c *Codec) String() string {

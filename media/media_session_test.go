@@ -106,7 +106,7 @@ func TestMediaSessionExternalIP(t *testing.T) {
 		ExternalIP: net.IPv4(1, 1, 1, 1),
 	}
 
-	data := m.LocalSDP()
+	data := m.LocalSDP(false)
 	sd := sdp.SessionDescription{}
 	err := sdp.Unmarshal(data, &sd)
 	require.NoError(t, err)
@@ -126,7 +126,7 @@ func TestMediaSessionForkPreservesExternalIP(t *testing.T) {
 
 	fork := m.Fork()
 	sd := sdp.SessionDescription{}
-	require.NoError(t, sdp.Unmarshal(fork.LocalSDP(), &sd))
+	require.NoError(t, sdp.Unmarshal(fork.LocalSDP(false), &sd))
 
 	connInfo, err := sd.ConnectionInformation()
 	require.NoError(t, err)
@@ -159,6 +159,71 @@ func TestMediaSessionUpdateCodec(t *testing.T) {
 	assert.Equal(t, []Codec{}, m.filterCodecs)
 }
 
+func TestMediaSessionDynamicOpusPayload(t *testing.T) {
+	previousOrder := SDPCodecPreferLocalOrder
+	t.Cleanup(func() { SDPCodecPreferLocalOrder = previousOrder })
+	for _, tt := range []struct {
+		name       string
+		localOrder int
+		offerer    bool
+	}{
+		{name: "incoming offer"},
+		{name: "incoming offer with local preference", localOrder: 1},
+		{name: "answer with different payload", offerer: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			SDPCodecPreferLocalOrder = tt.localOrder
+			sess := &MediaSession{
+				Codecs: []Codec{CodecAudioOpus},
+				Laddr:  net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234},
+				Mode:   sdp.ModeSendrecv,
+			}
+			receivePT := uint8(127)
+			if tt.offerer {
+				require.Contains(t, string(sess.LocalSDP(false)), "a=rtpmap:96 opus/48000/2")
+				receivePT = 96
+			}
+			offer := "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\nc=IN IP4 127.0.0.1\r\nt=0 0\r\nm=audio 5678 RTP/AVP 127\r\na=rtpmap:127 OPUS/48000/2\r\na=sendrecv\r\n"
+			require.NoError(t, sess.RemoteSDP([]byte(offer), tt.offerer))
+			require.Equal(t, uint8(127), CodecAudioFromSession(sess).PayloadType)
+			require.Equal(t, []Codec{CodecAudioOpus}, sess.Codecs)
+			require.Equal(t, receivePT, sess.CommonCodecs()[0].PayloadTypeRecv())
+			if !tt.offerer {
+				answer := string(sess.LocalSDP(true))
+				require.Contains(t, answer, "m=audio 1234 RTP/AVP 127\r\n")
+				require.Contains(t, answer, "a=rtpmap:127 opus/48000/2\r\n")
+				require.Contains(t, answer, "a=fmtp:127 useinbandfec=0\r\n")
+			} else {
+				require.Contains(t, string(sess.LocalSDP(false)), "a=rtpmap:96 opus/48000/2\r\n")
+			}
+
+			var wire bytes.Buffer
+			sess.rtpConn = &fakes.UDPConn{Reader: &wire, Writers: map[string]io.Writer{sess.Raddr.String(): &wire}}
+			rtpSess := NewRTPSession(sess)
+			t.Cleanup(rtpSess.rtcpTicker.Stop)
+			writer := NewRTPPacketWriterSession(rtpSess)
+			t.Cleanup(writer.clockTicker.Stop)
+			payload := []byte{0xf8, 0xff, 0xfe} // Opus silence frame.
+			_, err := writer.Write(payload)
+			require.NoError(t, err)
+			pkt := rtp.Packet{}
+			require.NoError(t, pkt.Unmarshal(wire.Bytes()))
+			require.Equal(t, uint8(127), pkt.PayloadType)
+			require.Equal(t, uint32(48000), rtpSess.WriteStats().sampleRate)
+
+			pkt.PayloadType = receivePT
+			incoming, err := pkt.Marshal()
+			require.NoError(t, err)
+			wire.Reset()
+			wire.Write(incoming)
+			_, err = rtpSess.ReadRTP(make([]byte, RTPBufSize), &pkt)
+			require.NoError(t, err)
+			require.Equal(t, payload, pkt.Payload)
+			require.Equal(t, uint32(48000), rtpSess.ReadStats().SampleRate)
+		})
+	}
+}
+
 func TestMediaSessionUpdateSDP(t *testing.T) {
 	sd := `v=0
 o=- 3948988145 3948988145 IN IP4 192.168.178.54
@@ -183,7 +248,7 @@ a=sendrecv`
 		Mode:  "sendrecv",
 	}
 	require.NoError(t, m.Init())
-	err := m.RemoteSDP([]byte(sd))
+	err := m.RemoteSDP([]byte(sd), false)
 	require.NoError(t, err)
 
 	require.Len(t, m.filterCodecs, 4)
@@ -192,7 +257,7 @@ a=sendrecv`
 	assert.Equal(t, CodecAudioOpus, m.filterCodecs[2])
 	assert.Equal(t, CodecTelephoneEvent8000, m.filterCodecs[3])
 
-	lsdp := m.LocalSDP()
+	lsdp := m.LocalSDP(true)
 	lsd := sdp.SessionDescription{}
 	sdp.Unmarshal(lsdp, &lsd)
 
@@ -216,7 +281,7 @@ a=maxptime:20
 a=sendrecv`
 
 		m = *m.Fork()
-		err = m.RemoteSDP([]byte(sd))
+		err = m.RemoteSDP([]byte(sd), false)
 		require.NoError(t, err)
 
 		require.Len(t, m.filterCodecs, 3)
@@ -243,7 +308,7 @@ a=sendrecv`
 			Laddr: net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234},
 			Mode:  "sendrecv",
 		}
-		err := m.RemoteSDP([]byte(sd))
+		err := m.RemoteSDP([]byte(sd), false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unsupported media description protocol")
 	})
@@ -264,7 +329,7 @@ a=sendrecv`
 			Laddr: net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234},
 			Mode:  "sendrecv",
 		}
-		err := m.RemoteSDP([]byte(sd))
+		err := m.RemoteSDP([]byte(sd), false)
 		require.NoError(t, err)
 	})
 
@@ -286,7 +351,7 @@ a=sendrecv`
 			SecureRTP: 1,
 			SRTPAlg:   SRTPProfileAes128CmHmacSha1_80,
 		}
-		err := m.RemoteSDP([]byte(sd))
+		err := m.RemoteSDP([]byte(sd), false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "remote requested secure RTP, but no context is created")
 	})
@@ -310,7 +375,7 @@ a=sendrecv`
 			SecureRTP: 1,
 			SRTPAlg:   SRTPProfileAes128CmHmacSha1_80,
 		}
-		err := m.RemoteSDP([]byte(sd))
+		err := m.RemoteSDP([]byte(sd), false)
 		require.NoError(t, err)
 	})
 
@@ -341,10 +406,10 @@ a=sendrecv`
 	}
 	require.NoError(t, m.Init())
 
-	err := m.RemoteSDP([]byte(offer))
+	err := m.RemoteSDP([]byte(offer), false)
 	require.NoError(t, err)
 
-	answer := string(m.LocalSDP())
+	answer := string(m.LocalSDP(true))
 	assert.Contains(t, answer, "RTP/SAVP", "answer must mirror RTP/SAVP from offer when RTPProfileSAVPDisable is true")
 	assert.NotRegexp(t, `m=audio \d+ RTP/AVP `, answer, "answer must not downgrade to RTP/AVP when offer is RTP/SAVP")
 }
@@ -373,10 +438,10 @@ a=sendrecv`
 	}
 	require.NoError(t, m.Init())
 
-	err := m.RemoteSDP([]byte(offer))
+	err := m.RemoteSDP([]byte(offer), false)
 	require.NoError(t, err)
 
-	answer := string(m.LocalSDP())
+	answer := string(m.LocalSDP(true))
 	assert.Regexp(t, `m=audio \d+ RTP/AVP `, answer, "answer should stay RTP/AVP when offer is RTP/AVP and SAVP is disabled")
 }
 
@@ -399,9 +464,9 @@ func TestMediaSRTP(t *testing.T) {
 	}
 	require.NoError(t, m2.Init())
 
-	err := m1.RemoteSDP(m2.LocalSDP())
+	err := m1.RemoteSDP(m2.LocalSDP(false), false)
 	require.NoError(t, err)
-	err = m2.RemoteSDP(m1.LocalSDP())
+	err = m2.RemoteSDP(m1.LocalSDP(true), true)
 	require.NoError(t, err)
 
 	require.NotNil(t, m1.remoteCtxSRTP)
@@ -499,9 +564,9 @@ func TestMediaSessionSDESRefresh(t *testing.T) {
 	}
 	t.Run("repeated local SDP", func(t *testing.T) {
 		m := newSession()
-		first := m.LocalSDP()
+		first := m.LocalSDP(false)
 		ctx := m.localCtxSRTP
-		second := m.LocalSDP()
+		second := m.LocalSDP(false)
 		require.Same(t, ctx, m.localCtxSRTP, "SDP generation must not reset the send context")
 		cryptoLine := func(body []byte) string {
 			for _, line := range bytes.Split(body, []byte("\r\n")) {
@@ -516,9 +581,9 @@ func TestMediaSessionSDESRefresh(t *testing.T) {
 	})
 	t.Run("fork preserves rollover state", func(t *testing.T) {
 		peer, m := newSession(), newSession()
-		offer := peer.LocalSDP()
-		require.NoError(t, m.RemoteSDP(offer))
-		m.LocalSDP()
+		offer := peer.LocalSDP(false)
+		require.NoError(t, m.RemoteSDP(offer, false))
+		m.LocalSDP(true)
 		packet := &rtp.Packet{Header: rtp.Header{Version: 2, PayloadType: 8, SSRC: 42, SequenceNumber: 65535}, Payload: []byte("audio")}
 		decrypt := func(receiver *MediaSession) {
 			raw, err := packet.Marshal()
@@ -533,8 +598,8 @@ func TestMediaSessionSDESRefresh(t *testing.T) {
 		fork := m.Fork()
 		require.Equal(t, 1, fork.SecureRTP)
 		require.Equal(t, m.SRTPAlg, fork.SRTPAlg)
-		require.NoError(t, fork.RemoteSDP(offer))
-		fork.LocalSDP()
+		require.NoError(t, fork.RemoteSDP(offer, false))
+		fork.LocalSDP(true)
 		require.Same(t, m.localCtxSRTP, fork.localCtxSRTP)
 		require.Same(t, m.remoteCtxSRTP, fork.remoteCtxSRTP)
 		packet.SequenceNumber = 0
@@ -551,8 +616,8 @@ func TestMediaSessionSDESRekey(t *testing.T) {
 		}
 	}
 	peer, receiver := newSession(), newSession()
-	offer := peer.LocalSDP()
-	require.NoError(t, receiver.RemoteSDP(offer))
+	offer := peer.LocalSDP(false)
+	require.NoError(t, receiver.RemoteSDP(offer, false))
 	packet := func(sender *MediaSession, sequence uint16) ([]byte, []byte) {
 		p := rtp.Packet{Header: rtp.Header{Version: 2, PayloadType: 8, SSRC: 42, SequenceNumber: sequence}, Payload: []byte("audio")}
 		raw, err := p.Marshal()
@@ -570,7 +635,7 @@ func TestMediaSessionSDESRekey(t *testing.T) {
 	check(peer, 65535)
 	next := newSession()
 	fork := receiver.Fork()
-	require.NoError(t, fork.RemoteSDP(next.LocalSDP()))
+	require.NoError(t, fork.RemoteSDP(next.LocalSDP(false), false))
 	require.Same(t, receiver.remoteCtxSRTP, fork.remoteCtxSRTP)
 	check(next, 10)
 	check(peer, 0)
@@ -578,9 +643,9 @@ func TestMediaSessionSDESRekey(t *testing.T) {
 	// Consecutive offers must not discard the last key that actually carried media.
 	pending, latest := newSession(), newSession()
 	refresh := fork.Fork()
-	require.NoError(t, refresh.RemoteSDP(pending.LocalSDP()))
+	require.NoError(t, refresh.RemoteSDP(pending.LocalSDP(false), false))
 	refresh = refresh.Fork()
-	require.NoError(t, refresh.RemoteSDP(latest.LocalSDP()))
+	require.NoError(t, refresh.RemoteSDP(latest.LocalSDP(false), false))
 	check(next, 11)
 	check(latest, 20)
 
@@ -593,7 +658,7 @@ func TestMediaSessionSDESRekey(t *testing.T) {
 	check(latest, 21)
 
 	rejected := refresh.Fork()
-	require.Error(t, rejected.RemoteSDP(bytes.ReplaceAll(offer, []byte("inline:"), []byte("inline:!"))))
+	require.Error(t, rejected.RemoteSDP(bytes.ReplaceAll(offer, []byte("inline:"), []byte("inline:!")), false))
 	check(latest, 22)
 	noCrypto := receiver.Fork()
 	lines := bytes.Split(offer, []byte("\r\n"))
@@ -603,15 +668,15 @@ func TestMediaSessionSDESRekey(t *testing.T) {
 			filtered = append(filtered, line)
 		}
 	}
-	require.Error(t, noCrypto.RemoteSDP(bytes.ReplaceAll(bytes.Join(filtered, []byte("\r\n")), []byte("RTP/SAVP"), []byte("RTP/AVP"))))
+	require.Error(t, noCrypto.RemoteSDP(bytes.ReplaceAll(bytes.Join(filtered, []byte("\r\n")), []byte("RTP/SAVP"), []byte("RTP/AVP")), false))
 	check(latest, 23)
 
 	addressChange := refresh.Fork()
 	previousAddr := addressChange.Raddr.String()
-	require.Error(t, addressChange.RemoteSDP(bytes.ReplaceAll(latest.LocalSDP(), []byte("m=audio 4000"), []byte("m=audio 4002"))))
+	require.Error(t, addressChange.RemoteSDP(bytes.ReplaceAll(latest.LocalSDP(false), []byte("m=audio 4000"), []byte("m=audio 4002")), false))
 	require.Equal(t, previousAddr, addressChange.Raddr.String())
 	check(latest, 24)
-	require.NoError(t, addressChange.RemoteSDP(bytes.ReplaceAll(pending.LocalSDP(), []byte("m=audio 4000"), []byte("m=audio 4002"))))
+	require.NoError(t, addressChange.RemoteSDP(bytes.ReplaceAll(pending.LocalSDP(false), []byte("m=audio 4000"), []byte("m=audio 4002")), false))
 	require.Equal(t, 4002, addressChange.Raddr.Port)
 	check(pending, 30)
 
@@ -672,7 +737,7 @@ func TestMediaSessionSDESUnusedRekey(t *testing.T) {
 		}
 	}
 	peer, next, session := newSession(), newSession(), newSession()
-	require.NoError(t, session.RemoteSDP(peer.LocalSDP()))
+	require.NoError(t, session.RemoteSDP(peer.LocalSDP(false), false))
 	receiver := session.remoteCtxSRTP
 	active := receiver.current
 	rtpRoundTrip := func(sender *MediaSession, sequence uint16) {
@@ -694,9 +759,9 @@ func TestMediaSessionSDESUnusedRekey(t *testing.T) {
 		require.Equal(t, raw, plain)
 	}
 	rtpRoundTrip(peer, 65535)
-	candidateOffer := next.LocalSDP()
+	candidateOffer := next.LocalSDP(false)
 	discarded := session.Fork()
-	require.NoError(t, discarded.RemoteSDP(candidateOffer))
+	require.NoError(t, discarded.RemoteSDP(candidateOffer, false))
 	require.Same(t, active, receiver.current, "an uncommitted offer must not replace the active key")
 	require.NotNil(t, receiver.pending)
 	rtpRoundTrip(peer, 0)
@@ -721,7 +786,7 @@ func TestMediaSessionSDESUnusedRekey(t *testing.T) {
 	require.Equal(t, 1, attempts)
 
 	// The same offer can be retried after its unused candidate expires.
-	require.NoError(t, discarded.RemoteSDP(candidateOffer))
+	require.NoError(t, discarded.RemoteSDP(candidateOffer, false))
 	require.NotNil(t, receiver.pending)
 	rtpRoundTrip(next, 10)
 	require.Nil(t, receiver.pending)

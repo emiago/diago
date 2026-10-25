@@ -236,7 +236,7 @@ func TestIntegrationDialogServerPeerCodecPruneReinvite(t *testing.T) {
 		media.CodecAudioUlaw,
 		media.CodecTelephoneEvent8000,
 	}
-	prunedOffer := prunedMedia.LocalSDP()
+	prunedOffer := prunedMedia.LocalSDP(false)
 	require.Contains(t, string(prunedOffer), " 0 101")
 	require.NotContains(t, string(prunedOffer), " 0 8 101")
 	reinvite := sip.NewRequest(sip.INVITE, dialog.RemoteContact().Address)

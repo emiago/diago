@@ -14,7 +14,6 @@ import (
 
 	"github.com/emiago/diago/audio"
 	"github.com/emiago/diago/media"
-	"github.com/emiago/diago/media/sdp"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/stretchr/testify/assert"
@@ -456,7 +455,7 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 			med.mu.Lock()
 			med.pendingMediaSession = ms
 			med.mu.Unlock()
-			remoteSDP, err := d.reInviteSDP(ctx, ms.LocalSDP())
+			remoteSDP, err := d.reInviteSDP(ctx, ms.LocalSDP(false))
 			require.NoError(t, err)
 			err = med.onRemoteSDP(ctx, remoteSDP, true)
 			require.NoError(t, err)

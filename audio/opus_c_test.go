@@ -16,6 +16,25 @@ import (
 	"gopkg.in/hraban/opus.v2"
 )
 
+func TestPCMOpusDynamicPayloadType(t *testing.T) {
+	codec := media.CodecAudioOpus
+	codec.PayloadType = 127
+	codec.Name = "OPUS"
+	enc := PCMEncoder{}
+	dec := PCMDecoder{}
+	require.NoError(t, enc.Init(codec))
+	require.NoError(t, dec.Init(codec))
+	pcm := make([]byte, codec.Samples16())
+	encoded := make([]byte, media.RTPBufSize)
+	n, err := enc.EncoderTo(encoded, pcm)
+	require.NoError(t, err)
+	require.Positive(t, n)
+	decoded := make([]byte, len(pcm))
+	n, err = dec.DecoderTo(decoded, encoded[:n])
+	require.NoError(t, err)
+	require.Equal(t, len(pcm), n)
+}
+
 func TestPCMEncoderOpus(t *testing.T) {
 	// Expected decoded output
 	pcm := testGeneratePCM16(48000)
