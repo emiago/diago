@@ -38,10 +38,12 @@ type RTPCReaderRaw interface {
 
 // RTPPacketReader reads RTP packet and extracts payload and header
 type RTPPacketReader struct {
-	mu  sync.RWMutex
+	// mu coordinates swaps with deadline recovery; normal reads use reader directly.
+	mu  sync.Mutex
 	log *slog.Logger
 
-	reader RTPReader
+	// Each published interface is immutable. Publishing allocates once per swap.
+	reader atomic.Pointer[RTPReader]
 	// swapped is set by UpdateReader, whose read deadline then stays until a read clears it
 	swapped atomic.Bool
 
@@ -62,9 +64,7 @@ type RTPPacketReader struct {
 
 // NewRTPPacketReaderSession just helper constructor
 func NewRTPPacketReaderSession(sess *RTPSession) *RTPPacketReader {
-	r := newRTPPacketReaderMedia(sess.Sess)
-	r.reader = sess
-	return r
+	return NewRTPPacketReader(sess, CodecAudioFromSession(sess.Sess))
 }
 
 // used for tests only
@@ -76,7 +76,6 @@ func newRTPPacketReaderMedia(sess *MediaSession) *RTPPacketReader {
 
 func NewRTPPacketReader(reader RTPReader, codec Codec) *RTPPacketReader {
 	w := RTPPacketReader{
-		reader: reader,
 		// payloadType:   codec.PayloadType,
 		seqReader: RTPExtendedSequenceNumber{},
 		// unreadPayload: make([]byte, RTPBufSize),
@@ -84,6 +83,7 @@ func NewRTPPacketReader(reader RTPReader, codec Codec) *RTPPacketReader {
 		log: DefaultLogger().With("caller", "media"),
 	}
 
+	w.reader.Store(&reader)
 	return &w
 }
 
@@ -197,9 +197,7 @@ func (r *RTPPacketReader) readPayload(b []byte, payload []byte) int {
 }
 
 func (r *RTPPacketReader) Reader() RTPReader {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.reader
+	return *r.reader.Load()
 }
 
 // readRTP reads from the current reader. A read that fails after a swap, during it or after it,
@@ -207,13 +205,16 @@ func (r *RTPPacketReader) Reader() RTPReader {
 func (r *RTPPacketReader) readRTP(buf []byte, pkt *rtp.Packet) (int, error) {
 	resume := false
 	for {
-		// Under the lock, so a newer swap's deadline is never the one cleared
-		r.mu.RLock()
-		reader := r.reader
+		var reader RTPReader
 		if resume {
+			// Reload under the lock so deadline recovery cannot race a swap.
+			r.mu.Lock()
+			reader = r.Reader()
 			resumeRead(reader)
+			r.mu.Unlock()
+		} else {
+			reader = r.Reader()
 		}
-		r.mu.RUnlock()
 
 		n, err := reader.ReadRTP(buf, pkt)
 		if err == nil || !r.swapped.Swap(false) {
@@ -250,16 +251,17 @@ func (r *RTPPacketReader) UpdateReader(reader RTPReader) {
 	// Before the deadline, so the read it interrupts sees the swap
 	r.swapped.Store(true)
 	// Make sure that current reading is stopped
-	if m, ok := r.reader.(*MediaSession); ok {
+	current := r.Reader()
+	if m, ok := current.(*MediaSession); ok {
 		m.rtpConn.SetReadDeadline(time.Now())
 	}
-	if s, ok := r.reader.(*RTPSession); ok {
+	if s, ok := current.(*RTPSession); ok {
 		s.Sess.rtpConn.SetReadDeadline(time.Now())
 	}
-	if s, ok := r.reader.(*RTPSessionWebrtc); ok {
+	if s, ok := current.(*RTPSessionWebrtc); ok {
 		_ = s.Sess.StopRTP(1, -time.Nanosecond)
 	}
-	r.reader = reader
+	r.reader.Store(&reader)
 	// TODO we need to make sure that current Audio Reading is really stopped before updating
 	r.mu.Unlock()
 }
