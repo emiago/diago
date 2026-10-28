@@ -40,6 +40,9 @@ var (
 	// RTPSourceLock enables source locking after IP changes
 	RTPSourceLock bool
 
+	// RTPReadUnsupportedPayload returns RTP with unsupported payload type with n=0 instead of skipping it
+	RTPReadUnsupportedPayload bool
+
 	errRTPSessionClosed         = errors.New("rtp session is closed")
 	errRTPSessionMonitorStarted = errors.New("rtp session monitor already started")
 )
@@ -62,7 +65,8 @@ type RTPSession struct {
 	onReadRTCP  func(pkt rtcp.Packet, rtpStats RTPReadStats)
 	onWriteRTCP func(pkt rtcp.Packet, rtpStats RTPWriteStats)
 
-	closed bool
+	closed          bool
+	readUnsupported bool
 
 	// sourceLock when enabled locks reading RTP packets into single source addr which handles security issue
 	sourceLock        bool
@@ -140,12 +144,13 @@ type RTPWriteStats struct {
 // RTP session creates new RTP reader/writer from session
 func NewRTPSession(sess *MediaSession) *RTPSession {
 	return &RTPSession{
-		Sess:        sess,
-		rtcpTicker:  time.NewTicker(5 * time.Second),
-		rtcpClosed:  make(chan struct{}),
-		onReadRTCP:  DefaultOnReadRTCP,
-		onWriteRTCP: DefaultOnWriteRTCP,
-		sourceLock:  RTPSourceLock,
+		Sess:            sess,
+		rtcpTicker:      time.NewTicker(5 * time.Second),
+		rtcpClosed:      make(chan struct{}),
+		onReadRTCP:      DefaultOnReadRTCP,
+		onWriteRTCP:     DefaultOnWriteRTCP,
+		sourceLock:      RTPSourceLock,
+		readUnsupported: RTPReadUnsupportedPayload,
 	}
 }
 
@@ -163,6 +168,7 @@ func (s *RTPSession) Fork(sess *MediaSession) *RTPSession {
 	fork.onReadRTCP = s.onReadRTCP
 	fork.onWriteRTCP = s.onWriteRTCP
 	fork.sourceLock = s.sourceLock
+	fork.readUnsupported = s.readUnsupported
 	if udpAddrEqual(s.Sess.Laddr, sess.Laddr) && udpAddrEqual(s.Sess.Raddr, sess.Raddr) {
 		fork.sourceLockPackets = s.sourceLockPackets
 		if s.sourceLockAddr != nil {
@@ -283,6 +289,9 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 		supported := s.updateReadStats(readPkt, n, time.Now())
 		s.rtcpMU.Unlock()
 		if !supported {
+			if s.readUnsupported {
+				return 0, nil
+			}
 			DefaultLogger().Warn("Received RTP with unsupported payload_type. Skipping", "pt", readPkt.PayloadType)
 			continue
 		}
