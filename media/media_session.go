@@ -791,12 +791,11 @@ func (s *MediaSession) updateRemoteCodecs(codecs []Codec, answerer bool) int {
 	// Some systems may like to answer with local order of preference
 	if SDPCodecPreferLocalOrder > 0 && answerer {
 		filter := make([]Codec, 0, len(codecs))
+		used := make([]bool, len(codecs))
 		for _, c := range s.Codecs {
-			for _, rc := range codecs {
-				if c.Matches(rc) {
-					filter = append(filter, c.negotiatePayloadType(rc, answerer))
-					break
-				}
+			if i := matchingCodec(codecs, c, used); i >= 0 {
+				used[i] = true
+				filter = append(filter, c.negotiate(codecs[i], answerer))
 			}
 		}
 		s.filterCodecs = filter
@@ -805,11 +804,8 @@ func (s *MediaSession) updateRemoteCodecs(codecs []Codec, answerer bool) int {
 
 	filter := codecs[:0] // reuse buffer
 	for _, rc := range codecs {
-		for _, c := range s.Codecs {
-			if c.Matches(rc) {
-				filter = append(filter, c.negotiatePayloadType(rc, answerer))
-				break
-			}
+		if i := matchingCodec(s.Codecs, rc, nil); i >= 0 {
+			filter = append(filter, s.Codecs[i].negotiate(rc, answerer))
 		}
 	}
 	s.filterCodecs = filter
@@ -1243,6 +1239,8 @@ func generateSDPForAudio(sessionID uint64, sessionVersion uint64, rtpProfile str
 			formatsMap = append(formatsMap, fmt.Sprintf("a=fmtp:%d useinbandfec=0", f.PayloadType))
 		case strings.EqualFold(f.Name, CodecTelephoneEvent8000.Name):
 			formatsMap = append(formatsMap, fmt.Sprintf("a=fmtp:%d 0-16", f.PayloadType))
+		case f.Fmtp != "":
+			formatsMap = append(formatsMap, fmt.Sprintf("a=fmtp:%d %s", f.PayloadType, f.Fmtp))
 		}
 		fmts[i] = strconv.Itoa(int(f.PayloadType))
 	}
