@@ -211,9 +211,27 @@ func CodecsFromSDPRead(formats []string, attrs []string, codecsAudio []Codec) (i
 	n := 0
 	var rerr error
 	for _, f := range formats {
-		if codec, ok := staticAudioCodec(f); ok {
-			codec.Fmtp = formatParameters(f, attrs)
-			codecsAudio[n] = codec
+		if f == "0" {
+			codecsAudio[n] = CodecAudioUlaw
+			n++
+			continue
+		}
+
+		if f == "8" {
+			codecsAudio[n] = CodecAudioAlaw
+			n++
+			continue
+		}
+
+		if f == "9" {
+			codecsAudio[n] = CodecAudioG722
+			n++
+			continue
+		}
+
+		if f == "18" {
+			codecsAudio[n] = CodecAudioG729
+			codecsAudio[n].Fmtp = formatParameters(f, attrs) // e.g. annexb=no
 			n++
 			continue
 		}
@@ -275,22 +293,6 @@ func CodecsFromSDPRead(formats []string, attrs []string, codecsAudio []Codec) (i
 		}
 	}
 	return n, nil
-}
-
-// staticAudioCodec returns the codec of an RFC 3551 static payload type that
-// SDP may list without a=rtpmap.
-func staticAudioCodec(format string) (Codec, bool) {
-	switch format {
-	case "0":
-		return CodecAudioUlaw, true
-	case "8":
-		return CodecAudioAlaw, true
-	case "9":
-		return CodecAudioG722, true
-	case "18":
-		return CodecAudioG729, true
-	}
-	return Codec{}, false
 }
 
 // formatParameters returns the value of a=fmtp:<format>, or "" if absent.
