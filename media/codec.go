@@ -20,6 +20,10 @@ var (
 	CodecAudioAlaw          = Codec{PayloadType: 8, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "pcma"}
 	CodecAudioOpus          = Codec{PayloadType: 96, SampleRate: 48000, SampleDur: 20 * time.Millisecond, NumChannels: 2, Name: "opus"}
 	CodecTelephoneEvent8000 = Codec{PayloadType: 101, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "telephone-event"}
+	// CodecAudioG722 and CodecAudioG729 describe the RFC 3551 static payload
+	// types 9 and 18. G.722 uses an 8 kHz RTP clock for 16 kHz audio.
+	CodecAudioG722 = Codec{PayloadType: 9, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "g722"}
+	CodecAudioG729 = Codec{PayloadType: 18, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "g729"}
 	// CodecComfortNoise8000 describes the static RFC 3389 comfort-noise payload.
 	// It is an auxiliary RTP format and is not included in default SDP offers.
 	CodecComfortNoise8000 = Codec{PayloadType: 13, SampleRate: 8000, NumChannels: 1, Name: "cn"}
@@ -31,6 +35,10 @@ type Codec struct {
 	SampleRate  uint32
 	SampleDur   time.Duration
 	NumChannels int // 1 or 2
+	// Fmtp holds the format parameters (the value of a=fmtp:<payload type>),
+	// e.g. "octet-align=1" for AMR-WB. It is parsed from remote SDP and
+	// written to local SDP. A negotiated codec carries the remote parameters.
+	Fmtp string
 
 	payloadTypeRecv *uint8 // Only set for asymmetric negotiated payload mappings.
 }
@@ -44,14 +52,37 @@ func (c Codec) PayloadTypeRecv() uint8 {
 	return c.PayloadType
 }
 
-func (c Codec) negotiatePayloadType(remote Codec, answerer bool) Codec {
+// negotiate returns the local codec adapted to the matching remote one: it
+// takes the remote payload type and format parameters.
+func (c Codec) negotiate(remote Codec, answerer bool) Codec {
 	localPayloadType := c.PayloadType
 	c.PayloadType = remote.PayloadType
+	c.Fmtp = remote.Fmtp
 	c.payloadTypeRecv = nil
 	if !answerer && localPayloadType != remote.PayloadType {
 		c.payloadTypeRecv = &localPayloadType
 	}
 	return c
+}
+
+// matchingCodec returns the index of the codec in codecs with the same
+// encoding as c, or -1. Among several matches (e.g. AMR-WB offered both
+// octet-aligned and bandwidth-efficient) the one with the same payload type
+// is preferred. Codecs marked in used are skipped; used may be nil.
+func matchingCodec(codecs []Codec, c Codec, used []bool) int {
+	match := -1
+	for i, candidate := range codecs {
+		if (used != nil && used[i]) || !candidate.Matches(c) {
+			continue
+		}
+		if candidate.PayloadType == c.PayloadType {
+			return i
+		}
+		if match < 0 {
+			match = i
+		}
+	}
+	return match
 }
 
 // Matches compares codec identity independently of payload type and packet duration.
@@ -60,7 +91,7 @@ func (c Codec) Matches(other Codec) bool {
 }
 
 func (c *Codec) String() string {
-	return fmt.Sprintf("name=%s pt=%d rate=%d dur=%s channels=%d", c.Name, c.PayloadType, c.SampleRate, c.SampleDur.String(), c.NumChannels)
+	return fmt.Sprintf("name=%s pt=%d rate=%d dur=%s channels=%d fmtp=%s", c.Name, c.PayloadType, c.SampleRate, c.SampleDur.String(), c.NumChannels, c.Fmtp)
 }
 
 // SampleTimestamp returns number of samples as RTP Timestamp measure
@@ -180,14 +211,9 @@ func CodecsFromSDPRead(formats []string, attrs []string, codecsAudio []Codec) (i
 	n := 0
 	var rerr error
 	for _, f := range formats {
-		if f == "0" {
-			codecsAudio[n] = CodecAudioUlaw
-			n++
-			continue
-		}
-
-		if f == "8" {
-			codecsAudio[n] = CodecAudioAlaw
+		if codec, ok := staticAudioCodec(f); ok {
+			codec.Fmtp = formatParameters(f, attrs)
+			codecsAudio[n] = codec
 			n++
 			continue
 		}
@@ -195,6 +221,11 @@ func CodecsFromSDPRead(formats []string, attrs []string, codecsAudio []Codec) (i
 		pt64, err := strconv.ParseUint(f, 10, 8)
 		if err != nil {
 			rerr = errors.Join(rerr, fmt.Errorf("format type failed to conv to integer, skipping f=%s: %w", f, err))
+			continue
+		}
+		// RTP payload types are 7 bits (RFC 3550).
+		if pt64 > 127 {
+			rerr = errors.Join(rerr, fmt.Errorf("payload type %d is out of the RTP range 0-127, skipping", pt64))
 			continue
 		}
 		pt := uint8(pt64)
@@ -237,10 +268,38 @@ func CodecsFromSDPRead(formats []string, attrs []string, codecsAudio []Codec) (i
 						codec.NumChannels = int(numChannels)
 					}
 				}
+				codec.Fmtp = formatParameters(f, attrs)
 				codecsAudio[n] = codec
 				n++
 			}
 		}
 	}
 	return n, nil
+}
+
+// staticAudioCodec returns the codec of an RFC 3551 static payload type that
+// SDP may list without a=rtpmap.
+func staticAudioCodec(format string) (Codec, bool) {
+	switch format {
+	case "0":
+		return CodecAudioUlaw, true
+	case "8":
+		return CodecAudioAlaw, true
+	case "9":
+		return CodecAudioG722, true
+	case "18":
+		return CodecAudioG729, true
+	}
+	return Codec{}, false
+}
+
+// formatParameters returns the value of a=fmtp:<format>, or "" if absent.
+func formatParameters(format string, attrs []string) string {
+	pref := "fmtp:" + format + " "
+	for _, a := range attrs {
+		if strings.HasPrefix(a, pref) {
+			return strings.TrimSpace(a[len(pref):])
+		}
+	}
+	return ""
 }
