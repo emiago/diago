@@ -493,6 +493,14 @@ func (d *DialogServerSession) ReferOptions(ctx context.Context, referTo sip.Uri,
 	return dialogRefer(ctx, d, cont.Address, referTo, d.InviteResponse.Contact().Address, opts.Headers...)
 }
 
+func (d *DialogServerSession) handleUpdate(req *sip.Request, tx sip.ServerTransaction) error {
+	var contact *sip.ContactHeader
+	if res := d.InviteResponse; res != nil {
+		contact = res.Contact()
+	}
+	return dialogHandleUpdate(d, &d.dialogCallbacks, req, tx, contact)
+}
+
 func (d *DialogServerSession) handleReferNotify(req *sip.Request, tx sip.ServerTransaction) {
 	d.dialogCallbacks.mu.Lock()
 	onReferNotify := d.onReferNotify

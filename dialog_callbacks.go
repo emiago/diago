@@ -27,6 +27,8 @@ type mediaHanshaker interface {
 	onRemoteSDP(ctx context.Context, remoteSDP []byte, offered bool) error
 	onLocalSDP(ctx context.Context, answered bool, mode string) ([]byte, error)
 	onFinalize(ctx context.Context) error
+	// offerPending reports an offer still waiting for its answer
+	offerPending() bool
 }
 
 func (d *dialogCallbacks) onFinalize(ctx context.Context) error {
