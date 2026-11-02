@@ -832,9 +832,14 @@ func (s *MediaSession) createListeners(laddr *net.UDPAddr) error {
 
 	if laddr.Port == 0 && RTPPortStart > 0 && RTPPortEnd > RTPPortStart {
 		// Get next available port
-		port := RTPPortStart + int(rtpPortOffset.Load())
+		// Scan the whole range, wrapping around from the current offset
+		// span is even so RTP ports stay even across wraps (RTCP = RTP+1)
+		span := (RTPPortEnd - RTPPortStart + 1) &^ 1
+		start := int(rtpPortOffset.Load()) % span
+		var port int
 		var err error
-		for ; port < RTPPortEnd; port += 2 {
+		for i := 0; i < span; i += 2 {
+			port = RTPPortStart + (start+i)%span
 			laddr.Port = port
 			err = s.listenRTPandRTCP(laddr)
 			if err == nil {
@@ -845,7 +850,7 @@ func (s *MediaSession) createListeners(laddr *net.UDPAddr) error {
 			return fmt.Errorf("no available ports in range %d:%d: %w", RTPPortStart, RTPPortEnd, err)
 		}
 		// Add some offset so that we use more from range
-		offset := (port + 2 - RTPPortStart) % (RTPPortEnd - RTPPortStart)
+		offset := (port + 2 - RTPPortStart) % span
 		rtpPortOffset.Store(int32(offset)) // Reset to zero with module
 		return nil
 	}
