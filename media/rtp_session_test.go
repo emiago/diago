@@ -132,6 +132,67 @@ func TestRTPSessionReadSkipsComfortNoise(t *testing.T) {
 	assert.EqualValues(t, 2, stats.OctetCount)
 }
 
+func TestRTPSessionReadUnsupportedPayload(t *testing.T) {
+	rtpSessRead, rtpSessWrite := pipeRTP(9876, 1234)
+	rtpSessRead.readUnsupported = true
+
+	const ssrc uint32 = 1234
+	packets := []rtp.Packet{
+		{
+			Header: rtp.Header{
+				Version:        2,
+				PayloadType:    CodecComfortNoise8000.PayloadType,
+				SequenceNumber: 1,
+				Timestamp:      160,
+				SSRC:           ssrc,
+			},
+			Payload: []byte{1},
+		},
+		{
+			Header: rtp.Header{
+				Version:        2,
+				PayloadType:    CodecAudioAlaw.PayloadType,
+				SequenceNumber: 2,
+				Timestamp:      320,
+				SSRC:           ssrc,
+			},
+			Payload: []byte{2},
+		},
+	}
+
+	writeDone := make(chan error, 1)
+	go func() {
+		for i := range packets {
+			if err := rtpSessWrite.Sess.WriteRTP(&packets[i]); err != nil {
+				writeDone <- err
+				return
+			}
+		}
+		writeDone <- nil
+	}()
+
+	buf := make([]byte, RTPBufSize)
+	var pkt rtp.Packet
+	n, err := rtpSessRead.ReadRTP(buf, &pkt)
+	require.NoError(t, err)
+	assert.Zero(t, n)
+	assert.Equal(t, CodecComfortNoise8000.PayloadType, pkt.PayloadType)
+	assert.Equal(t, []byte{1}, pkt.Payload)
+
+	n, err = rtpSessRead.ReadRTP(buf, &pkt)
+	require.NoError(t, err)
+	require.Positive(t, n)
+	assert.Equal(t, CodecAudioAlaw.PayloadType, pkt.PayloadType)
+	require.NoError(t, <-writeDone)
+
+	stats := rtpSessRead.ReadStats()
+	assert.EqualValues(t, 1, stats.PacketsCount)
+	assert.EqualValues(t, 1, stats.OctetCount)
+
+	fork := rtpSessRead.Fork(rtpSessRead.Sess)
+	assert.True(t, fork.readUnsupported)
+}
+
 func TestRTPSessionReadPassesSupportedPayloadTypeChanges(t *testing.T) {
 	rtpSessRead, rtpSessWrite := pipeRTP(9876, 1234)
 
