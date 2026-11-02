@@ -38,6 +38,64 @@ func TestMediaPortRange(t *testing.T) {
 
 }
 
+func setRTPPortRange(t *testing.T, start, end int) {
+	prevStart, prevEnd, prevOffset := RTPPortStart, RTPPortEnd, rtpPortOffset.Load()
+	RTPPortStart, RTPPortEnd = start, end
+	rtpPortOffset.Store(0)
+	t.Cleanup(func() {
+		RTPPortStart, RTPPortEnd = prevStart, prevEnd
+		rtpPortOffset.Store(prevOffset)
+	})
+}
+
+func TestMediaPortRangeWrapsAround(t *testing.T) {
+	setRTPPortRange(t, 5100, 5105) // RTP ports 5100, 5102, 5104
+
+	sessions := []*MediaSession{}
+	for port := 5100; port <= 5104; port += 2 {
+		s, err := NewMediaSession(net.IPv4(127, 0, 0, 1), 0)
+		require.NoError(t, err)
+		require.Equal(t, port, s.Laddr.Port)
+		sessions = append(sessions, s)
+	}
+	t.Cleanup(func() {
+		for _, s := range sessions {
+			s.Close()
+		}
+	})
+
+	// Free the first port. Offset now points past the end of the range,
+	// so the allocator has to wrap around to find it.
+	require.NoError(t, sessions[0].Close())
+
+	s, err := NewMediaSession(net.IPv4(127, 0, 0, 1), 0)
+	require.NoError(t, err)
+	sessions[0] = s
+	assert.Equal(t, 5100, s.Laddr.Port)
+}
+
+func TestMediaPortRangeExhausted(t *testing.T) {
+	setRTPPortRange(t, 5200, 5204) // odd size: RTP ports 5200, 5202 only
+
+	sessions := []*MediaSession{}
+	t.Cleanup(func() {
+		for _, s := range sessions {
+			s.Close()
+		}
+	})
+	for _, port := range []int{5200, 5202} {
+		s, err := NewMediaSession(net.IPv4(127, 0, 0, 1), 0)
+		require.NoError(t, err)
+		require.Equal(t, port, s.Laddr.Port)
+		rtcpPort := s.rtcpConn.LocalAddr().(*net.UDPAddr).Port
+		require.LessOrEqual(t, rtcpPort, RTPPortEnd)
+		sessions = append(sessions, s)
+	}
+
+	_, err := NewMediaSession(net.IPv4(127, 0, 0, 1), 0)
+	require.ErrorContains(t, err, "no available ports in range 5200:5204")
+}
+
 func TestDTMFEncodeDecode(t *testing.T) {
 	// Example payload for DTMF digit '1' with volume 10 and duration 1000
 	// Event: 0x01 (DTMF digit '1')
