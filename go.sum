@@ -5,6 +5,8 @@ github.com/emiago/dtls/v3 v3.0.0-20260122183559-8b8d23e359c0 h1:o4LxpUnZ1zxiQ+Qj
 github.com/emiago/dtls/v3 v3.0.0-20260122183559-8b8d23e359c0/go.mod h1:ydcZ977eS1I6uOWodzMuw30BwvNAzT9su/xcNYSJqjA=
 github.com/emiago/sipgo v1.7.0 h1:62yZuk/NBdd9NA1fzdgzRZt4iv3DcyQ/vnxuuRZ3yTk=
 github.com/emiago/sipgo v1.7.0/go.mod h1:6pByIgH5KcO0L1w1wm1c9XB+KNrS1/xyw59uFjMqN0M=
+github.com/emiago/sipgo v1.7.2 h1:OH+2EOx0Cdi09O5P1rL5+LemDfd8sIT0ddYLvZIKrYo=
+github.com/emiago/sipgo v1.7.2/go.mod h1:6pByIgH5KcO0L1w1wm1c9XB+KNrS1/xyw59uFjMqN0M=
 github.com/go-audio/riff v1.0.0 h1:d8iCGbDvox9BfLagY94fBynxSPHO80LmZCaOsmKxokA=
 github.com/go-audio/riff v1.0.0/go.mod h1:l3cQwc85y79NQFCRB7TiPoNiaijp6q8Z0Uv38rVG498=
 github.com/gobwas/httphead v0.1.0 h1:exrUm0f4YX0L7EBwZHuCF4GDp8aJfVeBrlLQrs6NqWU=
