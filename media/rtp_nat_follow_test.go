@@ -15,50 +15,61 @@ import (
 
 const streamSSRC = 0x5a219183
 
-// followRig is a session in RTPNATFollow mode and the remote addresses its media can come from.
+// followRig is an RTP session in RTPNATFollow mode and the remote addresses its media can come from.
+// "old" is the address in the SDP, "new" another port on the same IP.
 type followRig struct {
 	t *testing.T
-	m *MediaSession
+	s *RTPSession
 
-	old, new, stranger *net.UDPConn
-	oldRTCP, newRTCP   *net.UDPConn
-	rtpPeers           map[string]*net.UDPConn
+	rtpPeers  map[string]*net.UDPConn
+	rtcpPeers map[string]*net.UDPConn
 }
 
 func newFollowRig(t *testing.T) *followRig {
-	listen := func() *net.UDPConn {
-		conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-		require.NoError(t, err)
-		t.Cleanup(func() { conn.Close() })
-		return conn
-	}
-
-	r := &followRig{t: t, old: listen(), new: listen(), stranger: listen(), oldRTCP: listen(), newRTCP: listen()}
-	r.rtpPeers = map[string]*net.UDPConn{"old": r.old, "new": r.new, "stranger": r.stranger}
-
 	m, err := NewMediaSession(net.IPv4(127, 0, 0, 1), 0)
 	require.NoError(t, err)
 	t.Cleanup(func() { m.Close() })
-
 	m.RTPNAT = RTPNATFollow
-	m.Raddr = *r.old.LocalAddr().(*net.UDPAddr)
-	m.rtcpRaddr = *r.oldRTCP.LocalAddr().(*net.UDPAddr)
-	r.m = m
+
+	r := &followRig{t: t, s: NewRTPSession(m), rtpPeers: map[string]*net.UDPConn{}, rtcpPeers: map[string]*net.UDPConn{}}
+	r.rtpPeers["old"] = r.listen(net.IPv4(127, 0, 0, 1))
+	r.rtpPeers["new"] = r.listen(net.IPv4(127, 0, 0, 1))
+	r.rtcpPeers["oldRTCP"] = r.listen(net.IPv4(127, 0, 0, 1))
+	r.rtcpPeers["newRTCP"] = r.listen(net.IPv4(127, 0, 0, 1))
+	m.Raddr = *r.rtpPeers["old"].LocalAddr().(*net.UDPAddr)
+	m.rtcpRaddr = *r.rtcpPeers["oldRTCP"].LocalAddr().(*net.UDPAddr)
 	return r
 }
 
-func (r *followRig) readRTPFrom(peer *net.UDPConn, ssrc uint32, seq uint16) {
+func (r *followRig) listen(ip net.IP) *net.UDPConn {
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: ip})
+	require.NoError(r.t, err)
+	r.t.Cleanup(func() { conn.Close() })
+	return conn
+}
+
+// listenElsewhere adds a peer on another IP; the test is skipped where 127.0.0.2 is not routed to loopback.
+func (r *followRig) listenElsewhere(name string, peers map[string]*net.UDPConn) {
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 2)})
+	if err != nil {
+		r.t.Skipf("no second loopback address: %v", err)
+	}
+	r.t.Cleanup(func() { conn.Close() })
+	peers[name] = conn
+}
+
+func (r *followRig) readRTPFrom(peer string, ssrc uint32, seq uint16) {
 	r.t.Helper()
 
-	pkt := rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: seq, Timestamp: uint32(seq) * 160, SSRC: ssrc}, Payload: make([]byte, 160)}
+	pkt := rtp.Packet{Header: rtp.Header{Version: 2, PayloadType: 0, SequenceNumber: seq, Timestamp: uint32(seq) * 160, SSRC: ssrc}, Payload: make([]byte, 160)}
 	data, err := pkt.Marshal()
 	require.NoError(r.t, err)
-	_, err = peer.WriteTo(data, r.m.rtpConn.LocalAddr())
+	_, err = r.rtpPeers[peer].WriteTo(data, r.s.Sess.rtpConn.LocalAddr())
 	require.NoError(r.t, err)
 
-	r.m.rtpConn.SetReadDeadline(time.Now().Add(time.Second))
+	r.s.Sess.rtpConn.SetReadDeadline(time.Now().Add(time.Second))
 	read := rtp.Packet{}
-	_, err = r.m.ReadRTP(make([]byte, RTPBufSize), &read)
+	_, err = r.s.ReadRTP(make([]byte, RTPBufSize), &read)
 	require.NoError(r.t, err)
 	require.Equal(r.t, seq, read.SequenceNumber)
 }
@@ -70,7 +81,7 @@ func (r *followRig) sendRTP() []string {
 	pkt := rtp.Packet{Header: rtp.Header{Version: 2, SSRC: 0xabcdef}, Payload: make([]byte, 160)}
 	data, err := pkt.Marshal()
 	require.NoError(r.t, err)
-	_, err = r.m.WriteRTPRaw(data)
+	_, err = r.s.Sess.WriteRTPRaw(data)
 	require.NoError(r.t, err)
 
 	return reachedPeers(r.rtpPeers, data)
@@ -78,7 +89,7 @@ func (r *followRig) sendRTP() []string {
 
 func reachedPeers(peers map[string]*net.UDPConn, data []byte) []string {
 	reached := []string{}
-	for _, name := range []string{"old", "new", "stranger", "oldRTCP", "newRTCP"} {
+	for _, name := range []string{"old", "new", "stranger", "elsewhere", "oldRTCP", "newRTCP", "elsewhereRTCP"} {
 		peer, ok := peers[name]
 		if !ok {
 			continue
@@ -92,113 +103,138 @@ func reachedPeers(peers map[string]*net.UDPConn, data []byte) []string {
 	return reached
 }
 
-func TestRTPNATFollowMovesAfterProbation(t *testing.T) {
+func TestRTPNATFollowMovesWithTheStream(t *testing.T) {
 	r := newFollowRig(t)
 	for seq := uint16(1); seq <= 3; seq++ {
-		r.readRTPFrom(r.old, streamSSRC, seq)
+		r.readRTPFrom("old", streamSSRC, seq)
 		require.Equal(t, []string{"old"}, r.sendRTP())
 	}
 
-	// The NAT moves the stream: both get our RTP during the probation.
-	for seq := uint16(4); seq <= 6; seq++ {
-		r.readRTPFrom(r.new, streamSSRC, seq)
-		require.Equal(t, []string{"old", "new"}, r.sendRTP(), "probation packet %d", seq)
-	}
-	r.readRTPFrom(r.new, streamSSRC, 7)
+	// The NAT re-maps the stream to another port: we follow its first packet there.
+	r.readRTPFrom("new", streamSSRC, 4)
+	require.Equal(t, []string{"new"}, r.sendRTP())
+	r.readRTPFrom("new", streamSSRC, 5)
 	require.Equal(t, []string{"new"}, r.sendRTP())
 
-	// And back again.
-	for seq := uint16(8); seq <= 10; seq++ {
-		r.readRTPFrom(r.old, streamSSRC, seq)
-		require.Equal(t, []string{"old", "new"}, r.sendRTP())
-	}
-	r.readRTPFrom(r.old, streamSSRC, 11)
+	// And back again, after a few lost packets.
+	r.readRTPFrom("old", streamSSRC, 9)
 	require.Equal(t, []string{"old"}, r.sendRTP())
 }
 
-func TestRTPNATFollowIgnoresFlap(t *testing.T) {
+func TestRTPNATFollowNeverMovesToAnotherStream(t *testing.T) {
 	r := newFollowRig(t)
-	r.readRTPFrom(r.old, streamSSRC, 1)
-
-	for seq := uint16(2); seq < 12; seq += 2 {
-		r.readRTPFrom(r.new, streamSSRC, seq)
-		require.Equal(t, []string{"old", "new"}, r.sendRTP())
-
-		r.readRTPFrom(r.old, streamSSRC, seq+1)
-		require.Equal(t, []string{"old"}, r.sendRTP(), "a packet from the current source ends the probation")
-	}
-}
-
-func TestRTPNATFollowGivesStrangerNothing(t *testing.T) {
-	r := newFollowRig(t)
+	r.rtpPeers["stranger"] = r.listen(net.IPv4(127, 0, 0, 1))
 	for seq := uint16(1); seq <= 3; seq++ {
-		r.readRTPFrom(r.old, streamSSRC, seq)
+		r.readRTPFrom("old", streamSSRC, seq)
 	}
 
-	// Another stream gets no copy during its probation and takes over only after it.
-	for seq := uint16(500); seq < 503; seq++ {
-		r.readRTPFrom(r.stranger, 0x1234, seq)
-		require.Equal(t, []string{"old"}, r.sendRTP())
+	// Another stream on the same IP, however long it runs, gets nothing.
+	for seq := uint16(500); seq < 510; seq++ {
+		r.readRTPFrom("stranger", 0x1234, seq)
+		require.Equal(t, []string{"old"}, r.sendRTP(), "packet %d", seq)
 	}
-	r.readRTPFrom(r.stranger, 0x1234, 503)
-	require.Equal(t, []string{"stranger"}, r.sendRTP())
+
+	// Nor did it disturb the stream, which still moves.
+	r.readRTPFrom("new", streamSSRC, 4)
+	require.Equal(t, []string{"new"}, r.sendRTP())
 }
 
-func TestRTPNATFollowRestartsProbationOnSequenceGap(t *testing.T) {
+func TestRTPNATFollowNeedsTheNextSequence(t *testing.T) {
 	r := newFollowRig(t)
-	r.readRTPFrom(r.old, streamSSRC, 1)
+	r.readRTPFrom("old", streamSSRC, 100)
 
-	for _, seq := range []uint16{2, 3, 5, 6, 7} {
-		r.readRTPFrom(r.new, streamSSRC, seq)
-		require.Equal(t, []string{"old", "new"}, r.sendRTP(), "packet %d", seq)
+	for _, seq := range []uint16{100, 99, 100 + maxDropout} {
+		r.readRTPFrom("new", streamSSRC, seq)
+		require.Equal(t, []string{"old"}, r.sendRTP(), "packet %d", seq)
 	}
+}
 
-	r.readRTPFrom(r.new, streamSSRC, 8)
-	require.Equal(t, []string{"new"}, r.sendRTP())
+func TestRTPNATFollowStaysOnTheIP(t *testing.T) {
+	r := newFollowRig(t)
+	r.listenElsewhere("elsewhere", r.rtpPeers)
+	r.readRTPFrom("old", streamSSRC, 1)
+
+	// Even the stream's next packet does not take us to another host.
+	r.readRTPFrom("elsewhere", streamSSRC, 2)
+	require.Equal(t, []string{"old"}, r.sendRTP())
+}
+
+func TestRTPNATFollowLatchesOnTheFirstPacket(t *testing.T) {
+	t.Run("from another address", func(t *testing.T) {
+		r := newFollowRig(t)
+		r.rtpPeers["stranger"] = r.listen(net.IPv4(127, 0, 0, 1))
+
+		r.readRTPFrom("new", streamSSRC, 1)
+		require.Equal(t, []string{"new"}, r.sendRTP())
+
+		r.readRTPFrom("stranger", 0x1234, 2)
+		require.Equal(t, []string{"new"}, r.sendRTP())
+	})
+
+	t.Run("from the SDP address", func(t *testing.T) {
+		r := newFollowRig(t)
+		r.rtpPeers["stranger"] = r.listen(net.IPv4(127, 0, 0, 1))
+
+		// Unlike RTPNATSymetric, nothing is left to learn after the first packet.
+		r.readRTPFrom("old", streamSSRC, 1)
+		r.readRTPFrom("stranger", 0x1234, 2)
+		require.Equal(t, []string{"old"}, r.sendRTP())
+	})
 }
 
 func TestRTPNATSymetricStillLatchesOnce(t *testing.T) {
 	r := newFollowRig(t)
-	r.m.RTPNAT = RTPNATSymetric
+	r.s.Sess.RTPNAT = RTPNATSymetric
+	r.rtpPeers["stranger"] = r.listen(net.IPv4(127, 0, 0, 1))
 
-	r.readRTPFrom(r.new, streamSSRC, 1)
+	r.readRTPFrom("new", streamSSRC, 1)
 	require.Equal(t, []string{"new"}, r.sendRTP())
 
 	for seq := uint16(2); seq <= 6; seq++ {
-		r.readRTPFrom(r.stranger, streamSSRC, seq)
+		r.readRTPFrom("stranger", streamSSRC, seq)
 	}
 	require.Equal(t, []string{"new"}, r.sendRTP())
 }
 
 func TestRTPNATFollowRTCPFollowsTheStream(t *testing.T) {
 	r := newFollowRig(t)
-	r.readRTPFrom(r.old, streamSSRC, 1)
+	r.listenElsewhere("elsewhereRTCP", r.rtcpPeers)
+	r.readRTPFrom("old", streamSSRC, 1)
 
-	readReportFrom := func(peer *net.UDPConn, ssrc uint32) {
+	read := make(chan struct{}, 1)
+	r.s.OnReadRTCP(func(rtcp.Packet, RTPReadStats) { read <- struct{}{} })
+	require.NoError(t, r.s.MonitorBackground())
+	t.Cleanup(func() { r.s.MonitorClose() })
+
+	readReportFrom := func(peer string, ssrc uint32) {
 		t.Helper()
 		data, err := rtcp.Marshal([]rtcp.Packet{&rtcp.ReceiverReport{SSRC: ssrc}})
 		require.NoError(t, err)
-		_, err = peer.WriteTo(data, r.m.rtcpConn.LocalAddr())
+		_, err = r.rtcpPeers[peer].WriteTo(data, r.s.Sess.rtcpConn.LocalAddr())
 		require.NoError(t, err)
-
-		r.m.rtcpConn.SetReadDeadline(time.Now().Add(time.Second))
-		_, err = r.m.ReadRTCP(make([]byte, 1500), make([]rtcp.Packet, 5))
-		require.NoError(t, err)
+		select {
+		case <-read:
+		case <-time.After(time.Second):
+			t.Fatal("RTCP report not read")
+		}
 	}
 	sendRTCP := func() []string {
 		t.Helper()
 		data, err := rtcp.Marshal([]rtcp.Packet{&rtcp.ReceiverReport{SSRC: 0xabcdef}})
 		require.NoError(t, err)
-		_, err = r.m.WriteRTCPRaw(data)
+		_, err = r.s.Sess.WriteRTCPRaw(data)
 		require.NoError(t, err)
-		return reachedPeers(map[string]*net.UDPConn{"oldRTCP": r.oldRTCP, "newRTCP": r.newRTCP}, data)
+		return reachedPeers(r.rtcpPeers, data)
 	}
 
 	require.Equal(t, []string{"oldRTCP"}, sendRTCP())
 
-	readReportFrom(r.newRTCP, 0x1234)
+	readReportFrom("newRTCP", 0x1234)
 	require.Equal(t, []string{"oldRTCP"}, sendRTCP(), "another stream's report moves nothing")
 
-	readReportFrom(r.newRTCP, streamSSRC)
+	readReportFrom("elsewhereRTCP", streamSSRC)
+	require.Equal(t, []string{"oldRTCP"}, sendRTCP(), "a report from another host moves nothing")
+
+	readReportFrom("newRTCP", streamSSRC)
 	require.Equal(t, []string{"newRTCP"}, sendRTCP())
 }
