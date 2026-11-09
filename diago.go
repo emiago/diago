@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -67,6 +68,16 @@ type Transport struct {
 
 	// MediaExternalIP changes SDP IP, by default it tries to use external host if it is IP defined
 	MediaExternalIP net.IP
+
+	// LocalNetworks are networks reached without NAT. A dialog or
+	// registration with a peer in one of them advertises the bind address
+	// (the media bind IP and BindPort) in its Contact and SDP, rather than
+	// ExternalHost and MediaExternalIP, which stay for every other peer.
+	// An inbound dialog's peer is the address its INVITE came from; an
+	// outbound one's, or a registrar's, is the request URI host when it is
+	// an IP (hostnames are not resolved).
+	LocalNetworks []netip.Prefix
+
 	// MediaSRTP offers SRTP. Values: 0-none, 1-sdes
 	MediaSRTP     int
 	mediaBindIP   net.IP
@@ -265,13 +276,14 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		}
 
 		tran, _ := dg.getTransport(req.Transport())
+		local := tran.isLocal(req.Source())
 
 		// Proceed as new call
 		dialogUA := sipgo.DialogUA{
 			Client:         dg.getClient(tran),
 			RewriteContact: tran.RewriteContact,
 		}
-		dg.contactHDRFromTransport(tran, &dialogUA.ContactHDR)
+		dg.contactHDRFromTransport(tran, &dialogUA.ContactHDR, local)
 
 		dialog, err := dialogUA.ReadInvite(req, tx)
 		if err != nil {
@@ -282,13 +294,7 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		dWrap := &DialogServerSession{
 			DialogServerSession: dialog,
 			// TODO we may actually just build media session with this conf here
-			mediaConf: MediaConfig{
-				Codecs:     dg.mediaConf.Codecs,
-				secureRTP:  tran.MediaSRTP,
-				bindIP:     tran.mediaBindIP,
-				externalIP: tran.MediaExternalIP,
-				dtlsConf:   tran.MediaDTLSConf,
-			},
+			mediaConf: tran.mediaConfig(dg.mediaConf.Codecs, local),
 		}
 
 		defer closeAndLog(dWrap, "closing dialog server returned error")
@@ -653,13 +659,15 @@ func (dg *Diago) NewDialog(recipient sip.Uri, opts NewDialogOptions) (d *DialogC
 func (dg *Diago) newSipDialog(recipient sip.Uri, tran *Transport, opts NewDialogOptions) (d *DialogClientSession, err error) {
 	transport := tran.Transport
 
+	local := tran.isLocal(recipient.Host)
+
 	// TODO: remove this alloc of UA each time
 	client := dg.getClient(tran)
 	dialogUA := sipgo.DialogUA{
 		Client:         client,
 		RewriteContact: tran.RewriteContact,
 	}
-	dg.contactHDRFromTransport(tran, &dialogUA.ContactHDR)
+	dg.contactHDRFromTransport(tran, &dialogUA.ContactHDR, local)
 
 	inviteReq := sip.NewRequest(sip.INVITE, recipient)
 	inviteReq.SetTransport(sip.NetworkToUpper(transport))
@@ -674,13 +682,7 @@ func (dg *Diago) newSipDialog(recipient sip.Uri, tran *Transport, opts NewDialog
 	}
 	d.Init()
 
-	d.mediaConfig = MediaConfig{
-		Codecs:     dg.mediaConf.Codecs,
-		secureRTP:  tran.MediaSRTP,
-		bindIP:     tran.mediaBindIP,
-		externalIP: tran.MediaExternalIP,
-		dtlsConf:   tran.MediaDTLSConf,
-	}
+	d.mediaConfig = tran.mediaConfig(dg.mediaConf.Codecs, local)
 
 	// This should be run on ACK
 	d.OnState(func(s sip.DialogState) {
@@ -705,28 +707,84 @@ func (dg *Diago) newSipDialog(recipient sip.Uri, tran *Transport, opts NewDialog
 	return d, nil
 }
 
-func (dg *Diago) contactHDRFromTransport(tran *Transport, contact *sip.ContactHeader) {
+// contactHDRFromTransport builds our Contact over tran: at the external
+// address, or at the bind address for a local peer (see LocalNetworks).
+func (dg *Diago) contactHDRFromTransport(tran *Transport, contact *sip.ContactHeader, local bool) {
 	// Find contact hdr matching transport
 	scheme := "sip"
 	if tran.TLSConf != nil && !tran.TLSURINoSIPS {
 		scheme = "sips"
 	}
 
+	host, port := tran.ExternalHost, tran.ExternalPort
+	if local {
+		host, port = tran.localHost(), tran.BindPort
+	}
+
 	contact.DisplayName = "" //TODO
 	contact.Address = sip.Uri{
 		Scheme:    scheme,
 		User:      dg.ua.Name(),
-		Host:      tran.ExternalHost,
-		Port:      tran.ExternalPort,
+		Host:      host,
+		Port:      port,
 		UriParams: sip.NewParams(),
 		Headers:   sip.NewParams(),
 	}
 	// Transport should be reflected in contact.
 	// Set this only if we are using same as bind host, as external network could be different
 	// Example TLS termination. External is TLS and this is TCP
-	if tran.ExternalHost == tran.BindHost {
+	if local || tran.ExternalHost == tran.BindHost {
 		contact.Address.UriParams.Add("transport", tran.Transport)
 	}
+}
+
+// isLocal reports whether peer, an IP with or without a port, is in one
+// of the transport's LocalNetworks. A hostname never is.
+func (tran *Transport) isLocal(peer string) bool {
+	if len(tran.LocalNetworks) == 0 {
+		return false
+	}
+	addr, err := netip.ParseAddr(strings.Trim(peer, "[]"))
+	if err != nil {
+		addrPort, err := netip.ParseAddrPort(peer)
+		if err != nil {
+			return false
+		}
+		addr = addrPort.Addr()
+	}
+	addr = addr.Unmap()
+	for _, network := range tran.LocalNetworks {
+		if network.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// localHost is the address a local peer reaches us at: the media bind
+// IP (the bind IP, or the interface IP when binding all interfaces),
+// else the bind host.
+func (tran *Transport) localHost() string {
+	if tran.mediaBindIP != nil {
+		return tran.mediaBindIP.String()
+	}
+	return tran.BindHost
+}
+
+// mediaConfig is the media configuration of a dialog over tran. Toward
+// a local peer the SDP names the media bind IP, not MediaExternalIP.
+func (tran *Transport) mediaConfig(codecs []media.Codec, local bool) MediaConfig {
+	conf := MediaConfig{
+		Codecs:     codecs,
+		secureRTP:  tran.MediaSRTP,
+		bindIP:     tran.mediaBindIP,
+		externalIP: tran.MediaExternalIP,
+		dtlsConf:   tran.MediaDTLSConf,
+	}
+	if local {
+		conf.externalIP = nil
+	}
+	return conf
 }
 
 func (dg *Diago) getClient(tran *Transport) *sipgo.Client {
@@ -837,7 +895,7 @@ func (dg *Diago) RegisterTransaction(ctx context.Context, recipient sip.Uri, opt
 	}
 
 	contactHDR := sip.ContactHeader{}
-	dg.contactHDRFromTransport(tran, &contactHDR)
+	dg.contactHDRFromTransport(tran, &contactHDR, tran.isLocal(recipient.Host))
 
 	// client, err := sipgo.NewClient(dg.ua,
 	// 	sipgo.WithClientHostname(contactHDR.Address.Host),
