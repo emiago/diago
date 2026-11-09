@@ -206,6 +206,13 @@ func (d *DialogWebrtc) onRemoteSDP(ctx context.Context, remoteSDP []byte, offere
 	return nil
 }
 
+// offerPending also covers a peer's offer staged for its answer
+func (d *DialogWebrtc) offerPending() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.pendingMediaSession != nil
+}
+
 func (d *DialogWebrtc) onFinalize(ctx context.Context) error {
 	d.mu.Lock()
 	pending := d.pendingMediaSession
