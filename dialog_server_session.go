@@ -104,7 +104,7 @@ func (d *DialogServerSession) ProgressMedia(opts ProgressMediaOptions) (*DialogM
 		}
 
 		headers := []sip.Header{sip.NewHeader("Content-Type", "application/sdp")}
-		body := rtpSess.Sess.LocalSDP()
+		body := rtpSess.Sess.LocalSDP(true)
 		if err := d.DialogServerSession.Respond(183, "Session Progress", body, headers...); err != nil {
 			return err
 		}
@@ -131,7 +131,7 @@ func (d *DialogServerSession) ProgressMediaOptions(opt ProgressMediaOptions) err
 	}
 
 	headers := []sip.Header{sip.NewHeader("Content-Type", "application/sdp")}
-	body := rtpSess.Sess.LocalSDP()
+	body := rtpSess.Sess.LocalSDP(true)
 	if err := d.DialogServerSession.Respond(183, "Session Progress", body, headers...); err != nil {
 		return err
 	}
@@ -213,7 +213,7 @@ func (d *DialogServerSession) AnswerEarlyMedia(m *DialogMedia, opt AnswerOptions
 	m.onMediaUpdate = opt.OnMediaUpdate
 	m.mu.Unlock()
 
-	if err := d.RespondSDP(m.mediaSession.LocalSDP()); err != nil {
+	if err := d.RespondSDP(m.mediaSession.LocalSDP(true)); err != nil {
 		return err
 	}
 	return nil
@@ -238,7 +238,7 @@ func (d *DialogServerSession) answerSession(med *DialogMedia, rtpSess *media.RTP
 		return fmt.Errorf("no sdp present in INVITE")
 	}
 
-	if err := sess.RemoteSDP(sdp); err != nil {
+	if err := sess.RemoteSDP(sdp, false); err != nil {
 		return err
 	}
 
@@ -249,7 +249,7 @@ func (d *DialogServerSession) answerSession(med *DialogMedia, rtpSess *media.RTP
 
 	// This will now block until ACK received with 64*T1 as max.
 	// How to let caller to cancel this?
-	if err := d.RespondSDP(sess.LocalSDP()); err != nil {
+	if err := d.RespondSDP(sess.LocalSDP(true)); err != nil {
 		return err
 	}
 
@@ -265,7 +265,7 @@ func (d *DialogServerSession) AnswerLate() (*DialogMedia, error) {
 	}
 	sess := m.mediaSession
 	rtpSess := media.NewRTPSession(sess)
-	localSDP := sess.LocalSDP()
+	localSDP := sess.LocalSDP(false)
 
 	m.mu.Lock()
 	m.initRTPSessionUnsafe(sess, rtpSess)

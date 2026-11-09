@@ -4,6 +4,7 @@
 package diago
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"net/netip"
@@ -179,7 +180,7 @@ func TestIntegrationDialogServerLocalNetworks(t *testing.T) {
 	defer cancel()
 
 	ua, _ := sipgo.NewUA(sipgo.WithUserAgent("uas"))
-	defer ua.Close()
+	defer func() { _ = ua.Close() }()
 
 	uas := NewDiago(ua, WithTransport(Transport{
 		Transport:       "udp",
@@ -200,21 +201,102 @@ func TestIntegrationDialogServerLocalNetworks(t *testing.T) {
 	require.NotZero(t, port)
 
 	peerUA, _ := sipgo.NewUA(sipgo.WithUserAgent("peer"))
-	defer peerUA.Close()
+	defer func() { _ = peerUA.Close() }()
 	peer := newDialer(peerUA)
 	err = peer.ServeBackground(ctx, func(*DialogServerSession) {})
 	require.NoError(t, err)
 
 	dialog, _, err := peer.Invite(ctx, sip.Uri{User: "service", Host: "127.0.0.1", Port: port}, InviteOptions{})
 	require.NoError(t, err)
-	defer dialog.Close()
+	defer func() { _ = dialog.Close() }()
 
 	res := dialog.InviteResponse
 	require.NotNil(t, res.Contact())
 	assert.Equal(t, net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), res.Contact().Address.HostPort())
 	assert.Contains(t, string(res.Body()), "c=IN IP4 127.0.0.1")
 	assert.NotContains(t, string(res.Body()), "203.0.113.10")
-	dialog.Hangup(ctx)
+	require.NoError(t, dialog.Hangup(ctx))
+}
+
+func TestIntegrationDialogServerHoldUnholdKeepsAudio(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	newDiago := func(port int) *Diago {
+		ua, _ := sipgo.NewUA()
+		t.Cleanup(func() { ua.Close() })
+		return NewDiago(ua, WithTransport(Transport{Transport: "udp", BindHost: "127.0.0.1", BindPort: port}))
+	}
+
+	answered := make(chan *DialogServerSession, 1)
+	uas := newDiago(15077)
+	err := uas.ServeBackground(ctx, func(d *DialogServerSession) {
+		med, err := d.Answer(AnswerOptions{})
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer med.Close()
+		answered <- d
+		med.Echo()
+	})
+	require.NoError(t, err)
+
+	uac := newDiago(15067)
+	require.NoError(t, uac.ServeBackground(ctx, func(*DialogServerSession) {}))
+	dialog, med, err := uac.Invite(ctx, sip.Uri{User: "echo", Host: "127.0.0.1", Port: 15077}, InviteOptions{})
+	require.NoError(t, err)
+	defer med.Close()
+	uasDialog := <-answered
+
+	reader, err := med.AudioReader()
+	require.NoError(t, err)
+	writer, err := med.AudioWriter()
+	require.NoError(t, err)
+	echoed := make(chan []byte, 16)
+	go func() {
+		buf := make([]byte, 160)
+		for {
+			n, err := reader.Read(buf)
+			if err != nil {
+				return
+			}
+			if n > 0 {
+				echoed <- bytes.Clone(buf[:n])
+			}
+		}
+	}()
+	// Audio flows as on a call, a frame every 20ms: one can be lost while a session swaps
+	value := byte(0)
+	echoes := func() {
+		t.Helper()
+		value++
+		frame := bytes.Repeat([]byte{value}, 160)
+		tick := time.NewTicker(20 * time.Millisecond)
+		defer tick.Stop()
+		timeout := time.After(3 * time.Second)
+		for {
+			_, err := writer.Write(frame)
+			require.NoError(t, err)
+			select {
+			case got := <-echoed:
+				if bytes.Equal(got, frame) {
+					return
+				}
+			case <-tick.C:
+			case <-timeout:
+				t.Fatal("no echo")
+			}
+		}
+	}
+	echoes()
+
+	// The held side sends nothing, so the holder's reader waits through both swaps
+	require.NoError(t, uasDialog.Hold(ctx))
+	require.NoError(t, uasDialog.Unhold(ctx))
+	echoes()
+
+	require.NoError(t, dialog.Hangup(ctx))
 }
 
 func TestIntegrationDialogServerPeerCodecPruneReinvite(t *testing.T) {
@@ -283,7 +365,7 @@ func TestIntegrationDialogServerPeerCodecPruneReinvite(t *testing.T) {
 		media.CodecAudioUlaw,
 		media.CodecTelephoneEvent8000,
 	}
-	prunedOffer := prunedMedia.LocalSDP()
+	prunedOffer := prunedMedia.LocalSDP(false)
 	require.Contains(t, string(prunedOffer), " 0 101")
 	require.NotContains(t, string(prunedOffer), " 0 8 101")
 	reinvite := sip.NewRequest(sip.INVITE, dialog.RemoteContact().Address)

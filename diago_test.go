@@ -120,7 +120,9 @@ func TestDiagoTransportConfs(t *testing.T) {
 		if recipient == "" {
 			recipient = "localhost"
 		}
-		go dg.Invite(context.TODO(), sip.Uri{User: "alice", Host: recipient}, InviteOptions{})
+		go func() {
+			_, _, _ = dg.Invite(context.TODO(), sip.Uri{User: "alice", Host: recipient}, InviteOptions{})
+		}()
 
 		// Now check our req passed on client
 		req := <-reqCh

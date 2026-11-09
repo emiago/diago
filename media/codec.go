@@ -16,13 +16,13 @@ import (
 
 var (
 	// Here are some codec constants that can be reused
-	CodecAudioUlaw          = Codec{PayloadType: 0, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "PCMU"}
-	CodecAudioAlaw          = Codec{PayloadType: 8, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "PCMA"}
+	CodecAudioUlaw          = Codec{PayloadType: 0, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "pcmu"}
+	CodecAudioAlaw          = Codec{PayloadType: 8, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "pcma"}
 	CodecAudioOpus          = Codec{PayloadType: 96, SampleRate: 48000, SampleDur: 20 * time.Millisecond, NumChannels: 2, Name: "opus"}
 	CodecTelephoneEvent8000 = Codec{PayloadType: 101, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, Name: "telephone-event"}
 	// CodecComfortNoise8000 describes the static RFC 3389 comfort-noise payload.
 	// It is an auxiliary RTP format and is not included in default SDP offers.
-	CodecComfortNoise8000 = Codec{PayloadType: 13, SampleRate: 8000, NumChannels: 1, Name: "CN"}
+	CodecComfortNoise8000 = Codec{PayloadType: 13, SampleRate: 8000, NumChannels: 1, Name: "cn"}
 )
 
 type Codec struct {
@@ -31,6 +31,32 @@ type Codec struct {
 	SampleRate  uint32
 	SampleDur   time.Duration
 	NumChannels int // 1 or 2
+
+	payloadTypeRecv *uint8 // Only set for asymmetric negotiated payload mappings.
+}
+
+// PayloadTypeRecv returns the receive payload type of a negotiated codec.
+// It equals PayloadType unless the peer answered with a different mapping.
+func (c Codec) PayloadTypeRecv() uint8 {
+	if c.payloadTypeRecv != nil {
+		return *c.payloadTypeRecv
+	}
+	return c.PayloadType
+}
+
+func (c Codec) negotiatePayloadType(remote Codec, answerer bool) Codec {
+	localPayloadType := c.PayloadType
+	c.PayloadType = remote.PayloadType
+	c.payloadTypeRecv = nil
+	if !answerer && localPayloadType != remote.PayloadType {
+		c.payloadTypeRecv = &localPayloadType
+	}
+	return c
+}
+
+// Matches compares codec identity independently of payload type and packet duration.
+func (c Codec) Matches(other Codec) bool {
+	return strings.EqualFold(c.Name, other.Name) && c.SampleRate == other.SampleRate && c.NumChannels == other.NumChannels
 }
 
 func (c *Codec) String() string {

@@ -455,7 +455,7 @@ func TestIntegrationDialogClientReinviteMedia(t *testing.T) {
 			med.mu.Lock()
 			med.pendingMediaSession = ms
 			med.mu.Unlock()
-			remoteSDP, err := d.reInviteSDP(ctx, ms.LocalSDP())
+			remoteSDP, err := d.reInviteSDP(ctx, ms.LocalSDP(false))
 			require.NoError(t, err)
 			err = med.onRemoteSDP(ctx, remoteSDP, true)
 			require.NoError(t, err)

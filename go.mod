@@ -6,10 +6,10 @@ toolchain go1.24.2
 
 require (
 	github.com/emiago/dtls/v3 v3.0.0-20260122183559-8b8d23e359c0
-	github.com/emiago/sipgo v1.6.0
+	github.com/emiago/sipgo v1.7.2
 	github.com/go-audio/riff v1.0.0
 	github.com/google/uuid v1.6.0
-	github.com/icholy/digest v1.1.0
+	github.com/icholy/digest v1.2.0
 	github.com/pion/ice/v4 v4.3.0
 	github.com/pion/interceptor v0.1.44
 	github.com/pion/logging v0.2.4

@@ -198,7 +198,7 @@ func (d *DialogMedia) MediaSession() *media.MediaSession {
 func (d *DialogMedia) setupRTPSession(sdp []byte, rtpSess *media.RTPSession) error {
 	sess := rtpSess.Sess
 
-	if err := sess.RemoteSDP(sdp); err != nil {
+	if err := sess.RemoteSDP(sdp, false); err != nil {
 		return err
 	}
 
@@ -231,7 +231,7 @@ func (d *DialogMedia) handleMediaUpdate(remoteSDP []byte) ([]byte, error) {
 	}
 
 	// Reply with updated SDP
-	return d.mediaSession.LocalSDP(), nil
+	return d.mediaSession.LocalSDP(true), nil
 }
 
 // Must be protected with lock
@@ -240,7 +240,7 @@ func (d *DialogMedia) sdpReInviteUnsafe(sdp []byte) error {
 		return fmt.Errorf("no media session present")
 	}
 
-	if err := d.sdpUpdateUnsafe(sdp); err != nil {
+	if err := d.sdpUpdateUnsafe(sdp, false); err != nil {
 		return err
 	}
 	return nil
@@ -256,15 +256,15 @@ func (d *DialogMedia) checkEarlyMedia(remoteSDP []byte) error {
 	if d.mediaSession == nil {
 		return fmt.Errorf("no media session present")
 	}
-	if err := d.mediaSession.RemoteSDP(remoteSDP); err != nil {
+	if err := d.mediaSession.RemoteSDP(remoteSDP, true); err != nil {
 		return fmt.Errorf("sdp update media remote SDP applying failed: %w", err)
 	}
 	return nil
 }
 
-func (d *DialogMedia) sdpUpdateUnsafe(sdp []byte) error {
+func (d *DialogMedia) sdpUpdateUnsafe(sdp []byte, offered bool) error {
 	msess := d.mediaSession.Fork()
-	if err := msess.RemoteSDP(sdp); err != nil {
+	if err := msess.RemoteSDP(sdp, offered); err != nil {
 		return fmt.Errorf("sdp update media remote SDP applying failed: %w", err)
 	}
 
@@ -319,13 +319,13 @@ func (d *DialogMedia) onRemoteSDP(ctx context.Context, remoteSDP []byte, offered
 	d.mu.Lock()
 	var err error
 	if offered && d.pendingMediaSession != nil {
-		err = d.pendingMediaSession.RemoteSDP(remoteSDP)
+		err = d.pendingMediaSession.RemoteSDP(remoteSDP, true)
 		if err == nil {
 			err = d.mediaUpdateUnsafe(d.pendingMediaSession)
 			d.pendingMediaSession = nil
 		}
 	} else {
-		err = d.sdpUpdateUnsafe(remoteSDP)
+		err = d.sdpUpdateUnsafe(remoteSDP, offered)
 	}
 	onMediaUpdate := d.onMediaUpdate
 	d.mu.Unlock()
@@ -347,7 +347,7 @@ func (d *DialogMedia) onLocalSDP(ctx context.Context, answered bool, mode string
 	}
 
 	if answered {
-		return d.mediaSession.LocalSDP(), nil
+		return d.mediaSession.LocalSDP(true), nil
 	}
 
 	ms := d.mediaSession.Fork()
@@ -355,7 +355,7 @@ func (d *DialogMedia) onLocalSDP(ctx context.Context, answered bool, mode string
 		ms.Mode = mode
 	}
 	d.pendingMediaSession = ms
-	return ms.LocalSDP(), nil
+	return ms.LocalSDP(false), nil
 }
 
 func (d *DialogMedia) onFinalize(ctx context.Context) error {
@@ -437,7 +437,11 @@ func WithAudioReaderRTPStats(hook media.OnRTPReadStats) AudioReaderOption {
 // WithAudioReaderDTMF creates DTMF interceptor
 func WithAudioReaderDTMF(r *DTMFReader) AudioReaderOption {
 	return func(d *DialogMedia) error {
-		r.dtmfReader = media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, d.RTPPacketReader, d.getAudioReader())
+		codec, err := d.dtmfCodec(true)
+		if err != nil {
+			return err
+		}
+		r.dtmfReader = media.NewRTPDTMFReader(codec, d.RTPPacketReader, d.getAudioReader())
 		r.rtpDeadline = d.mediaSession
 
 		d.audioReader = r
@@ -550,7 +554,11 @@ func WithAudioWriterRTPStats(hook media.OnRTPWriteStats) AudioWriterOption {
 // WithAudioWriterDTMF adds DTMF into audio pipeline
 func WithAudioWriterDTMF(r *DTMFWriter) AudioWriterOption {
 	return func(d *DialogMedia) error {
-		r.dtmfWriter = media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, d.RTPPacketWriter, d.getAudioWriter())
+		codec, err := d.dtmfCodec(false)
+		if err != nil {
+			return err
+		}
+		r.dtmfWriter = media.NewRTPDTMFWriter(codec, d.RTPPacketWriter, d.getAudioWriter())
 		d.audioWriter = r
 		return nil
 	}
@@ -856,6 +864,22 @@ type DTMFReader struct {
 	onDTMF      func(dtmf rune) error
 }
 
+func (d *DialogMedia) dtmfCodec(receive bool) (media.Codec, error) {
+	if d.mediaSession == nil {
+		return media.Codec{}, fmt.Errorf("no media setup")
+	}
+	for _, codec := range d.mediaSession.CommonCodecs() {
+		if !codec.Matches(media.CodecTelephoneEvent8000) {
+			continue
+		}
+		if receive {
+			codec.PayloadType = codec.PayloadTypeRecv()
+		}
+		return codec, nil
+	}
+	return media.Codec{}, fmt.Errorf("telephone-event/8000 codec is not negotiated")
+}
+
 // AudioReaderDTMF is DTMF over RTP. It reads audio and provides hook for dtmf while listening for audio
 // Use Listen or OnDTMF after this call
 func (m *DialogMedia) AudioReaderDTMF() (*DTMFReader, error) {
@@ -863,8 +887,12 @@ func (m *DialogMedia) AudioReaderDTMF() (*DTMFReader, error) {
 	if err != nil {
 		return nil, err
 	}
+	codec, err := m.dtmfCodec(true)
+	if err != nil {
+		return nil, err
+	}
 	return &DTMFReader{
-		dtmfReader:  media.NewRTPDTMFReader(media.CodecTelephoneEvent8000, m.RTPPacketReader, ar),
+		dtmfReader:  media.NewRTPDTMFReader(codec, m.RTPPacketReader, ar),
 		rtpDeadline: m.mediaSession,
 	}, nil
 }
@@ -924,9 +952,13 @@ func (m *DialogMedia) AudioWriterDTMF() (*DTMFWriter, error) {
 	if err != nil {
 		return nil, err
 	}
+	codec, err := m.dtmfCodec(false)
+	if err != nil {
+		return nil, err
+	}
 
 	return &DTMFWriter{
-		dtmfWriter: media.NewRTPDTMFWriter(media.CodecTelephoneEvent8000, m.RTPPacketWriter, aw),
+		dtmfWriter: media.NewRTPDTMFWriter(codec, m.RTPPacketWriter, aw),
 	}, nil
 }
 

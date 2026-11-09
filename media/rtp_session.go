@@ -301,7 +301,7 @@ func (s *RTPSession) updateReadStats(readPkt *rtp.Packet, n int, now time.Time) 
 
 	sampleRate := stats.SampleRate
 	if ssrcChanged || !stats.payloadTypeKnown || stats.payloadType != readPkt.PayloadType {
-		codec, supported := codecByPayloadType(s.Sess.Codecs, readPkt.PayloadType)
+		codec, supported := s.Sess.localCodecByPayloadType(readPkt.PayloadType)
 		if !supported {
 			return false
 		}
@@ -361,6 +361,19 @@ func (s *RTPSession) updateReadStats(readPkt *rtp.Packet, n int, now time.Time) 
 	return true
 }
 
+func (s *MediaSession) localCodecByPayloadType(payloadType uint8) (Codec, bool) {
+	codecs := s.CommonCodecs()
+	if len(codecs) == 0 {
+		codecs = s.Codecs
+	}
+	for _, codec := range codecs {
+		if codec.PayloadTypeRecv() == payloadType {
+			return codec, true
+		}
+	}
+	return Codec{}, false
+}
+
 func codecByPayloadType(codecs []Codec, payloadType uint8) (Codec, bool) {
 	for _, codec := range codecs {
 		if codec.PayloadType == payloadType {
@@ -415,20 +428,17 @@ func (s *RTPSession) WriteRTP(pkt *rtp.Packet) error {
 	}
 
 	s.rtcpMU.Lock()
+	defer s.rtcpMU.Unlock()
 	writeStats := &s.writeStats
 	// For now we only track latest SSRC
 	if writeStats.SSRC != pkt.SSRC {
-		codec, err := func() (Codec, error) {
-			// Find codec from promoted list of codecs
-			for _, c := range sess.Codecs {
-				if c.PayloadType == pkt.PayloadType {
-					return c, nil
-				}
-			}
-			return Codec{}, fmt.Errorf("unknown media codec used for payload type=%d", pkt.PayloadType)
-		}()
-		if err != nil {
-			return err
+		codecs := sess.CommonCodecs()
+		if len(codecs) == 0 {
+			codecs = sess.Codecs
+		}
+		codec, supported := codecByPayloadType(codecs, pkt.PayloadType)
+		if !supported {
+			return fmt.Errorf("unknown media codec used for payload type=%d", pkt.PayloadType)
 		}
 
 		*writeStats = RTPWriteStats{
@@ -442,7 +452,6 @@ func (s *RTPSession) WriteRTP(pkt *rtp.Packet) error {
 	writeStats.lastPacketTime = time.Now()
 	writeStats.lastPacketTimestamp = pkt.Timestamp
 
-	s.rtcpMU.Unlock()
 	return nil
 }
 
