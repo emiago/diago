@@ -1,6 +1,6 @@
 <img src="icons/diago-icon-text.svg" width="300" alt="DIAGO">
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/emiago/diago)](https://goreportcard.com/report/github.com/emiago/diago)
+[![golangci-lint](https://github.com/emiago/diago/actions/workflows/golangci-lint.yml/badge.svg?branch=main)](https://github.com/emiago/diago/actions/workflows/golangci-lint.yml)
 ![Coverage](https://img.shields.io/badge/coverage-61.1%25-blue)
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/emiago/diago)
 

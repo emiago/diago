@@ -92,6 +92,10 @@ type InviteClientOptions struct {
 	Headers []sip.Header
 	// Stop on early media. ErrClientEarlyMedia will be returned
 	EarlyMediaDetect bool
+
+	// RTPNAT is media.MediaSession.RTPNAT, set before media starts
+	// Check media.RTPNAT... options
+	RTPNAT int
 }
 
 // WithAnonymousCaller sets from user Anonymous per RFC
@@ -130,8 +134,11 @@ func (o *InviteClientOptions) WithCaller(displayName string, callerID string, ho
 // NOTE: It updates internal invite request so NOT THREAD SAFE.
 // If you pass originator it will use originator to set correct from header and avoid media transcoding
 func (d *DialogClientSession) Invite(ctx context.Context, opts InviteClientOptions) (*DialogMedia, error) {
+	conf := d.mediaConfig
+	conf.rtpNAT = opts.RTPNAT
+
 	med := &DialogMedia{}
-	if err := med.initMediaSessionFromConf(d.mediaConfig); err != nil {
+	if err := med.initMediaSessionFromConf(conf); err != nil {
 		return nil, err
 	}
 	med.registerDialogCallbacks(&d.dialogCallbacks)
@@ -188,7 +195,7 @@ func (d *DialogClientSession) invite(ctx context.Context, med *DialogMedia, opts
 		contType := origInvite.ContentType()
 		if body := origInvite.Body(); body != nil && (contType != nil && contType.Value() == "application/sdp") {
 			// apply remote SDP
-			if err := sess.RemoteSDP(body); err != nil {
+			if err := sess.RemoteSDP(body, false); err != nil {
 				return fmt.Errorf("failed to apply originator sdp: %w", err)
 			}
 			// We do not want originator to be remote side, but we want to apply codec filtering
@@ -243,7 +250,7 @@ func (d *DialogClientSession) invite(ctx context.Context, med *DialogMedia, opts
 	d.onReferDialog = opts.OnRefer
 	d.dialogCallbacks.mu.Unlock()
 
-	if err := d.doInvite(ctx, sess.LocalSDP()); err != nil {
+	if err := d.doInvite(ctx, sess.LocalSDP(false)); err != nil {
 		// sess.Close()
 		return err
 	}
@@ -332,7 +339,7 @@ func (d *DialogClientSession) waitAnswerEarly(ctx context.Context, med *DialogMe
 			return nil
 		}
 
-		if err := sess.RemoteSDP(remoteSDP); err != nil {
+		if err := sess.RemoteSDP(remoteSDP, true); err != nil {
 			return err
 		}
 
@@ -387,7 +394,7 @@ func (d *DialogClientSession) applyRemoteSDP(med *DialogMedia, remoteSDP []byte)
 		return err
 	}
 
-	if err := sess.RemoteSDP(remoteSDP); err != nil {
+	if err := sess.RemoteSDP(remoteSDP, true); err != nil {
 		return err
 	}
 

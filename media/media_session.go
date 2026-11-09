@@ -131,7 +131,8 @@ type MediaSession struct {
 	// 1. make this list of codecs as we need to match also sample rate and ptime
 	// 2. rtp session when matching incoming packet sample rate for RTCP should use this
 
-	// Codecs are initial list of Codecs that would be used in SDP generation
+	// Codecs are the configured local capabilities used to negotiate SDP.
+	// Negotiation leaves this list unchanged; CommonCodecs returns the result.
 	Codecs []Codec
 
 	sdp []byte
@@ -155,17 +156,19 @@ type MediaSession struct {
 	// mode set after negotiation
 	mode string
 
-	// filterCodecs is common list of codecs after negotiation
+	// filterCodecs is the common list of codecs with the remote payload mappings.
 	filterCodecs []Codec
-	rtpConn      net.PacketConn
-	rtcpConn     net.PacketConn
-	rtcpRaddr    net.UDPAddr
-	writeRTPBuf  []byte
+
+	rtpConn     net.PacketConn
+	rtcpConn    net.PacketConn
+	rtcpRaddr   net.UDPAddr
+	writeRTPBuf []byte
 
 	// SRTP
 	localCtxSRTP  *srtp.Context
-	remoteCtxSRTP *srtp.Context
+	remoteCtxSRTP *srtpReceiver
 	srtpRemoteTag int
+	localSDES     sdesInline
 
 	// RTP NAT enables handling RTP behind NAT. Checkout also RTPSourceLock
 	RTPNAT          int // 0 - disabled, 1 - Learn source change (RTP Symetric)
@@ -293,7 +296,7 @@ func (s *MediaSession) StartRTP(rw int8) error {
 }
 
 // Fork is special call to be used in case when there is session update
-// It preserves pointer to same conneciton but rest is removed
+// It preserves connections and negotiated SDES contexts for media updates.
 func (s *MediaSession) Fork() *MediaSession {
 	cp := MediaSession{
 		Laddr:          s.Laddr, // TODO clone it although it is read only
@@ -307,6 +310,13 @@ func (s *MediaSession) Fork() *MediaSession {
 		sessionID:      s.sessionID,
 		sessionVersion: s.sessionVersion,
 		DTLSConf:       s.DTLSConf,
+	}
+	if s.SecureRTP == 1 {
+		cp.SecureRTP, cp.SRTPAlg = s.SecureRTP, s.SRTPAlg
+		cp.Raddr, cp.remoteProto = s.Raddr, s.remoteProto
+		cp.localCtxSRTP, cp.localSDES = s.localCtxSRTP, s.localSDES
+		cp.remoteCtxSRTP = s.remoteCtxSRTP
+		cp.srtpRemoteTag = s.srtpRemoteTag
 	}
 	return &cp
 }
@@ -335,9 +345,9 @@ func (s *MediaSession) SetRemoteAddr(raddr *net.UDPAddr) {
 	}
 }
 
-// LocalSDP generates SDP based on local settings and remote SDP
+// LocalSDP generates an offer when answered is false, or an answer when true.
 // It should never be called in parallel to RemoteSDP, as it is expected serial process
-func (s *MediaSession) LocalSDP() []byte {
+func (s *MediaSession) LocalSDP(answered bool) []byte {
 	if len(s.sdp) > 0 {
 		// If media session is static then just return sdp.
 		return s.sdp
@@ -351,7 +361,7 @@ func (s *MediaSession) LocalSDP() []byte {
 	}
 
 	codecs := s.Codecs
-	if len(s.filterCodecs) > 0 {
+	if answered && len(s.filterCodecs) > 0 {
 		codecs = s.filterCodecs
 	}
 
@@ -362,28 +372,32 @@ func (s *MediaSession) LocalSDP() []byte {
 		// or when the peer actually offered SRTP
 		if s.Raddr.IP == nil || s.remoteCtxSRTP != nil {
 			err := func() error {
-				// TODO detect algorithm
-				profile := srtp.ProtectionProfile(s.SRTPAlg)
-				keysalt, keyLen, err := generateMasterKeySalt(profile)
-				if err != nil {
-					return err
+				if s.localCtxSRTP != nil {
+					localSDES = s.localSDES
+				} else {
+					// TODO detect algorithm
+					profile := srtp.ProtectionProfile(s.SRTPAlg)
+					keysalt, keyLen, err := generateMasterKeySalt(profile)
+					if err != nil {
+						return err
+					}
+					masterKey, masterSalt := keysalt[:keyLen], keysalt[keyLen:]
+
+					inline := base64.StdEncoding.EncodeToString(keysalt)
+					localSDES = sdesInline{
+						alg:    srtpProfileString(profile),
+						base64: inline,
+						tag:    1,
+					}
+
+					ctx, err := srtp.CreateContext(masterKey, masterSalt, profile)
+					if err != nil {
+						return fmt.Errorf("CreateContext failed: %v", err)
+					}
+
+					s.localCtxSRTP = ctx
+					s.localSDES = localSDES
 				}
-				masterKey, masterSalt := keysalt[:keyLen], keysalt[keyLen:]
-
-				inline := base64.StdEncoding.EncodeToString(keysalt)
-				localSDES = sdesInline{
-					alg:    srtpProfileString(profile),
-					base64: inline,
-					tag:    1,
-				}
-
-				ctx, err := srtp.CreateContext(masterKey, masterSalt, profile)
-				if err != nil {
-					return fmt.Errorf("CreateContext failed: %v", err)
-				}
-
-				s.localCtxSRTP = ctx
-
 				if s.srtpRemoteTag > 0 {
 					// Match remote tag if exists
 					localSDES.tag = s.srtpRemoteTag
@@ -460,10 +474,10 @@ func (s *MediaSession) LocalSDP() []byte {
 	return generateSDPForAudio(s.sessionID, s.sessionVersion, rtpProfile, ip, connIP, rtpPort, mode, codecs, localSDES, dtlsSet)
 }
 
-// RemoteSDP applies remote SDP.
+// RemoteSDP applies an answer when offered is true, or an offer when false.
 // NOTE: It must called ONCE or single thread while negotiation happening.
 // For multi negotiation Fork Must be called before
-func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
+func (s *MediaSession) RemoteSDP(sdpReceived []byte, offered bool) error {
 	sd := sdp.SessionDescription{}
 	if err := sdp.Unmarshal(sdpReceived, &sd); err != nil {
 		return fmt.Errorf("fail to parse received SDP: %w", err)
@@ -479,7 +493,6 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	//    different entity.  In that case, the version number in the "o=" line
 	//    of the answer is unrelated to the version number in the o line of the
 	//    offer.
-	answerer := s.sessionID == 0
 	if s.sessionID != si.SessionID {
 		s.sessionID = si.SessionID
 		s.sessionVersion = si.SessionVersion + 1
@@ -494,7 +507,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	}
 
 	// Confirm it is supported profile
-	secureRequest := false
+	secureRequest := s.SecureRTP == 1 && s.remoteCtxSRTP != nil
 	switch md.Proto {
 	case "RTP/AVP":
 	case "RTP/SAVP":
@@ -532,7 +545,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	// 	  no reason to change it, the ordering of codecs in the answer be 8,
 	//    48, and not 48, 8.  This helps assure that the same codec is used in
 	//    both directions.
-	if s.updateRemoteCodecs(codecs[:n], answerer) == 0 {
+	if s.updateRemoteCodecs(codecs[:n], !offered) == 0 {
 		return fmt.Errorf("no supported codecs found")
 	}
 
@@ -540,13 +553,18 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	if err != nil {
 		return err
 	}
-	s.SetRemoteAddr(&net.UDPAddr{IP: ci.IP, Port: md.Port})
+	if ci.NetworkType != "IN" || (ci.AddressType != "IP4" && ci.AddressType != "IP6") || ci.IP == nil {
+		return fmt.Errorf("unsupported SDP connection address")
+	}
+	remoteAddr := net.UDPAddr{IP: ci.IP, Port: md.Port}
 
 	// Check mode for media direction
 	mode := sd.MediaDirection()
 	s.mode = negotiateMediaDirection(mode, s.Mode)
 
-	// Check for SDES
+	// Commit receive-key changes only after validating the offer.
+	remoteTag, remoteKey := 0, ""
+	var remoteContext *srtp.Context
 	for _, v := range attrs {
 		if strings.HasPrefix(v, "crypto:") {
 			vals := strings.Split(v, " ")
@@ -555,7 +573,8 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			}
 			// Parse crypto tag
 			tagString := strings.TrimPrefix(vals[0], "crypto:")
-			if s.srtpRemoteTag, err = strconv.Atoi(tagString); err != nil {
+			tag, err := strconv.Atoi(tagString)
+			if err != nil {
 				return fmt.Errorf("bad crypto tag in %q", v)
 			}
 
@@ -572,6 +591,13 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			}
 
 			inline := strings.TrimPrefix(vals[2], "inline:")
+			remoteTag, remoteKey = tag, inline
+			if s.remoteCtxSRTP != nil && s.remoteCtxSRTP.hasKey(inline) {
+				if !s.Raddr.IP.Equal(remoteAddr.IP) || s.Raddr.Port != remoteAddr.Port {
+					return fmt.Errorf("SDES address change requires a new key")
+				}
+				break
+			}
 
 			keyBytes, err := base64.StdEncoding.DecodeString(inline)
 			if err != nil {
@@ -588,12 +614,17 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			if err != nil {
 				return fmt.Errorf("CreateContext failed: %v", err)
 			}
-			s.remoteCtxSRTP = ctx
+			remoteContext = ctx
 
 			break
 		}
 
 	}
+
+	if secureRequest && remoteKey == "" {
+		return fmt.Errorf("remote requested secure RTP, but no context is created proto=%s", md.Proto)
+	}
+	s.SetRemoteAddr(&remoteAddr)
 
 	// Check for DTLS
 	if len(s.DTLSConf.Certificates) > 0 || s.SecureRTP == 2 {
@@ -704,14 +735,12 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 			}
 
 			// s.localCtxSRTP, err = srtp.CreateContext(serverKey, serverSalt, p)
-			s.remoteCtxSRTP, err = srtp.CreateContext(serverKey, serverSalt, p)
+			remoteContext, err := srtp.CreateContext(serverKey, serverSalt, p)
 			if err != nil {
 				return fmt.Errorf("failed to create SRTP context: %w", err)
 			}
 
-			if s.localCtxSRTP == nil && s.remoteCtxSRTP == nil {
-				panic("no context setup")
-			}
+			s.remoteCtxSRTP = newSRTPReceiver(remoteContext)
 
 			DefaultLogger().Debug("DTLS SRTP setuped")
 			return nil
@@ -721,12 +750,21 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte) error {
 	// Offerer path: we called LocalSDP() before RemoteSDP(), so localCtxSRTP
 	// may already be set. If the remote answer has no crypto, clear it to
 	// avoid sending encrypted RTP to a peer expecting plaintext.
-	if s.localCtxSRTP != nil && s.remoteCtxSRTP == nil && !secureRequest {
+	if s.localCtxSRTP != nil && remoteKey == "" && !secureRequest {
 		s.localCtxSRTP = nil
+		s.localSDES = sdesInline{}
 	}
 
-	if secureRequest && s.remoteCtxSRTP == nil {
-		return fmt.Errorf("remote requested secure RTP, but no context is created proto=%s", md.Proto)
+	if remoteKey != "" {
+		if remoteContext != nil {
+			if s.remoteCtxSRTP == nil {
+				s.remoteCtxSRTP = newSRTPReceiver(remoteContext)
+				s.remoteCtxSRTP.currentKey = remoteKey
+			} else {
+				s.remoteCtxSRTP.rekey(remoteContext, remoteKey)
+			}
+		}
+		s.srtpRemoteTag = remoteTag
 	}
 	return nil
 }
@@ -744,7 +782,7 @@ func (s *MediaSession) Finalize() error {
 
 func (s *MediaSession) updateRemoteCodecs(codecs []Codec, answerer bool) int {
 	if len(s.Codecs) == 0 {
-		s.Codecs = codecs
+		s.filterCodecs = codecs
 		return len(codecs)
 	}
 
@@ -753,10 +791,10 @@ func (s *MediaSession) updateRemoteCodecs(codecs []Codec, answerer bool) int {
 	// Some systems may like to answer with local order of preference
 	if SDPCodecPreferLocalOrder > 0 && answerer {
 		filter := make([]Codec, 0, len(codecs))
-		for _, rc := range s.Codecs {
-			for _, c := range codecs {
-				if c == rc {
-					filter = append(filter, c)
+		for _, c := range s.Codecs {
+			for _, rc := range codecs {
+				if c.Matches(rc) {
+					filter = append(filter, c.negotiatePayloadType(rc, answerer))
 					break
 				}
 			}
@@ -768,8 +806,8 @@ func (s *MediaSession) updateRemoteCodecs(codecs []Codec, answerer bool) int {
 	filter := codecs[:0] // reuse buffer
 	for _, rc := range codecs {
 		for _, c := range s.Codecs {
-			if c == rc {
-				filter = append(filter, c)
+			if c.Matches(rc) {
+				filter = append(filter, c.negotiatePayloadType(rc, answerer))
 				break
 			}
 		}
@@ -963,8 +1001,7 @@ func (m *MediaSession) ReadRTCP(buf []byte, pkts []rtcp.Packet) (n int, err erro
 
 	if m.remoteCtxSRTP != nil {
 		data, err = m.remoteCtxSRTP.DecryptRTCP(data, data, nil)
-		if err != nil && false {
-			// For some unknown cases Decryption could fail
+		if err != nil {
 			return 0, errors.Join(errRTCPFailedToUnmarshal, err)
 		}
 	}
@@ -1194,23 +1231,18 @@ func generateSDPForAudio(sessionID uint64, sessionVersion uint64, rtpProfile str
 	fmts := make([]string, len(codecs))
 	formatsMap := []string{}
 	for i, f := range codecs {
-		// TODO should we just go generic
-		switch f.PayloadType {
-		case CodecAudioUlaw.PayloadType:
-			formatsMap = append(formatsMap, "a=rtpmap:0 PCMU/8000")
-		case CodecAudioAlaw.PayloadType:
-			formatsMap = append(formatsMap, "a=rtpmap:8 PCMA/8000")
-		case CodecAudioOpus.PayloadType:
-			formatsMap = append(formatsMap, "a=rtpmap:96 opus/48000/2")
+		rtpmap := fmt.Sprintf("a=rtpmap:%d %s/%d", f.PayloadType, f.Name, f.SampleRate)
+		if f.NumChannels > 1 {
+			rtpmap += fmt.Sprintf("/%d", f.NumChannels)
+		}
+		formatsMap = append(formatsMap, rtpmap)
+		switch {
+		case strings.EqualFold(f.Name, CodecAudioOpus.Name):
 			// Providing 0 when FEC cannot be used on the receiving side is RECOMMENDED.
 			// https://datatracker.ietf.org/doc/html/rfc7587
-			formatsMap = append(formatsMap, "a=fmtp:96 useinbandfec=0")
-		case CodecTelephoneEvent8000.PayloadType:
-			formatsMap = append(formatsMap, "a=rtpmap:101 telephone-event/8000")
-			formatsMap = append(formatsMap, "a=fmtp:101 0-16")
-		default:
-			s := fmt.Sprintf("a=rtpmap:%d %s/%d/%d", f.PayloadType, f.Name, f.SampleRate, f.NumChannels)
-			formatsMap = append(formatsMap, s)
+			formatsMap = append(formatsMap, fmt.Sprintf("a=fmtp:%d useinbandfec=0", f.PayloadType))
+		case strings.EqualFold(f.Name, CodecTelephoneEvent8000.Name):
+			formatsMap = append(formatsMap, fmt.Sprintf("a=fmtp:%d 0-16", f.PayloadType))
 		}
 		fmts[i] = strconv.Itoa(int(f.PayloadType))
 	}

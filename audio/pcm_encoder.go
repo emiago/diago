@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/emiago/diago/media"
@@ -62,12 +63,12 @@ func (dec *PCMDecoder) Init(codec media.Codec) error {
 	dec.codec = codec.PayloadType
 	dec.samplesSize = codec.SamplesPCM(16) // for now we only support 16 bit
 
-	switch codec.PayloadType {
-	case FORMAT_TYPE_ULAW:
+	switch strings.ToLower(codec.Name) {
+	case "pcmu":
 		dec.DecoderTo = DecodeUlawTo
-	case FORMAT_TYPE_ALAW:
+	case "pcma":
 		dec.DecoderTo = DecodeAlawTo
-	case FORMAT_TYPE_OPUS:
+	case "opus":
 		opusDec := OpusDecoder{}
 		if err := opusDec.Init(int(codec.SampleRate), codec.NumChannels, codec.Samples16()); err != nil {
 			return fmt.Errorf("failed to create opus decoder: %w", err)
@@ -215,13 +216,13 @@ func NewPCMEncoder(payloadType uint8) (*PCMEncoder, error) {
 
 func (enc *PCMEncoder) Init(codec media.Codec) error {
 	enc.samplesSize = codec.SamplesPCM(16) // For now we only support 16 bit
-	switch codec.PayloadType {
-	case FORMAT_TYPE_ULAW:
+	switch strings.ToLower(codec.Name) {
+	case "pcmu":
 		enc.EncoderTo = EncodeUlawTo
-	case FORMAT_TYPE_ALAW:
+	case "pcma":
 		enc.EncoderTo = EncodeAlawTo
 
-	case FORMAT_TYPE_OPUS:
+	case "opus":
 		// TODO handle mono
 		opusEnc := OpusEncoder{}
 		if err := opusEnc.Init(int(codec.SampleRate), codec.NumChannels, codec.Samples16()); err != nil {

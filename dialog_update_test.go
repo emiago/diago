@@ -129,7 +129,7 @@ func TestDialogHandleUpdate(t *testing.T) {
 
 func TestDiagoAllowsUpdate(t *testing.T) {
 	ua, _ := sipgo.NewUA()
-	defer ua.Close()
+	defer func() { _ = ua.Close() }()
 	dg := NewDiago(ua)
 	assert.True(t, slices.Contains(dg.server.RegisteredMethods(), "UPDATE"), "OPTIONS answers with the registered methods")
 }
@@ -150,7 +150,7 @@ func TestIntegrationDialogServerUpdate(t *testing.T) {
 	defer cancel()
 
 	ua, _ := sipgo.NewUA(sipgo.WithUserAgent("uas"))
-	defer ua.Close()
+	defer func() { _ = ua.Close() }()
 	uas := NewDiago(ua, WithTransport(Transport{Transport: "udp", BindHost: "127.0.0.1", BindPort: 0}))
 	answered := make(chan *DialogServerSession, 1)
 	err := uas.ServeBackground(ctx, func(d *DialogServerSession) {
@@ -164,22 +164,22 @@ func TestIntegrationDialogServerUpdate(t *testing.T) {
 	require.NoError(t, err)
 
 	peerUA, _ := sipgo.NewUA(sipgo.WithUserAgent("peer"))
-	defer peerUA.Close()
+	defer func() { _ = peerUA.Close() }()
 	peer := newDialer(peerUA)
 	require.NoError(t, peer.ServeBackground(ctx, func(*DialogServerSession) {}))
 	uri := sip.Uri{User: "service", Host: "127.0.0.1", Port: uas.transports[0].BindPort}
 
 	dialog, med, err := peer.Invite(ctx, uri, InviteOptions{})
 	require.NoError(t, err)
-	defer dialog.Close()
-	defer med.Close()
+	defer func() { _ = dialog.Close() }()
+	defer func() { _ = med.Close() }()
 	d := <-answered
 	require.Eventually(t, func() bool { return d.LoadState() == sip.DialogStateConfirmed }, time.Second, 10*time.Millisecond)
 
 	// A hold: our answer turns the stream around
 	hold := med.MediaSession().Fork()
 	hold.Mode = sdp.ModeSendonly
-	res, err := dialog.Do(ctx, updateRequest(dialog.RemoteContact(), dialog.InviteRequest.Contact(), hold.LocalSDP()))
+	res, err := dialog.Do(ctx, updateRequest(dialog.RemoteContact(), dialog.InviteRequest.Contact(), hold.LocalSDP(false)))
 	require.NoError(t, err)
 	require.Equal(t, sip.StatusOK, res.StatusCode)
 	require.NotNil(t, res.Contact())
@@ -201,7 +201,7 @@ func TestIntegrationDialogClientUpdate(t *testing.T) {
 	defer cancel()
 
 	ua, _ := sipgo.NewUA(sipgo.WithUserAgent("uas"))
-	defer ua.Close()
+	defer func() { _ = ua.Close() }()
 	uas := NewDiago(ua, WithTransport(Transport{Transport: "udp", BindHost: "127.0.0.1", BindPort: 0}))
 	type answer struct {
 		dialog *DialogServerSession
@@ -221,19 +221,19 @@ func TestIntegrationDialogClientUpdate(t *testing.T) {
 
 	// The caller listens: the UPDATE comes to its Contact
 	peerUA, _ := sipgo.NewUA(sipgo.WithUserAgent("peer"))
-	defer peerUA.Close()
+	defer func() { _ = peerUA.Close() }()
 	peer := newDialer(peerUA)
 	require.NoError(t, peer.ServeBackground(ctx, func(*DialogServerSession) {}))
 	dialog, med, err := peer.Invite(ctx, sip.Uri{User: "service", Host: "127.0.0.1", Port: uas.transports[0].BindPort}, InviteOptions{})
 	require.NoError(t, err)
-	defer dialog.Close()
-	defer med.Close()
+	defer func() { _ = dialog.Close() }()
+	defer func() { _ = med.Close() }()
 	a := <-answered
 	require.Eventually(t, func() bool { return a.dialog.LoadState() == sip.DialogStateConfirmed }, time.Second, 10*time.Millisecond)
 
 	hold := a.media.MediaSession().Fork()
 	hold.Mode = sdp.ModeSendonly
-	res, err := a.dialog.Do(ctx, updateRequest(a.dialog.RemoteContact(), a.dialog.InviteResponse.Contact(), hold.LocalSDP()))
+	res, err := a.dialog.Do(ctx, updateRequest(a.dialog.RemoteContact(), a.dialog.InviteResponse.Contact(), hold.LocalSDP(false)))
 	require.NoError(t, err)
 	require.Equal(t, sip.StatusOK, res.StatusCode)
 	require.NotNil(t, res.Contact())
