@@ -68,6 +68,12 @@ type RTPSession struct {
 	sourceLock        bool
 	sourceLockPackets int
 	sourceLockAddr    *net.UDPAddr
+
+	// RTPNATFollow: the stream as last read from where RTP goes. Not readStats,
+	// which any sender resets, so a stranger could make its own packets look like the stream.
+	followKnown bool
+	followSSRC  uint32
+	followSeq   uint16
 }
 
 // Some of fields here are exported (as readonly) intentionally
@@ -163,6 +169,8 @@ func (s *RTPSession) Fork(sess *MediaSession) *RTPSession {
 	fork.onReadRTCP = s.onReadRTCP
 	fork.onWriteRTCP = s.onWriteRTCP
 	fork.sourceLock = s.sourceLock
+	// RTPNATFollow state is not carried: the forked media session has learned nothing yet,
+	// so it latches again, as after any new offer/answer (RFC 7362 Section 4).
 	if udpAddrEqual(s.Sess.Laddr, sess.Laddr) && udpAddrEqual(s.Sess.Raddr, sess.Raddr) {
 		fork.sourceLockPackets = s.sourceLockPackets
 		if s.sourceLockAddr != nil {
@@ -280,6 +288,9 @@ func (s *RTPSession) ReadRTP(b []byte, readPkt *rtp.Packet) (n int, err error) {
 		}
 
 		s.rtcpMU.Lock()
+		if sess.RTPNAT == RTPNATFollow {
+			s.followRTP(readPkt, sess.ReadRTPFromAddr)
+		}
 		supported := s.updateReadStats(readPkt, n, time.Now())
 		s.rtcpMU.Unlock()
 		if !supported {
@@ -413,6 +424,76 @@ func (s *RTPSession) sourceLockProtection(pkt *rtp.Packet, from net.Addr) bool {
 
 	s.sourceLockAddr = fromAddr
 	return true
+}
+
+// followRTP moves where RTP goes (RTPNATFollow). The first packet of the media session sets it,
+// as with RTPNATSymetric. After that only a NAT re-mapping moves it: a packet from the same IP
+// that continues the stream read from the current source (same SSRC, sequence ahead).
+// A host elsewhere never qualifies, and one behind the same NAT must know the stream's SSRC.
+// s.rtcpMU must be held by the caller.
+func (s *RTPSession) followRTP(pkt *rtp.Packet, from net.Addr) {
+	fromAddr, ok := from.(*net.UDPAddr)
+	if !ok {
+		return
+	}
+
+	sess := s.Sess
+	current := sess.rtpRaddrLearned()
+	switch {
+	case !s.followKnown:
+		if !udpAddrEqual(*fromAddr, *current) {
+			sess.learnedRTPFrom.Store(fromAddr)
+			DefaultLogger().Debug("RTP NAT switch to new source", "addr", fromAddr.String())
+		}
+	case udpAddrEqual(*fromAddr, *current):
+		// The current source, whatever its SSRC
+	case fromAddr.IP.Equal(current.IP) && pkt.SSRC == s.followSSRC && seqAhead(s.followSeq, pkt.SequenceNumber):
+		sess.learnedRTPFrom.Store(fromAddr)
+		DefaultLogger().Info("RTP NAT following new source", "addr", fromAddr.String(), "ssrc", pkt.SSRC)
+	default:
+		// Not the stream we send to
+		return
+	}
+	s.followKnown, s.followSSRC, s.followSeq = true, pkt.SSRC, pkt.SequenceNumber
+}
+
+// seqAhead reports whether seq comes after last, allowing for packets lost on the way (RFC 3550 A.1).
+func seqAhead(last, seq uint16) bool {
+	ahead := seq - last
+	return ahead > 0 && ahead < maxDropout
+}
+
+// followRTCP moves where RTCP goes (RTPNATFollow) to a new source on the IP RTP goes to,
+// once it reports as the stream's sender. A NAT maps RTCP apart from RTP,
+// and RTCP is too sparse (a report every few seconds) to wait for more.
+func (s *RTPSession) followRTCP(pkts []rtcp.Packet, from net.Addr) {
+	fromAddr, ok := from.(*net.UDPAddr)
+	if !ok || len(pkts) == 0 {
+		return
+	}
+	ssrc, isReport := rtcpSenderSSRC(pkts[0])
+
+	s.rtcpMU.Lock()
+	stream := isReport && s.followKnown && ssrc == s.followSSRC
+	s.rtcpMU.Unlock()
+
+	sess := s.Sess
+	if !stream || !fromAddr.IP.Equal(sess.rtpRaddrLearned().IP) || udpAddrEqual(*fromAddr, *sess.rtcpRaddrLearned()) {
+		return
+	}
+	sess.learnedRTCPFrom.Store(fromAddr)
+	DefaultLogger().Info("RTCP NAT following new source", "addr", fromAddr.String(), "ssrc", ssrc)
+}
+
+// rtcpSenderSSRC reads the sender from the report a compound RTCP packet starts with (RFC 3550 6.1).
+func rtcpSenderSSRC(p rtcp.Packet) (uint32, bool) {
+	switch report := p.(type) {
+	case *rtcp.SenderReport:
+		return report.SSRC, true
+	case *rtcp.ReceiverReport:
+		return report.SSRC, true
+	}
+	return 0, false
 }
 
 func (s *RTPSession) ReadRTPRaw(buf []byte) (int, error) {
@@ -583,6 +664,9 @@ func (s *RTPSession) readRTCP() error {
 				continue
 			}
 			return err
+		}
+		if sess.RTPNAT == RTPNATFollow {
+			s.followRTCP(rtcpBuf[:n], sess.readRTCPFromAddr)
 		}
 
 		for _, pkt := range rtcpBuf[:n] {
