@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"io"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -313,7 +314,9 @@ a=sendrecv`
 	assert.Equal(t, CodecAudioUlaw, m.filterCodecs[0])
 	assert.Equal(t, CodecAudioAlaw, m.filterCodecs[1])
 	assert.Equal(t, CodecAudioOpus, m.filterCodecs[2])
-	assert.Equal(t, CodecTelephoneEvent8000, m.filterCodecs[3])
+	wantEvent := CodecTelephoneEvent8000
+	wantEvent.FMTP = "0-16"
+	assert.Equal(t, wantEvent, m.filterCodecs[3])
 
 	lsdp := m.LocalSDP(true)
 	lsd := sdp.SessionDescription{}
@@ -345,7 +348,7 @@ a=sendrecv`
 		require.Len(t, m.filterCodecs, 3)
 		assert.Equal(t, CodecAudioUlaw, m.filterCodecs[0])
 		assert.Equal(t, CodecAudioOpus, m.filterCodecs[1])
-		assert.Equal(t, CodecTelephoneEvent8000, m.filterCodecs[2])
+		assert.Equal(t, wantEvent, m.filterCodecs[2])
 	}
 }
 
@@ -851,4 +854,22 @@ func TestMediaSessionSDESUnusedRekey(t *testing.T) {
 	require.Same(t, active, receiver.previous)
 	rtcpRoundTrip(next)
 	rtpRoundTrip(peer, 2)
+}
+
+func TestMediaSessionFormatParameterDefaults(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		codecs := []Codec{CodecAudioOpus, CodecTelephoneEvent8000}
+		wantOpus, wantEvents := "useinbandfec=0", "0-16"
+		if explicit {
+			wantOpus, wantEvents = "useinbandfec=1; stereo=1", "0-15"
+			codecs[0].FMTP, codecs[1].FMTP = wantOpus, wantEvents
+		}
+		codecs[0].PayloadType = 127
+		codecs[1].PayloadType = 126
+		sess := &MediaSession{Codecs: codecs, Laddr: net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234}, Mode: sdp.ModeSendrecv}
+		body := string(sess.LocalSDP(false))
+		require.Contains(t, body, "a=fmtp:127 "+wantOpus+"\r\n")
+		require.Contains(t, body, "a=fmtp:126 "+wantEvents+"\r\n")
+		require.Equal(t, 2, strings.Count(body, "a=fmtp:"))
+	}
 }

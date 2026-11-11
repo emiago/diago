@@ -11,6 +11,8 @@ import (
 const (
 	FORMAT_TYPE_ULAW            = "0"
 	FORMAT_TYPE_ALAW            = "8"
+	FORMAT_TYPE_G722            = "9"
+	FORMAT_TYPE_G729            = "18"
 	FORMAT_TYPE_OPUS            = "96"
 	FORMAT_TYPE_TELEPHONE_EVENT = "101"
 )

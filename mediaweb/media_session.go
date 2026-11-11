@@ -276,7 +276,9 @@ func (m *MediaSessionWebrtc) localSDPLocked(codecs []media.Codec, setup string) 
 			channels = "/" + strconv.Itoa(codec.NumChannels)
 		}
 		lines = append(lines, fmt.Sprintf("a=rtpmap:%d %s/%d%s", codec.PayloadType, codec.Name, codec.SampleRate, channels))
-		if strings.EqualFold(codec.Name, "opus") {
+		if codec.FMTP != "" {
+			lines = append(lines, fmt.Sprintf("a=fmtp:%d %s", codec.PayloadType, codec.FMTP))
+		} else if strings.EqualFold(codec.Name, "opus") {
 			lines = append(lines, fmt.Sprintf("a=fmtp:%d useinbandfec=0", codec.PayloadType))
 		} else if strings.EqualFold(codec.Name, "telephone-event") {
 			lines = append(lines, fmt.Sprintf("a=fmtp:%d 0-16", codec.PayloadType))
@@ -709,6 +711,9 @@ func commonWebRTCCodecs(remote, local []media.Codec) []media.Codec {
 			// The answer must echo the offer's payload type. Keep local packet
 			// duration/capability data but use the negotiated remote PT.
 			lc.PayloadType = rc.PayloadType
+			if lc.FMTP == "" {
+				lc.FMTP = rc.FMTP
+			}
 			common = append(common, lc)
 			break
 		}

@@ -1242,6 +1242,8 @@ func generateSDPForAudio(sessionID uint64, sessionVersion uint64, rtpProfile str
 		}
 		formatsMap = append(formatsMap, rtpmap)
 		switch {
+		case f.FMTP != "":
+			formatsMap = append(formatsMap, fmt.Sprintf("a=fmtp:%d %s", f.PayloadType, f.FMTP))
 		case strings.EqualFold(f.Name, CodecAudioOpus.Name):
 			// Providing 0 when FEC cannot be used on the receiving side is RECOMMENDED.
 			// https://datatracker.ietf.org/doc/html/rfc7587
