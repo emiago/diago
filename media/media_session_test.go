@@ -242,16 +242,17 @@ func TestMediaSessionDynamicOpusPayload(t *testing.T) {
 				require.Contains(t, string(sess.LocalSDP(false)), "a=rtpmap:96 opus/48000/2")
 				receivePT = 96
 			}
-			offer := "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\nc=IN IP4 127.0.0.1\r\nt=0 0\r\nm=audio 5678 RTP/AVP 127\r\na=rtpmap:127 OPUS/48000/2\r\na=sendrecv\r\n"
+			offer := "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\nc=IN IP4 127.0.0.1\r\nt=0 0\r\nm=audio 5678 RTP/AVP 127\r\na=rtpmap:127 OPUS/48000/2\r\na=fmtp:127 useinbandfec=1; minptime=10\r\na=sendrecv\r\n"
 			require.NoError(t, sess.RemoteSDP([]byte(offer), tt.offerer))
 			require.Equal(t, uint8(127), CodecAudioFromSession(sess).PayloadType)
 			require.Equal(t, []Codec{CodecAudioOpus}, sess.Codecs)
 			require.Equal(t, receivePT, sess.CommonCodecs()[0].PayloadTypeRecv())
+			require.Equal(t, "useinbandfec=1; minptime=10", sess.CommonCodecs()[0].FMTP)
 			if !tt.offerer {
 				answer := string(sess.LocalSDP(true))
 				require.Contains(t, answer, "m=audio 1234 RTP/AVP 127\r\n")
 				require.Contains(t, answer, "a=rtpmap:127 opus/48000/2\r\n")
-				require.Contains(t, answer, "a=fmtp:127 useinbandfec=0\r\n")
+				require.Contains(t, answer, "a=fmtp:127 useinbandfec=1; minptime=10\r\n")
 			} else {
 				require.Contains(t, string(sess.LocalSDP(false)), "a=rtpmap:96 opus/48000/2\r\n")
 			}
