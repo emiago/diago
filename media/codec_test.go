@@ -58,3 +58,40 @@ func TestCodecStaticPayloadTypes(t *testing.T) {
 		require.Equal(t, want, CodecFromPayloadType(want.PayloadType))
 	}
 }
+
+func TestCodecFmtpGet(t *testing.T) {
+	f := CodecFmtp("Octet-Align=1; mode-set=0,1,2;0-15")
+	v, ok := f.Get("octet-align")
+	require.True(t, ok)
+	require.Equal(t, "1", v)
+	v, ok = f.Get("0-15")
+	require.True(t, ok)
+	require.Equal(t, "", v)
+	_, ok = f.Get("mode")
+	require.False(t, ok)
+	require.Equal(t, "0,1,2", f.GetDefault("mode-set", "all"))
+	require.Equal(t, "0", f.GetDefault("crc", "0"))
+}
+
+func TestCodecFmtpWith(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		fmtp       CodecFmtp
+		key, value string
+		want       CodecFmtp
+	}{
+		{name: "empty", key: "octet-align", value: "1", want: "octet-align=1"},
+		{name: "append", fmtp: "mode-set=0,1,2", key: "octet-align", value: "1", want: "mode-set=0,1,2; octet-align=1"},
+		{name: "replace case-insensitive keeps order", fmtp: "Octet-Align=0;mode-set=0,1,2", key: "octet-align", value: "1", want: "octet-align=1; mode-set=0,1,2"},
+		{name: "replace only first", fmtp: "a=1; a=2", key: "a", value: "3", want: "a=3; a=2"},
+		{name: "empty value writes bare key", fmtp: "a=1;", key: "b", want: "a=1; b"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := tt.fmtp.With(tt.key, tt.value)
+			require.Equal(t, tt.want, f)
+			v, ok := f.Get(tt.key)
+			require.True(t, ok)
+			require.Equal(t, tt.value, v)
+		})
+	}
+}
