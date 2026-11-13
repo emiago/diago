@@ -247,7 +247,7 @@ func TestMediaSessionDynamicOpusPayload(t *testing.T) {
 			require.Equal(t, uint8(127), CodecAudioFromSession(sess).PayloadType)
 			require.Equal(t, []Codec{CodecAudioOpus}, sess.Codecs)
 			require.Equal(t, receivePT, sess.CommonCodecs()[0].PayloadTypeRecv())
-			require.Equal(t, "useinbandfec=1; minptime=10", sess.CommonCodecs()[0].FMTP)
+			require.Equal(t, CodecFmtp("useinbandfec=1; minptime=10"), sess.CommonCodecs()[0].FMTP)
 			if !tt.offerer {
 				answer := string(sess.LocalSDP(true))
 				require.Contains(t, answer, "m=audio 1234 RTP/AVP 127\r\n")
@@ -282,6 +282,92 @@ func TestMediaSessionDynamicOpusPayload(t *testing.T) {
 			require.Equal(t, uint32(48000), rtpSess.ReadStats().SampleRate)
 		})
 	}
+}
+
+// TestMediaSessionAMRWBOctetAlign checks that octet-align (RFC 4867) selects the
+// AMR-WB variant: with both payload formats configured locally, the remote codec
+// is paired with the variant of the same format, absent meaning bandwidth-efficient.
+func TestMediaSessionAMRWBOctetAlign(t *testing.T) {
+	previousOrder := SDPCodecPreferLocalOrder
+	t.Cleanup(func() { SDPCodecPreferLocalOrder = previousOrder })
+	bandwidthEfficient := Codec{Name: "AMR-WB", PayloadType: 118, SampleRate: 16000, SampleDur: 20 * time.Millisecond, NumChannels: 1, FMTP: "octet-align=0"}
+	octetAligned := Codec{Name: "AMR-WB", PayloadType: 119, SampleRate: 16000, SampleDur: 20 * time.Millisecond, NumChannels: 1, FMTP: "octet-align=1"}
+	for _, tt := range []struct {
+		name       string
+		local      []Codec
+		fmtp       string
+		offerer    bool
+		localOrder int
+		want       Codec // negotiated local variant, before payload type mapping
+		wantErr    bool
+	}{
+		{name: "answer octet-aligned", local: []Codec{bandwidthEfficient, octetAligned}, fmtp: "octet-align=1", offerer: true, want: octetAligned},
+		{name: "answer bandwidth-efficient", local: []Codec{octetAligned, bandwidthEfficient}, fmtp: "octet-align=0", offerer: true, want: bandwidthEfficient},
+		{name: "answer without octet-align", local: []Codec{octetAligned, bandwidthEfficient}, offerer: true, want: bandwidthEfficient},
+		{name: "answer without octet-align to octet-aligned only", local: []Codec{octetAligned}, offerer: true, wantErr: true},
+		{name: "offer octet-aligned", local: []Codec{bandwidthEfficient, octetAligned}, fmtp: "octet-align=1", want: octetAligned},
+		{name: "offer octet-aligned with local preference", local: []Codec{bandwidthEfficient, octetAligned}, fmtp: "octet-align=1", localOrder: 1, want: octetAligned},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			SDPCodecPreferLocalOrder = tt.localOrder
+			sess := &MediaSession{
+				Codecs: tt.local,
+				Laddr:  net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234},
+				Mode:   sdp.ModeSendrecv,
+			}
+			if tt.offerer {
+				sess.LocalSDP(false)
+			}
+			remote := "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\nc=IN IP4 127.0.0.1\r\nt=0 0\r\nm=audio 5678 RTP/AVP 98\r\na=rtpmap:98 AMR-WB/16000\r\n"
+			if tt.fmtp != "" {
+				remote += "a=fmtp:98 " + tt.fmtp + "\r\n"
+			}
+			remote += "a=sendrecv\r\n"
+			err := sess.RemoteSDP([]byte(remote), tt.offerer)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, sess.CommonCodecs(), 1)
+			negotiated := sess.CommonCodecs()[0]
+			require.Equal(t, uint8(98), negotiated.PayloadType)
+			require.Equal(t, tt.want.FMTP, negotiated.FMTP)
+			wantRecv := uint8(98)
+			if tt.offerer {
+				wantRecv = tt.want.PayloadType
+			}
+			require.Equal(t, wantRecv, negotiated.PayloadTypeRecv())
+		})
+	}
+}
+
+// TestRegisterCodecFmtpMatcherForUnknownEncoding checks that a matcher registered
+// for an encoding unknown to diago selects the local variant with the same
+// payload format, case-insensitively, and that removing it restores matching
+// regardless of fmtp.
+func TestRegisterCodecFmtpMatcherForUnknownEncoding(t *testing.T) {
+	RegisterCodecFmtpMatcher("x-framed", func(fmtp, other CodecFmtp) bool {
+		return fmtp.GetDefault("framing", "a") == other.GetDefault("framing", "a")
+	})
+	t.Cleanup(func() { RegisterCodecFmtpMatcher("x-framed", nil) })
+
+	framedA := Codec{Name: "X-FRAMED", PayloadType: 110, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1}
+	framedB := Codec{Name: "X-FRAMED", PayloadType: 111, SampleRate: 8000, SampleDur: 20 * time.Millisecond, NumChannels: 1, FMTP: "framing=b"}
+	remote := []byte("v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\nc=IN IP4 127.0.0.1\r\nt=0 0\r\nm=audio 5678 RTP/AVP 98\r\na=rtpmap:98 x-framed/8000\r\na=fmtp:98 framing=b\r\na=sendrecv\r\n")
+	session := func(codecs ...Codec) *MediaSession {
+		return &MediaSession{Codecs: codecs, Laddr: net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234}, Mode: sdp.ModeSendrecv}
+	}
+
+	sess := session(framedA, framedB)
+	sess.LocalSDP(false)
+	require.NoError(t, sess.RemoteSDP(remote, true))
+	require.Equal(t, uint8(111), sess.CommonCodecs()[0].PayloadTypeRecv())
+
+	require.Error(t, session(framedA).RemoteSDP(remote, false))
+
+	RegisterCodecFmtpMatcher("X-Framed", nil)
+	require.NoError(t, session(framedA).RemoteSDP(remote, false))
 }
 
 func TestMediaSessionUpdateSDP(t *testing.T) {
@@ -863,7 +949,7 @@ func TestMediaSessionFormatParameterDefaults(t *testing.T) {
 		wantOpus, wantEvents := "useinbandfec=0", "0-16"
 		if explicit {
 			wantOpus, wantEvents = "useinbandfec=1; stereo=1", "0-15"
-			codecs[0].FMTP, codecs[1].FMTP = wantOpus, wantEvents
+			codecs[0].FMTP, codecs[1].FMTP = CodecFmtp(wantOpus), CodecFmtp(wantEvents)
 		}
 		codecs[0].PayloadType = 127
 		codecs[1].PayloadType = 126
