@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"context"
 	"net"
+	"net/netip"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -169,6 +171,51 @@ func TestIntegrationDialogServerReinvite(t *testing.T) {
 	require.NoError(t, err)
 
 	d.Hangup(context.TODO())
+}
+
+// A peer in LocalNetworks gets our bind address in the answer's Contact
+// and SDP, not the external ones, so it never reaches us through a NAT.
+func TestIntegrationDialogServerLocalNetworks(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ua, _ := sipgo.NewUA(sipgo.WithUserAgent("uas"))
+	defer func() { _ = ua.Close() }()
+
+	uas := NewDiago(ua, WithTransport(Transport{
+		Transport:       "udp",
+		BindHost:        "127.0.0.1",
+		BindPort:        0,
+		ExternalHost:    "203.0.113.10",
+		MediaExternalIP: net.IPv4(203, 0, 113, 10),
+		LocalNetworks:   []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")},
+	}))
+	err := uas.ServeBackground(ctx, func(d *DialogServerSession) {
+		if _, err := d.Answer(AnswerOptions{}); err != nil {
+			return
+		}
+		<-d.Context().Done()
+	})
+	require.NoError(t, err)
+	port := uas.transports[0].BindPort
+	require.NotZero(t, port)
+
+	peerUA, _ := sipgo.NewUA(sipgo.WithUserAgent("peer"))
+	defer func() { _ = peerUA.Close() }()
+	peer := newDialer(peerUA)
+	err = peer.ServeBackground(ctx, func(*DialogServerSession) {})
+	require.NoError(t, err)
+
+	dialog, _, err := peer.Invite(ctx, sip.Uri{User: "service", Host: "127.0.0.1", Port: port}, InviteOptions{})
+	require.NoError(t, err)
+	defer func() { _ = dialog.Close() }()
+
+	res := dialog.InviteResponse
+	require.NotNil(t, res.Contact())
+	assert.Equal(t, net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), res.Contact().Address.HostPort())
+	assert.Contains(t, string(res.Body()), "c=IN IP4 127.0.0.1")
+	assert.NotContains(t, string(res.Body()), "203.0.113.10")
+	require.NoError(t, dialog.Hangup(ctx))
 }
 
 func TestIntegrationDialogServerHoldUnholdKeepsAudio(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/netip"
 	"sync"
 	"testing"
 	"time"
@@ -100,7 +101,9 @@ func TestDiagoInviteCallerID(t *testing.T) {
 
 func TestDiagoTransportConfs(t *testing.T) {
 	type testCase = struct {
-		tran                    Transport
+		tran Transport
+		// recipient is the host the INVITE goes to; localhost when empty.
+		recipient               string
 		expectedContactHostPort string
 		expectedMediaHost       string
 	}
@@ -113,7 +116,13 @@ func TestDiagoTransportConfs(t *testing.T) {
 			return sip.NewResponseFromRequest(req, 200, "OK", nil)
 		}, WithTransport(tran))
 
-		go dg.Invite(context.TODO(), sip.Uri{User: "alice", Host: "localhost"}, InviteOptions{})
+		recipient := tc.recipient
+		if recipient == "" {
+			recipient = "localhost"
+		}
+		go func() {
+			_, _, _ = dg.Invite(context.TODO(), sip.Uri{User: "alice", Host: recipient}, InviteOptions{})
+		}()
 
 		// Now check our req passed on client
 		req := <-reqCh
@@ -173,6 +182,75 @@ func TestDiagoTransportConfs(t *testing.T) {
 
 		doTest(tc)
 	})
+
+	localNetworks := Transport{
+		Transport:       "udp",
+		BindHost:        "127.0.0.111",
+		BindPort:        15060,
+		ExternalHost:    "1.2.3.4",
+		MediaExternalIP: net.IPv4(1, 2, 3, 5),
+		LocalNetworks:   []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+	}
+
+	t.Run("LocalNetworksLocalPeer", func(t *testing.T) {
+		tc := testCase{
+			tran:                    localNetworks,
+			recipient:               "10.1.2.3",
+			expectedContactHostPort: "127.0.0.111:15060",
+			expectedMediaHost:       "127.0.0.111",
+		}
+
+		doTest(tc)
+	})
+
+	t.Run("LocalNetworksOtherPeer", func(t *testing.T) {
+		tc := testCase{
+			tran:                    localNetworks,
+			recipient:               "198.51.100.7",
+			expectedContactHostPort: "1.2.3.4:15060",
+			expectedMediaHost:       "1.2.3.5",
+		}
+
+		doTest(tc)
+	})
+
+	t.Run("LocalNetworksHostname", func(t *testing.T) {
+		tc := testCase{
+			tran:                    localNetworks,
+			recipient:               "pbx.internal",
+			expectedContactHostPort: "1.2.3.4:15060",
+			expectedMediaHost:       "1.2.3.5",
+		}
+
+		doTest(tc)
+	})
+}
+
+func TestTransportIsLocal(t *testing.T) {
+	tran := Transport{LocalNetworks: []netip.Prefix{
+		netip.MustParsePrefix("10.0.0.0/8"),
+		netip.MustParsePrefix("fc00::/7"),
+	}}
+
+	for _, tc := range []struct {
+		peer string
+		want bool
+	}{
+		{"10.124.0.5", true},
+		{"10.124.0.5:5060", true},
+		{"::ffff:10.124.0.5", true},
+		{"[fd00::1]:5060", true},
+		{"fd00::1", true},
+		{"[fd00::1]", true},
+		{"34.166.80.150:5060", false},
+		{"2001:db8::1", false},
+		{"pbx.internal", false},
+		{"", false},
+	} {
+		assert.Equal(t, tc.want, tran.isLocal(tc.peer), tc.peer)
+	}
+
+	assert.False(t, (&Transport{}).isLocal("10.124.0.5"), "no LocalNetworks")
 }
 
 func TestDiagoNewDialog(t *testing.T) {
