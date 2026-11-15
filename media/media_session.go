@@ -54,6 +54,10 @@ var (
 	// RTPNAT options
 	RTPNATDisabled = 0
 	RTPNATSymetric = 1
+	// RTPNATFollow latches on the first packet, then follows a NAT re-mapping the source to another port.
+	// Only a packet from the same IP that continues the stream (same SSRC, next sequence) moves it.
+	// It is applied while reading with RTPSession.
+	RTPNATFollow = 2
 
 	// SDP codec exchanges
 	// 0 (Default) - answerer prefers offerer order recomended by rfc
@@ -171,13 +175,15 @@ type MediaSession struct {
 	localSDES     sdesInline
 
 	// RTP NAT enables handling RTP behind NAT. Checkout also RTPSourceLock
-	RTPNAT          int // 0 - disabled, 1 - Learn source change (RTP Symetric)
+	RTPNAT          int // 0 - disabled, 1 - Learn source change (RTP Symetric), 2 - Follow source changes (RTPNATFollow)
 	learnedRTPFrom  atomic.Pointer[net.UDPAddr]
 	learnedRTCPFrom atomic.Pointer[net.UDPAddr]
 
 	// ReadRTPFromAddr is set after Read operation. NOT THREAD SAFE and should be only used together with Read
 	// It can be used to validate source of RTP packet
 	ReadRTPFromAddr net.Addr
+	// readRTCPFromAddr is the same for ReadRTCP, used by the RTP session's RTCP reader
+	readRTCPFromAddr net.Addr
 	// remoteProto is the media protocol from the remote SDP offer (e.g. "RTP/AVP", "RTP/SAVP")
 	remoteProto string
 
@@ -1036,6 +1042,7 @@ func (m *MediaSession) ReadRTCP(buf []byte, pkts []rtcp.Packet) (n int, err erro
 			}
 		}()
 	}
+	m.readRTCPFromAddr = from
 
 	logRTCPRead(m, pkts[:n])
 	return n, err
@@ -1104,14 +1111,28 @@ func (m *MediaSession) getWriteBuf() []byte {
 
 func (m *MediaSession) WriteRTPRaw(data []byte) (n int, err error) {
 	addr := &m.Raddr
-	if m.RTPNAT == 1 {
-		if a := m.learnedRTPFrom.Load(); a != nil {
-			addr = a
-		}
+	if m.RTPNAT == RTPNATSymetric || m.RTPNAT == RTPNATFollow {
+		addr = m.rtpRaddrLearned()
 	}
 
 	n, err = m.rtpConn.WriteTo(data, addr)
 	return
+}
+
+// rtpRaddrLearned is where RTP goes when latching: the learned source, or Raddr before one is learned.
+func (m *MediaSession) rtpRaddrLearned() *net.UDPAddr {
+	if a := m.learnedRTPFrom.Load(); a != nil {
+		return a
+	}
+	return &m.Raddr
+}
+
+// rtcpRaddrLearned is where RTCP goes when latching: the learned source, or the RTCP address before one is learned.
+func (m *MediaSession) rtcpRaddrLearned() *net.UDPAddr {
+	if a := m.learnedRTCPFrom.Load(); a != nil {
+		return a
+	}
+	return &m.rtcpRaddr
 }
 
 func (m *MediaSession) WriteRTCP(p rtcp.Packet) error {
@@ -1174,10 +1195,8 @@ func (m *MediaSession) WriteRTCPs(pkts []rtcp.Packet) error {
 
 func (m *MediaSession) WriteRTCPRaw(data []byte) (int, error) {
 	addr := &m.rtcpRaddr
-	if m.RTPNAT == 1 {
-		if a := m.learnedRTCPFrom.Load(); a != nil {
-			addr = a
-		}
+	if m.RTPNAT == RTPNATSymetric || m.RTPNAT == RTPNATFollow {
+		addr = m.rtcpRaddrLearned()
 	}
 
 	n, err := m.rtcpConn.WriteTo(data, addr)
