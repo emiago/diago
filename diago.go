@@ -426,6 +426,17 @@ func NewDiago(ua *sipgo.UserAgent, opts ...DiagoOption) *Diago {
 		return nil
 	}))
 
+	dg.server.OnUpdate(errHandler(func(req *sip.Request, tx sip.ServerTransaction) error {
+		sd, cd, err := dg.cache.MatchDialog(req)
+		if err != nil {
+			return handleNoDialog(req, tx, err)
+		}
+		if cd != nil {
+			return cd.handleUpdate(req, tx)
+		}
+		return sd.handleUpdate(req, tx)
+	}))
+
 	dg.server.OnNotify(errHandler(func(req *sip.Request, tx sip.ServerTransaction) error {
 		// THIS should match now subscribtion instead dialog
 		sd, cd, err := dg.cache.MatchDialog(req)

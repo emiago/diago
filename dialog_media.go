@@ -308,7 +308,21 @@ func (d *DialogMedia) registerDialogCallbacks(c *dialogCallbacks) {
 	defer c.mu.Unlock()
 
 	c.mediaHanshaker = d
+	c.onMediaFailure = d.dropPendingOffer
 	c.onClose = append(c.onClose, d.Close)
+}
+
+// dropPendingOffer forgets our offer once its exchange failed. The fork shares the live connections, so it stays open
+func (d *DialogMedia) dropPendingOffer() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.pendingMediaSession = nil
+}
+
+func (d *DialogMedia) offerPending() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.pendingMediaSession != nil
 }
 
 func (d *DialogMedia) onRemoteSDP(ctx context.Context, remoteSDP []byte, offered bool) error {
