@@ -23,7 +23,7 @@ import (
 	"github.com/pion/rtp"
 	webrtcsdp "github.com/pion/sdp/v3"
 	"github.com/pion/srtp/v3"
-	"github.com/pion/stun/v3"
+	"github.com/pion/stun/v4"
 )
 
 // ErrWebRTCICERestart reports that a subsequent SDP changed both remote ICE
